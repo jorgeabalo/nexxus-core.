@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEXXUS — Perfil del socio</title>
+<style>
+  :root{
+    --bg:#F6F7FA; --surface:#FFFFFF; --surface-2:#EEF0F6; --surface-3:#E4E7F0;
+    --border:#DDE1EA; --text-primary:#14161F; --text-secondary:#565B6E; --text-muted:#8990A6;
+    --accent:#3454D1; --accent-soft:#E7EBFC;
+    --good:#1A8754; --good-soft:#E3F5EC;
+    --warning:#B45309; --warning-soft:#FCEEDD;
+    --critical:#C0152F; --critical-soft:#FBE2E5;
+  }
+  @media (prefers-color-scheme: dark){ :root{
+    --bg:#121319; --surface:#191B23; --surface-2:#20222C; --surface-3:#272A36;
+    --border:#2B2E3A; --text-primary:#F1F2F6; --text-secondary:#ABB0C4; --text-muted:#6E7386;
+    --accent:#6C87FF; --accent-soft:rgba(108,135,255,0.16);
+    --good:#3DD68C; --good-soft:rgba(61,214,140,0.14);
+    --warning:#F5A524; --warning-soft:rgba(245,165,36,0.14);
+    --critical:#F2555A; --critical-soft:rgba(242,85,90,0.14);
+  }}
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--text-primary); font-family:-apple-system,system-ui,sans-serif; padding:28px 24px 60px;}
+  .wrap{max-width:980px; margin:0 auto;}
+  a.volver{color:var(--text-secondary); font-size:12.5px; text-decoration:none;}
+  a.volver:hover{color:var(--accent);}
+  h1{font-size:20px; margin:14px 0 4px;}
+  .sub{color:var(--text-secondary); font-size:13.5px; margin:0 0 20px;}
+  .login-box{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:20px; max-width:360px;}
+  .login-box input{display:block; width:100%; margin-bottom:10px; padding:9px 10px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text-primary); font-size:13.5px;}
+  .login-box button{width:100%; padding:10px; border-radius:8px; border:none; background:var(--accent); color:#fff; font-weight:700; font-size:13.5px; cursor:pointer;}
+  .error{color:var(--critical); font-size:12.5px; margin-top:8px;}
+  .kpi-row{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:14px;}
+  .kpi{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:14px 16px;}
+  .kpi-label{font-size:11.5px; color:var(--text-muted); font-weight:600; margin-bottom:7px;}
+  .kpi-value{font-size:22px; font-weight:700;}
+  .kpi-delta{font-size:11.5px; margin-top:4px; font-weight:600;}
+  .kpi-delta.pos{color:var(--critical);}
+  .kpi-delta.neg{color:var(--good);}
+  .grid{display:grid; grid-template-columns:1.4fr 1fr; gap:14px;}
+  .panel{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:14px;}
+  .panel h2{font-size:14px; margin:0 0 10px;}
+  table{width:100%; border-collapse:collapse; font-size:12.5px;}
+  th{text-align:left; font-size:10.5px; text-transform:uppercase; color:var(--text-muted); padding:0 8px 8px; border-bottom:1px solid var(--border);}
+  td{padding:8px; border-bottom:1px solid var(--surface-2); color:var(--text-secondary);}
+  .status{display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:999px; font-size:11px; font-weight:700;}
+  .status-good{background:var(--good-soft); color:var(--good);}
+  .status-warning{background:var(--warning-soft); color:var(--warning);}
+  .status-critical{background:var(--critical-soft); color:var(--critical);}
+  .status-neutral{background:var(--surface-2); color:var(--text-secondary);}
+  .campo{margin-bottom:10px;}
+  .campo label{display:block; font-size:11.5px; color:var(--text-muted); margin-bottom:4px; font-weight:600;}
+  .campo input, .campo textarea{width:100%; padding:8px 9px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text-primary); font-size:13px; font-family:inherit;}
+  .fila-2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .btn-primario{padding:9px 14px; border-radius:8px; border:none; background:var(--accent); color:#fff; font-weight:700; font-size:13px; cursor:pointer;}
+  .ok-msg{color:var(--good); font-size:12.5px; margin-top:8px;}
+  .chart-tooltip{position:absolute; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:6px 9px; font-size:11.5px; pointer-events:none; box-shadow:0 4px 14px rgba(0,0,0,0.12); display:none; white-space:nowrap;}
+  .vacio{color:var(--text-muted); font-size:12.5px; padding:6px 0;}
+  #panel-riesgo{border-left:3px solid var(--border);}
+  #panel-riesgo.critico{border-left-color:var(--critical); background:var(--critical-soft);}
+  #panel-riesgo.alerta{border-left-color:var(--warning); background:var(--warning-soft);}
+  #panel-riesgo h2{font-size:13px; margin-bottom:4px;}
+  #panel-riesgo p{font-size:12.5px; color:var(--text-secondary); margin:0;}
+  [hidden]{display:none !important;}
+  @media (max-width:800px){ .kpi-row{grid-template-columns:1fr 1fr;} .grid{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="volver" id="link-volver" href="#">&larr; Volver al panel del negocio</a>
+  <h1 id="titulo">Perfil del socio</h1>
+  <p class="sub" id="subtitulo">Cargando…</p>
+
+  <div class="login-box" id="login">
+    <input type="text" id="user" placeholder="Usuario">
+    <input type="password" id="pass" placeholder="Contraseña">
+    <button onclick="entrar()">Entrar</button>
+    <div class="error" id="error" hidden></div>
+  </div>
+
+  <div id="contenido" hidden>
+    <div class="panel" id="panel-riesgo" hidden></div>
+    <div class="kpi-row" id="kpis"></div>
+    <div class="grid">
+      <div>
+        <div class="panel" id="panel-evolucion">
+          <h2>Evolución de peso</h2>
+          <div id="grafico-peso"></div>
+        </div>
+        <div class="panel" id="panel-historial"></div>
+      </div>
+      <div>
+        <div class="panel" id="panel-cuenta"></div>
+        <div class="panel">
+          <h2>Registrar medición nueva</h2>
+          <div class="fila-2">
+            <div class="campo"><label>Peso (kg)</label><input type="number" step="0.1" id="f-peso"></div>
+            <div class="campo"><label>Altura (cm)</label><input type="number" step="0.1" id="f-altura"></div>
+          </div>
+          <div class="fila-2">
+            <div class="campo"><label>Cintura (cm)</label><input type="number" step="0.1" id="f-cintura"></div>
+            <div class="campo"><label>Cadera (cm)</label><input type="number" step="0.1" id="f-cadera"></div>
+          </div>
+          <div class="fila-2">
+            <div class="campo"><label>Pecho (cm)</label><input type="number" step="0.1" id="f-pecho"></div>
+            <div class="campo"><label>Brazo (cm)</label><input type="number" step="0.1" id="f-brazo"></div>
+          </div>
+          <div class="campo"><label>Notas</label><textarea id="f-notas" rows="2"></textarea></div>
+          <button class="btn-primario" onclick="guardarMedicion()">Guardar medición</button>
+          <div class="ok-msg" id="medicion-ok" hidden>Medición guardada.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="chart-tooltip" id="tooltip"></div>
+
+<script>
+  var partes = location.pathname.split('/').filter(Boolean); // [slug, 'admin', 'clientes', id]
+  var slug = partes[0];
+  var clienteId = partes[3];
+  var authHeader = null;
+
+  document.getElementById('link-volver').href = '/' + slug + '/admin';
+
+  function entrar(){
+    var user = document.getElementById('user').value;
+    var pass = document.getElementById('pass').value;
+    authHeader = 'Basic ' + btoa(user + ':' + pass);
+    cargar();
+  }
+
+  function fetchAuth(url, opts){
+    opts = opts || {};
+    opts.headers = Object.assign({'Authorization': authHeader}, opts.headers || {});
+    return fetch(url, opts).then(function(r){
+      if (r.status === 401){ throw new Error('401'); }
+      return r.json();
+    });
+  }
+
+  function pill(estado){
+    var map = {activo:'status-good', pausado:'status-warning', cancelado:'status-critical'};
+    var cls = map[estado] || 'status-neutral';
+    return '<span class="status '+cls+'">'+estado+'</span>';
+  }
+
+  function clasificacionLabel(c){
+    var map = {bajo_peso:'Bajo peso', normal:'Normal', sobrepeso:'Sobrepeso', obesidad:'Obesidad'};
+    return map[c] || '—';
+  }
+
+  var ultimoPerfil = null;
+
+  function cargar(){
+    document.getElementById('error').hidden = true;
+    var base = '/api/' + slug + '/clientes/' + clienteId;
+    Promise.all([fetchAuth(base + '/perfil'), fetchAuth(base + '/mediciones')]).then(function(res){
+      ultimoPerfil = res[0];
+      renderizar(res[0], res[1]);
+      document.getElementById('login').hidden = true;
+      document.getElementById('contenido').hidden = false;
+    }).catch(function(){
+      document.getElementById('error').textContent = 'Usuario o contraseña incorrectos.';
+      document.getElementById('error').hidden = false;
+    });
+  }
+
+  function kpi(label, value, deltaHtml){
+    return '<div class="kpi"><div class="kpi-label">'+label+'</div><div class="kpi-value">'+value+'</div>'+(deltaHtml||'')+'</div>';
+  }
+
+  function renderizarRiesgo(riesgo){
+    var cont = document.getElementById('panel-riesgo');
+    if (!riesgo){
+      cont.hidden = true;
+      return;
+    }
+    cont.hidden = false;
+    cont.className = 'panel ' + riesgo.nivel;
+    var titulo = riesgo.nivel === 'critico' ? 'Riesgo alto de que se vaya' : 'Señal de alerta';
+    cont.innerHTML = '<h2>' + titulo + '</h2><p>' + riesgo.motivos.join(' · ') + '</p>';
+  }
+
+  function renderizar(perfil, mediciones){
+    renderizarRiesgo(perfil.riesgo);
+    document.getElementById('titulo').textContent = perfil.nombre;
+    document.getElementById('subtitulo').textContent = 'Socio desde ' + (perfil.fecha_ingreso ? perfil.fecha_ingreso.slice(0,10) : '—') +
+      (perfil.meses_como_socio != null ? ' · ' + perfil.meses_como_socio + ' meses como socio' : '');
+
+    var ultima = perfil.ultima_medicion;
+    var kpis = document.getElementById('kpis');
+    var pesoActual = ultima && ultima.peso_kg != null ? ultima.peso_kg + ' kg' : '—';
+    var bmiActual = ultima && ultima.bmi != null ? ultima.bmi + ' (' + clasificacionLabel(ultima.clasificacion_bmi) + ')' : '—';
+
+    var deltaPeso = '';
+    var deltaBmi = '';
+    if (perfil.progreso){
+      if (perfil.progreso.delta_peso_kg != null){
+        var dp = perfil.progreso.delta_peso_kg;
+        deltaPeso = '<div class="kpi-delta ' + (dp > 0 ? 'pos' : (dp < 0 ? 'neg' : '')) + '">' + (dp > 0 ? '+' : '') + dp + ' kg desde el ' + perfil.progreso.desde.slice(0,10) + '</div>';
+      }
+      if (perfil.progreso.delta_bmi != null){
+        var db_ = perfil.progreso.delta_bmi;
+        deltaBmi = '<div class="kpi-delta ' + (db_ > 0 ? 'pos' : (db_ < 0 ? 'neg' : '')) + '">' + (db_ > 0 ? '+' : '') + db_ + ' BMI</div>';
+      }
+    }
+
+    kpis.innerHTML =
+      kpi('Peso actual', pesoActual, deltaPeso) +
+      kpi('BMI actual', bmiActual, deltaBmi) +
+      kpi('Meses como socio', perfil.meses_como_socio != null ? perfil.meses_como_socio : '—') +
+      kpi('Visitas (30 días)', perfil.asistencia.visitas_ultimos_30_dias + ' · ' + perfil.asistencia.promedio_semanal + '/sem');
+
+    document.getElementById('panel-cuenta').innerHTML =
+      '<h2>Estado de cuenta</h2>' +
+      '<table><tbody>' +
+      '<tr><td>Membresía</td><td>' + pill(perfil.estado_membresia) + '</td></tr>' +
+      '<tr><td>Plan</td><td>' + (perfil.plan_membresia || '—') + '</td></tr>' +
+      '<tr><td>Meses adeudados</td><td>' + perfil.meses_adeudados + '</td></tr>' +
+      '<tr><td>Próximo vencimiento</td><td>' + (perfil.proximo_vencimiento ? perfil.proximo_vencimiento.slice(0,10) : '—') + '</td></tr>' +
+      '<tr><td>Última visita</td><td>' + (perfil.asistencia.dias_desde_ultima_visita != null ? 'hace ' + perfil.asistencia.dias_desde_ultima_visita + ' día(s)' : 'sin registro') + '</td></tr>' +
+      '<tr><td>Visitas históricas</td><td>' + perfil.asistencia.total_checkins_historico + '</td></tr>' +
+      '</tbody></table>';
+
+    var filas = mediciones.slice().reverse().map(function(m){
+      return '<tr><td>'+m.fecha.slice(0,10)+'</td><td>'+(m.peso_kg!=null?m.peso_kg+' kg':'—')+'</td>' +
+             '<td>'+(m.bmi!=null?m.bmi:'—')+'</td><td>'+(m.cintura_cm!=null?m.cintura_cm+' cm':'—')+'</td>' +
+             '<td>'+(m.notas||'—')+'</td></tr>';
+    }).join('');
+    document.getElementById('panel-historial').innerHTML =
+      '<h2>Historial de mediciones</h2>' +
+      (mediciones.length
+        ? '<table><thead><tr><th>Fecha</th><th>Peso</th><th>BMI</th><th>Cintura</th><th>Notas</th></tr></thead><tbody>'+filas+'</tbody></table>'
+        : '<div class="vacio">Todavía no hay mediciones registradas.</div>');
+
+    dibujarGrafico(mediciones);
+  }
+
+  function dibujarGrafico(mediciones){
+    var cont = document.getElementById('grafico-peso');
+    var conPeso = mediciones.filter(function(m){ return m.peso_kg != null; });
+    if (conPeso.length < 2){
+      cont.innerHTML = '<div class="vacio">Se necesitan al menos 2 mediciones con peso para ver la evolución.</div>';
+      return;
+    }
+    var w = 560, h = 160, padL = 34, padR = 12, padT = 12, padB = 22;
+    var pesos = conPeso.map(function(m){ return m.peso_kg; });
+    var min = Math.min.apply(null, pesos), max = Math.max.apply(null, pesos);
+    if (min === max){ min -= 1; max += 1; }
+    var innerW = w - padL - padR, innerH = h - padT - padB;
+
+    function x(i){ return padL + (i/(conPeso.length-1)) * innerW; }
+    function y(v){ return padT + innerH - ((v - min)/(max - min)) * innerH; }
+
+    var puntos = conPeso.map(function(m,i){ return x(i)+','+y(m.peso_kg); }).join(' ');
+
+    var svg = '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%; height:auto; overflow:visible;">';
+    svg += '<line x1="'+padL+'" y1="'+(padT+innerH)+'" x2="'+(padL+innerW)+'" y2="'+(padT+innerH)+'" stroke="var(--border)" stroke-width="1"/>';
+    svg += '<text x="2" y="'+(y(max)+4)+'" font-size="10" fill="var(--text-muted)">'+max.toFixed(1)+'</text>';
+    svg += '<text x="2" y="'+(y(min)+4)+'" font-size="10" fill="var(--text-muted)">'+min.toFixed(1)+'</text>';
+    svg += '<polyline points="'+puntos+'" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+    conPeso.forEach(function(m,i){
+      svg += '<circle cx="'+x(i)+'" cy="'+y(m.peso_kg)+'" r="4" fill="var(--surface)" stroke="var(--accent)" stroke-width="2" ' +
+             'onmousemove="mostrarTooltip(event,\''+m.fecha.slice(0,10)+'\',\''+m.peso_kg+' kg\')" onmouseleave="ocultarTooltip()" style="cursor:pointer;"/>';
+    });
+    svg += '</svg>';
+    cont.innerHTML = svg;
+  }
+
+  function mostrarTooltip(evt, fecha, valor){
+    var tt = document.getElementById('tooltip');
+    tt.innerHTML = '<strong>'+valor+'</strong><br>'+fecha;
+    tt.style.display = 'block';
+    tt.style.left = (evt.pageX + 12) + 'px';
+    tt.style.top = (evt.pageY - 12) + 'px';
+  }
+  function ocultarTooltip(){
+    document.getElementById('tooltip').style.display = 'none';
+  }
+
+  function guardarMedicion(){
+    var body = {
+      peso_kg: parseFloat(document.getElementById('f-peso').value) || null,
+      altura_cm: parseFloat(document.getElementById('f-altura').value) || null,
+      cintura_cm: parseFloat(document.getElementById('f-cintura').value) || null,
+      cadera_cm: parseFloat(document.getElementById('f-cadera').value) || null,
+      pecho_cm: parseFloat(document.getElementById('f-pecho').value) || null,
+      brazo_cm: parseFloat(document.getElementById('f-brazo').value) || null,
+      notas: document.getElementById('f-notas').value || null,
+    };
+    fetchAuth('/api/' + slug + '/clientes/' + clienteId + '/mediciones', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    }).then(function(){
+      document.getElementById('medicion-ok').hidden = false;
+      ['f-peso','f-altura','f-cintura','f-cadera','f-pecho','f-brazo','f-notas'].forEach(function(id){
+        document.getElementById(id).value = '';
+      });
+      cargar();
+    });
+  }
+</script>
+</body>
+</html>

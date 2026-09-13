@@ -1,0 +1,28 @@
+# Fase 2 (suite de tests): subimos fastapi (0.104.1 -> 0.115.6), que trae
+# una starlette más nueva. La razón es la misma familia de problema que ya
+# tuvimos con anthropic/httpx: TestClient de FastAPI (usado por
+# tests/test_api.py) depende de httpx internamente, y con httpx 0.28.1 (la
+# versión que ya necesitamos para anthropic==1.2.0) la starlette vieja
+# (0.27.0, la que traía fastapi 0.104.1) rompe con
+# "Client.__init__() got an unexpected keyword argument 'app'". La versión
+# nueva de starlette ya sabe hablar con httpx 0.28. No cambia ningún
+# comportamiento de la API en sí (mismos endpoints, misma lógica) — es
+# puramente para que la suite de tests pueda correr. Verificado en este
+# entorno: los 38 tests de tests/ pasan con esta combinación.
+fastapi==0.115.6
+uvicorn==0.24.0
+# Fase 2: subimos el SDK de anthropic (0.25.0 -> 1.2.0). La versión vieja
+# era incompatible con httpx>=0.28 (bug documentado en CAMBIOS.md del MVP
+# anterior) Y además no tenía tool-calling estable, que el motor genérico
+# de Fase 2 necesita para consultar datos reales (nunca inventar montos de
+# pago). Verificado en este entorno: anthropic==1.2.0 + httpx 0.28.1 sin
+# conflicto, tools/tool_choice soportados.
+anthropic==1.2.0
+python-dotenv==1.0.0
+pydantic==2.5.0
+sqlalchemy==2.0.23
+stripe==10.12.0
+
+# --- Solo para desarrollo/tests (no hace falta en producción) ---
+pytest==9.1.1
+httpx==0.28.1

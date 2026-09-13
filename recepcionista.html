@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recepcionista IA - NEXXUS AI SUPPORT</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --brand-primary: #2a78d6;
+            --brand-primary-ink: #184f95;
+            --surface-0: #f9f9f7;
+            --surface-1: #ffffff;
+            --surface-2: #f1f1ef;
+            --text-primary: #0b0b0b;
+            --text-secondary: #52514e;
+            --text-muted: #898781;
+            --gridline: #e1e0d9;
+            --border: rgba(11, 11, 11, 0.10);
+            --status-good: #0ca30c;
+            --status-warning: #fab219;
+            --status-warning-bg: #fff6e0;
+            --status-warning-ink: #7a5300;
+            --status-critical: #d03b3b;
+            --status-critical-bg: #fdeceb;
+            --status-critical-ink: #8a2323;
+            --shadow: 0 20px 50px rgba(11, 11, 11, 0.16), 0 2px 8px rgba(11, 11, 11, 0.06);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                color-scheme: dark;
+                --brand-primary: #3987e5;
+                --brand-primary-ink: #bcd7f7;
+                --surface-0: #0d0d0d;
+                --surface-1: #1a1a19;
+                --surface-2: #232322;
+                --text-primary: #ffffff;
+                --text-secondary: #c3c2b7;
+                --text-muted: #898781;
+                --gridline: #2c2c2a;
+                --border: rgba(255, 255, 255, 0.10);
+                --status-warning-bg: #362a0c;
+                --status-warning-ink: #f0c25c;
+                --status-critical-bg: #391616;
+                --status-critical-ink: #f3a09f;
+                --shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+            }
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            background: var(--surface-0);
+            color: var(--text-primary);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        .contenedor {
+            background: var(--surface-1);
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            width: 100%;
+            max-width: 480px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 92vh;
+            max-height: 720px;
+        }
+
+        /* ---- Header ---- */
+        .header {
+            background: var(--brand-primary);
+            color: #ffffff;
+            padding: 22px 24px 18px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .avatar {
+            flex: none;
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.16);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .avatar svg { width: 24px; height: 24px; }
+
+        .header-texto { flex: 1; min-width: 0; }
+
+        .header-texto .marca {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            opacity: 0.75;
+            line-height: 1.2;
+        }
+
+        .header-texto h1 {
+            font-size: 18px;
+            font-weight: 600;
+            line-height: 1.3;
+            margin-top: 1px;
+        }
+
+        .header-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 0 24px 16px;
+        }
+
+        .estado-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.92);
+            background: rgba(255, 255, 255, 0.14);
+            padding: 5px 10px;
+            border-radius: 999px;
+            max-width: 100%;
+        }
+
+        .estado-pill .punto {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+            flex: none;
+        }
+
+        .estado-pill span.texto {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .cronometro {
+            font-size: 12px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.14);
+            padding: 5px 10px;
+            border-radius: 999px;
+            display: none;
+            flex: none;
+        }
+
+        /* ---- Chat ---- */
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: var(--surface-0);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .estado {
+            text-align: center;
+            padding: 32px 16px;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .mensaje {
+            display: flex;
+            margin-bottom: 2px;
+            animation: entrada 0.25s ease;
+        }
+
+        @keyframes entrada {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .mensaje.usuario { justify-content: flex-end; }
+        .mensaje.recepcionista { justify-content: flex-start; }
+
+        .burbuja {
+            max-width: 82%;
+            padding: 11px 15px;
+            border-radius: 16px;
+            word-wrap: break-word;
+            font-size: 14px;
+            line-height: 1.45;
+        }
+
+        .usuario .burbuja {
+            background: var(--brand-primary);
+            color: #ffffff;
+            border-radius: 16px 16px 4px 16px;
+        }
+
+        .recepcionista .burbuja {
+            background: var(--surface-2);
+            color: var(--text-primary);
+            border-radius: 16px 16px 16px 4px;
+        }
+
+        .burbuja.fallback {
+            background: var(--status-warning-bg);
+            color: var(--status-warning-ink);
+        }
+
+        /* ---- Alerta de escalado ---- */
+        .alerta-supervisor {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            font-size: 12.5px;
+            font-weight: 500;
+            padding: 11px 16px;
+            background: var(--status-warning-bg);
+            color: var(--status-warning-ink);
+            border-top: 1px solid var(--gridline);
+        }
+
+        .alerta-supervisor svg { flex: none; width: 16px; height: 16px; }
+
+        /* ---- Input ---- */
+        .input-container {
+            display: none;
+            border-top: 1px solid var(--gridline);
+            padding: 14px 16px;
+            gap: 10px;
+            background: var(--surface-1);
+        }
+
+        input[type="text"] {
+            flex: 1;
+            border: 1px solid var(--gridline);
+            background: var(--surface-0);
+            color: var(--text-primary);
+            border-radius: 10px;
+            padding: 11px 14px;
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.15s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: var(--brand-primary);
+            box-shadow: 0 0 0 3px rgba(42, 120, 214, 0.16);
+        }
+
+        input[type="text"]::placeholder { color: var(--text-muted); }
+
+        button {
+            font-family: inherit;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: transform 0.12s, opacity 0.12s;
+        }
+
+        button:active { transform: scale(0.97); }
+
+        button:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        #enviarBtn {
+            background: var(--brand-primary);
+            color: #ffffff;
+            padding: 0 20px;
+            font-size: 14px;
+        }
+
+        /* ---- Botones de acción ---- */
+        .botones-accion {
+            display: flex;
+            gap: 8px;
+            padding: 14px 16px;
+            background: var(--surface-1);
+            border-top: 1px solid var(--gridline);
+        }
+
+        .btn-iniciar, .btn-finalizar, .btn-admin {
+            flex: 1;
+            padding: 11px 8px;
+            font-size: 12.5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .btn-iniciar {
+            background: var(--brand-primary);
+            color: #ffffff;
+        }
+
+        .btn-finalizar {
+            background: var(--status-critical-bg);
+            color: var(--status-critical-ink);
+        }
+
+        .btn-admin {
+            background: var(--surface-2);
+            color: var(--text-secondary);
+        }
+
+        .btn-iniciar svg, .btn-finalizar svg, .btn-admin svg {
+            width: 14px; height: 14px; flex: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="contenedor">
+        <div class="header">
+            <div class="avatar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 13a8 8 0 0 1 16 0v5a2 2 0 0 1-2 2h-1v-7h3"/>
+                    <path d="M4 13v5a2 2 0 0 0 2 2h1v-7H4"/>
+                    <path d="M9 20a3 3 0 0 0 6 0"/>
+                </svg>
+            </div>
+            <div class="header-texto">
+                <div class="marca">NEXXUS AI SUPPORT</div>
+                <h1>María · Recepcionista IA</h1>
+            </div>
+        </div>
+        <div class="header-meta">
+            <div class="estado-pill">
+                <span class="punto"></span>
+                <span class="texto" id="estadoLlamada">Presioná "Iniciar" para comenzar</span>
+            </div>
+            <div class="cronometro" id="cronometro">⏱ <span id="tiempo">00:00</span></div>
+        </div>
+
+        <div class="chat-container" id="chatContainer">
+            <div class="estado">Iniciá una llamada para comenzar a chatear</div>
+        </div>
+
+        <div class="alerta-supervisor" id="alertaSupervisor">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 7v6l4 2"/></svg>
+            <span>Esta llamada superó los 20 minutos y fue marcada para transferirse a un supervisor humano.</span>
+        </div>
+
+        <div class="input-container" id="inputContainer">
+            <input type="text" id="mensajeInput" placeholder="Escribí tu mensaje..." />
+            <button id="enviarBtn" onclick="enviarMensaje()">Enviar</button>
+        </div>
+
+        <div class="botones-accion">
+            <button class="btn-iniciar" id="iniciarBtn" onclick="iniciarLlamada()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-14 9V3z"/></svg>
+                Iniciar
+            </button>
+            <button class="btn-finalizar" id="finalizarBtn" onclick="finalizarLlamada()" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+                Finalizar
+            </button>
+            <button class="btn-admin" onclick="window.location.href='/admin-recepcionista'">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                Admin
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let llamadaActual = null;
+        let tiempoInicio = null;
+        let tiempoIntervalo = null;
+
+        async function iniciarLlamada() {
+            try {
+                const res = await fetch('/api/recepcionista/iniciar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ numero_cliente: null })
+                });
+
+                const data = await res.json();
+                llamadaActual = data.llamada_id;
+
+                // Actualizar UI
+                document.getElementById('estadoLlamada').textContent = `Llamada activa: ${llamadaActual}`;
+                document.getElementById('inputContainer').style.display = 'flex';
+                document.getElementById('iniciarBtn').disabled = true;
+                document.getElementById('finalizarBtn').disabled = false;
+                document.getElementById('cronometro').style.display = 'inline-flex';
+
+                // Limpiar chat
+                document.getElementById('chatContainer').innerHTML = '';
+                document.getElementById('alertaSupervisor').style.display = 'none';
+
+                // Agregar mensaje de bienvenida
+                agregarMensajeAlChat('recepcionista', data.mensaje_bienvenida, false);
+
+                // Iniciar cronómetro
+                tiempoInicio = Date.now();
+                tiempoIntervalo = setInterval(actualizarCronometro, 1000);
+
+                // Enfocar input
+                document.getElementById('mensajeInput').focus();
+
+            } catch (error) {
+                alert('Error al iniciar llamada: ' + error);
+            }
+        }
+
+        async function enviarMensaje() {
+            const input = document.getElementById('mensajeInput');
+            const mensaje = input.value.trim();
+
+            if (!mensaje || !llamadaActual) return;
+
+            // Mostrar mensaje del usuario
+            agregarMensajeAlChat('usuario', mensaje, false);
+            input.value = '';
+            input.focus();
+
+            try {
+                const res = await fetch('/api/recepcionista/mensaje', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        llamada_id: llamadaActual,
+                        mensaje: mensaje
+                    })
+                });
+
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    agregarMensajeAlChat('recepcionista', '❌ ' + (errData.detail || 'Error procesando el mensaje.'), true);
+                    return;
+                }
+
+                const data = await res.json();
+                agregarMensajeAlChat('recepcionista', data.respuesta, data.fallback);
+
+                if (data.requiere_supervisor) {
+                    document.getElementById('alertaSupervisor').style.display = 'flex';
+                }
+
+            } catch (error) {
+                agregarMensajeAlChat('recepcionista', '❌ Error en la conexión. Intenta de nuevo.', true);
+            }
+        }
+
+        function agregarMensajeAlChat(rol, texto, esError = false) {
+            const container = document.getElementById('chatContainer');
+            const div = document.createElement('div');
+            div.className = `mensaje ${rol}`;
+
+            const burbuja = document.createElement('div');
+            burbuja.className = 'burbuja' + (esError ? ' fallback' : '');
+            burbuja.textContent = texto;
+
+            div.appendChild(burbuja);
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        async function finalizarLlamada() {
+            try {
+                const res = await fetch('/api/recepcionista/finalizar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        llamada_id: llamadaActual,
+                        resultado: 'completada'
+                    })
+                });
+
+                const data = await res.json();
+
+                // Detener cronómetro
+                clearInterval(tiempoIntervalo);
+
+                // Actualizar UI
+                document.getElementById('estadoLlamada').textContent = '✅ Llamada finalizada';
+                document.getElementById('inputContainer').style.display = 'none';
+                document.getElementById('iniciarBtn').disabled = false;
+                document.getElementById('finalizarBtn').disabled = true;
+                document.getElementById('cronometro').style.display = 'none';
+
+                agregarMensajeAlChat('recepcionista', `Gracias por llamar. Duración: ${Math.round(data.duracion)} segundos.`);
+
+                llamadaActual = null;
+
+            } catch (error) {
+                alert('Error al finalizar: ' + error);
+            }
+        }
+
+        function actualizarCronometro() {
+            const ahora = Date.now();
+            const segundos = Math.floor((ahora - tiempoInicio) / 1000);
+            const minutos = Math.floor(segundos / 60);
+            const seg = segundos % 60;
+
+            const tiempo = String(minutos).padStart(2, '0') + ':' + String(seg).padStart(2, '0');
+            document.getElementById('tiempo').textContent = tiempo;
+        }
+
+        // Permitir Enter para enviar
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('mensajeInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    enviarMensaje();
+                }
+            });
+        });
+    </script>
+</body>
+</html>

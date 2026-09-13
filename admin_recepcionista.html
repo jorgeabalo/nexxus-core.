@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Recepcionista IA</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --brand-primary: #2a78d6;
+            --brand-primary-ink: #184f95;
+            --surface-0: #f9f9f7;
+            --surface-1: #ffffff;
+            --surface-2: #f1f1ef;
+            --text-primary: #0b0b0b;
+            --text-secondary: #52514e;
+            --text-muted: #898781;
+            --gridline: #e1e0d9;
+            --border: rgba(11, 11, 11, 0.10);
+
+            --status-good: #0ca30c;
+            --status-good-bg: #e7f6e7;
+            --status-warning: #fab219;
+            --status-warning-bg: #fff6e0;
+            --status-warning-ink: #7a5300;
+            --status-critical: #d03b3b;
+            --status-critical-bg: #fdeceb;
+            --status-critical-ink: #8a2323;
+
+            --cat-1: #2a78d6; /* es */
+            --cat-2: #eb6834; /* en */
+            --cat-3: #1baf7a; /* fr */
+            --cat-4: #eda100; /* de */
+            --cat-5: #e87ba4; /* it */
+            --cat-6: #008300; /* pt */
+            --cat-7: #4a3aa7; /* ja */
+            --cat-8: #e34948; /* zh */
+            --cat-9: #898781; /* ru/ar/hi/ko -> gris, la etiqueta ya identifica el idioma */
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                color-scheme: dark;
+                --brand-primary: #3987e5;
+                --brand-primary-ink: #bcd7f7;
+                --surface-0: #0d0d0d;
+                --surface-1: #1a1a19;
+                --surface-2: #232322;
+                --text-primary: #ffffff;
+                --text-secondary: #c3c2b7;
+                --text-muted: #898781;
+                --gridline: #2c2c2a;
+                --border: rgba(255, 255, 255, 0.10);
+
+                --status-good: #0ca30c;
+                --status-good-bg: #123a17;
+                --status-warning-bg: #362a0c;
+                --status-warning-ink: #f0c25c;
+                --status-critical-bg: #391616;
+                --status-critical-ink: #f3a09f;
+
+                --cat-1: #3987e5;
+                --cat-2: #d95926;
+                --cat-3: #199e70;
+                --cat-4: #c98500;
+                --cat-5: #d55181;
+                --cat-6: #008300;
+                --cat-7: #9085e9;
+                --cat-8: #e66767;
+                --cat-9: #898781;
+            }
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            background: var(--surface-0);
+            color: var(--text-primary);
+            padding: 28px 16px;
+        }
+
+        .contenedor {
+            max-width: 1080px;
+            margin: 0 auto;
+        }
+
+        /* ---- Header ---- */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 24px;
+        }
+
+        .header-marca {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-marca .avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: var(--brand-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex: none;
+        }
+
+        .header-marca .avatar svg { width: 22px; height: 22px; }
+
+        .header-marca .marca {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+
+        .header-marca h1 {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .botones {
+            display: flex;
+            gap: 8px;
+        }
+
+        button {
+            font-family: inherit;
+            border: 1px solid var(--border);
+            background: var(--surface-1);
+            color: var(--text-secondary);
+            padding: 9px 14px;
+            border-radius: 9px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: background 0.12s, transform 0.1s;
+        }
+
+        button:hover { background: var(--surface-2); }
+        button:active { transform: scale(0.97); }
+        button svg { width: 14px; height: 14px; }
+
+        .btn-primario {
+            background: var(--brand-primary);
+            border-color: var(--brand-primary);
+            color: #ffffff;
+        }
+
+        .btn-primario:hover { background: var(--brand-primary-ink); }
+
+        /* ---- KPI tiles ---- */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 14px;
+            margin-bottom: 28px;
+        }
+
+        .tarjeta {
+            background: var(--surface-1);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 18px 20px;
+        }
+
+        .tarjeta .etiqueta {
+            font-size: 12.5px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+
+        .tarjeta .valor-fila {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+        }
+
+        .tarjeta .valor {
+            font-size: 30px;
+            font-weight: 600;
+            line-height: 1;
+            color: var(--text-primary);
+        }
+
+        .tarjeta .unidad {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
+
+        .badge-estado {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 11.5px;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 999px;
+        }
+
+        .badge-estado.good { background: var(--status-good-bg); color: var(--status-good); }
+        .badge-estado.warning { background: var(--status-warning-bg); color: var(--status-warning-ink); }
+        .badge-estado.critical { background: var(--status-critical-bg); color: var(--status-critical-ink); }
+
+        /* ---- Secciones ---- */
+        .seccion {
+            background: var(--surface-1);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 20px 22px;
+            margin-bottom: 18px;
+        }
+
+        .seccion h2 {
+            color: var(--text-primary);
+            margin-bottom: 4px;
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .seccion .subtitulo {
+            font-size: 12.5px;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+        }
+
+        .leyenda {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
+        }
+
+        .leyenda-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12.5px;
+            color: var(--text-secondary);
+        }
+
+        .leyenda-punto {
+            width: 9px;
+            height: 9px;
+            border-radius: 2px;
+            flex: none;
+        }
+
+        /* ---- Filas de barra ---- */
+        .fila-barra {
+            display: grid;
+            grid-template-columns: 140px 1fr 56px;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .fila-barra:last-child { margin-bottom: 0; }
+
+        .fila-etiqueta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            min-width: 0;
+        }
+
+        .fila-punto {
+            width: 10px;
+            height: 10px;
+            border-radius: 3px;
+            flex: none;
+        }
+
+        .fila-etiqueta span.nombre {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .pista-barra {
+            position: relative;
+            height: 20px;
+            background: var(--surface-2);
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .relleno-barra {
+            position: absolute;
+            top: 0; left: 0; bottom: 0;
+            border-radius: 5px;
+            transition: width 0.5s ease;
+        }
+
+        .fila-valor {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .mensaje-vacio {
+            text-align: center;
+            padding: 32px;
+            color: var(--text-muted);
+            font-size: 13.5px;
+        }
+
+        .cargando {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <div class="contenedor">
+        <div class="header">
+            <div class="header-marca">
+                <div class="avatar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 3v18h18"/>
+                        <path d="M7 15l4-5 4 3 5-7"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="marca">NEXXUS AI SUPPORT</div>
+                    <h1>Dashboard · Recepcionista IA</h1>
+                </div>
+            </div>
+            <div class="botones">
+                <button onclick="window.location.href='/recepcionista'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                    Volver al chat
+                </button>
+                <button onclick="recargarEstadisticas()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    Actualizar
+                </button>
+                <button class="btn-primario" onclick="exportarCSV()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>
+                    Exportar CSV
+                </button>
+            </div>
+        </div>
+
+        <div class="grid" id="tarjetas">
+            <div class="cargando">Cargando estadísticas…</div>
+        </div>
+
+        <div class="seccion">
+            <h2>Resumen de llamadas</h2>
+            <div class="subtitulo">Llamadas resueltas por IA frente a las que cayeron a fallback</div>
+            <div id="resumenGrafico"></div>
+        </div>
+
+        <div class="seccion">
+            <h2>Idiomas detectados</h2>
+            <div class="subtitulo">Distribución de llamadas por idioma del cliente</div>
+            <div id="idiomasGrafico"></div>
+        </div>
+    </div>
+
+    <script>
+        let estadisticasActuales = null;
+
+        const NOMBRES_IDIOMA = {
+            es: 'Español', en: 'English', fr: 'Français', de: 'Deutsch',
+            it: 'Italiano', pt: 'Português', ja: '日本語', zh: '中文',
+            ru: 'Русский', ar: 'العربية', hi: 'हिन्दी', ko: '한국어'
+        };
+
+        const COLOR_IDIOMA = {
+            es: 'var(--cat-1)', en: 'var(--cat-2)', fr: 'var(--cat-3)', de: 'var(--cat-4)',
+            it: 'var(--cat-5)', pt: 'var(--cat-6)', ja: 'var(--cat-7)', zh: 'var(--cat-8)'
+        };
+
+        function colorIdioma(codigo) {
+            return COLOR_IDIOMA[codigo] || 'var(--cat-9)';
+        }
+
+        async function recargarEstadisticas() {
+            try {
+                const res = await fetch('/api/recepcionista/estadisticas');
+                if (!res.ok) {
+                    document.getElementById('tarjetas').innerHTML = '<div class="cargando">No se pudieron cargar las estadísticas (¿iniciaste sesión de admin?).</div>';
+                    return;
+                }
+                estadisticasActuales = await res.json();
+                renderizarEstadisticas();
+            } catch (error) {
+                document.getElementById('tarjetas').innerHTML = '<div class="cargando">Error al cargar estadísticas.</div>';
+            }
+        }
+
+        function badgeFallback(tasa) {
+            if (tasa <= 5) return { clase: 'good', texto: 'Bajo' };
+            if (tasa <= 15) return { clase: 'warning', texto: 'Medio' };
+            return { clase: 'critical', texto: 'Alto' };
+        }
+
+        function renderizarEstadisticas() {
+            const stats = estadisticasActuales;
+
+            // ---- KPI tiles ----
+            const badge = badgeFallback(stats.tasa_fallback_porcentaje);
+            const tarjetas = document.getElementById('tarjetas');
+            tarjetas.innerHTML = `
+                <div class="tarjeta">
+                    <div class="etiqueta">Total de llamadas</div>
+                    <div class="valor-fila"><div class="valor">${stats.total_llamadas}</div></div>
+                    <div class="unidad">llamadas procesadas</div>
+                </div>
+                <div class="tarjeta">
+                    <div class="etiqueta">Duración promedio</div>
+                    <div class="valor-fila"><div class="valor">${stats.duracion_promedio_segundos}</div></div>
+                    <div class="unidad">segundos por llamada</div>
+                </div>
+                <div class="tarjeta">
+                    <div class="etiqueta">Tasa de fallback</div>
+                    <div class="valor-fila">
+                        <div class="valor">${stats.tasa_fallback_porcentaje}%</div>
+                        <span class="badge-estado ${badge.clase}">${badge.texto}</span>
+                    </div>
+                    <div class="unidad">${stats.fallbacks_usados} llamada(s) sin respuesta de IA</div>
+                </div>
+                <div class="tarjeta">
+                    <div class="etiqueta">Escaladas a supervisor</div>
+                    <div class="valor-fila"><div class="valor">${stats.escaladas_supervisor ?? 0}</div></div>
+                    <div class="unidad">llamadas &gt; 20 min</div>
+                </div>
+            `;
+
+            // ---- Resumen de llamadas ----
+            const resumen = document.getElementById('resumenGrafico');
+            if (stats.total_llamadas > 0) {
+                const exito = stats.total_llamadas - stats.fallbacks_usados;
+                const porcentajeExito = (exito / stats.total_llamadas * 100).toFixed(1);
+                const porcentajeFallback = stats.tasa_fallback_porcentaje;
+
+                resumen.innerHTML = `
+                    <div class="leyenda">
+                        <div class="leyenda-item"><span class="leyenda-punto" style="background: var(--status-good);"></span>Exitosas (respondidas por IA)</div>
+                        <div class="leyenda-item"><span class="leyenda-punto" style="background: var(--status-critical);"></span>Fallback (sin respuesta de IA)</div>
+                    </div>
+                    <div class="fila-barra">
+                        <div class="fila-etiqueta"><span class="nombre">Exitosas</span></div>
+                        <div class="pista-barra"><div class="relleno-barra" style="width: ${porcentajeExito}%; background: var(--status-good);"></div></div>
+                        <div class="fila-valor">${exito}</div>
+                    </div>
+                    <div class="fila-barra">
+                        <div class="fila-etiqueta"><span class="nombre">Fallback</span></div>
+                        <div class="pista-barra"><div class="relleno-barra" style="width: ${porcentajeFallback}%; background: var(--status-critical);"></div></div>
+                        <div class="fila-valor">${stats.fallbacks_usados}</div>
+                    </div>
+                `;
+            } else {
+                resumen.innerHTML = '<div class="mensaje-vacio">Sin datos de llamadas todavía</div>';
+            }
+
+            // ---- Idiomas detectados ----
+            const idiomas = document.getElementById('idiomasGrafico');
+            const entradas = Object.entries(stats.idiomas || {});
+            if (entradas.length > 0) {
+                entradas.sort((a, b) => b[1] - a[1]);
+                const maxCalls = Math.max(...entradas.map(([, c]) => c));
+
+                let html = '';
+                for (const [lang, count] of entradas) {
+                    const porcentaje = (count / stats.total_llamadas * 100).toFixed(1);
+                    const anchoBarra = (count / maxCalls * 100).toFixed(1);
+                    const nombreIdioma = NOMBRES_IDIOMA[lang] || lang;
+                    const color = colorIdioma(lang);
+
+                    html += `
+                        <div class="fila-barra">
+                            <div class="fila-etiqueta">
+                                <span class="fila-punto" style="background: ${color};"></span>
+                                <span class="nombre">${nombreIdioma}</span>
+                            </div>
+                            <div class="pista-barra"><div class="relleno-barra" style="width: ${anchoBarra}%; background: ${color};"></div></div>
+                            <div class="fila-valor">${count} <span style="color: var(--text-muted); font-weight: 500;">· ${porcentaje}%</span></div>
+                        </div>
+                    `;
+                }
+                idiomas.innerHTML = html;
+            } else {
+                idiomas.innerHTML = '<div class="mensaje-vacio">Sin datos de idiomas todavía</div>';
+            }
+        }
+
+        function exportarCSV() {
+            if (!estadisticasActuales) {
+                alert('No hay datos para exportar');
+                return;
+            }
+
+            const stats = estadisticasActuales;
+            let csv = 'Métrica,Valor\n';
+            csv += `Total de Llamadas,${stats.total_llamadas}\n`;
+            csv += `Duración Promedio (segundos),${stats.duracion_promedio_segundos}\n`;
+            csv += `Tasa de Fallback (%),${stats.tasa_fallback_porcentaje}\n`;
+            csv += `Llamadas con Fallback,${stats.fallbacks_usados}\n`;
+            csv += `Escaladas a Supervisor,${stats.escaladas_supervisor ?? 0}\n\n`;
+
+            csv += 'Idioma,Cantidad\n';
+            for (const [lang, count] of Object.entries(stats.idiomas || {})) {
+                csv += `${lang},${count}\n`;
+            }
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `recepcionista-estadisticas-${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+        }
+
+        // Cargar al iniciar
+        document.addEventListener('DOMContentLoaded', function() {
+            recargarEstadisticas();
+            setInterval(recargarEstadisticas, 5000); // Actualizar cada 5 segundos
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEXXUS — Panel</title>
+<style>
+  :root{
+    --bg:#F6F7FA; --surface:#FFFFFF; --surface-2:#EEF0F6; --surface-3:#E4E7F0;
+    --border:#DDE1EA; --text-primary:#14161F; --text-secondary:#565B6E; --text-muted:#8990A6;
+    --accent:#3454D1; --accent-soft:#E7EBFC;
+    --good:#1A8754; --good-soft:#E3F5EC;
+    --warning:#B45309; --warning-soft:#FCEEDD;
+    --critical:#C0152F; --critical-soft:#FBE2E5;
+  }
+  @media (prefers-color-scheme: dark){ :root{
+    --bg:#121319; --surface:#191B23; --surface-2:#20222C; --surface-3:#272A36;
+    --border:#2B2E3A; --text-primary:#F1F2F6; --text-secondary:#ABB0C4; --text-muted:#6E7386;
+    --accent:#6C87FF; --accent-soft:rgba(108,135,255,0.16);
+    --good:#3DD68C; --good-soft:rgba(61,214,140,0.14);
+    --warning:#F5A524; --warning-soft:rgba(245,165,36,0.14);
+    --critical:#F2555A; --critical-soft:rgba(242,85,90,0.14);
+  }}
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--text-primary); font-family:-apple-system,system-ui,sans-serif; padding:28px 24px 60px;}
+  .wrap{max-width:980px; margin:0 auto;}
+  h1{font-size:20px; margin:0 0 4px;}
+  .sub{color:var(--text-secondary); font-size:13.5px; margin:0 0 20px;}
+  .login-box{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:20px; max-width:360px;}
+  .login-box input{display:block; width:100%; margin-bottom:10px; padding:9px 10px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text-primary); font-size:13.5px;}
+  .login-box button{width:100%; padding:10px; border-radius:8px; border:none; background:var(--accent); color:#fff; font-weight:700; font-size:13.5px; cursor:pointer;}
+  .error{color:var(--critical); font-size:12.5px; margin-top:8px;}
+  .kpi-row{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px;}
+  .kpi{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:14px 16px;}
+  .kpi-label{font-size:11.5px; color:var(--text-muted); font-weight:600; margin-bottom:7px;}
+  .kpi-value{font-size:22px; font-weight:700;}
+  .grid{display:grid; grid-template-columns:1.5fr 1fr; gap:14px;}
+  .panel{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:14px;}
+  .panel h2{font-size:14px; margin:0 0 10px;}
+  table{width:100%; border-collapse:collapse; font-size:12.5px;}
+  th{text-align:left; font-size:10.5px; text-transform:uppercase; color:var(--text-muted); padding:0 8px 8px; border-bottom:1px solid var(--border);}
+  td{padding:8px; border-bottom:1px solid var(--surface-2); color:var(--text-secondary);}
+  .status{display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:999px; font-size:11px; font-weight:700;}
+  .status-good{background:var(--good-soft); color:var(--good);}
+  .status-warning{background:var(--warning-soft); color:var(--warning);}
+  .status-critical{background:var(--critical-soft); color:var(--critical);}
+  .status-neutral{background:var(--surface-2); color:var(--text-secondary);}
+  .alerta-item{display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 12px; border-radius:10px; border-left:3px solid var(--border); background:var(--surface-2); margin-bottom:8px;}
+  .alerta-item:last-child{margin-bottom:0;}
+  .alerta-item.critico{border-left-color:var(--critical);}
+  .alerta-item.alerta{border-left-color:var(--warning);}
+  .alerta-item a{color:var(--text-primary); text-decoration:none; font-weight:700; font-size:13px;}
+  .alerta-item .motivos{font-size:11.5px; color:var(--text-secondary); margin-top:2px;}
+  .alerta-grupo-titulo{font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-muted); margin:14px 0 8px;}
+  .alerta-grupo-titulo:first-child{margin-top:0;}
+  .alertas-vacio{color:var(--text-muted); font-size:12.5px;}
+  [hidden]{display:none !important;}
+  @media (max-width:800px){ .kpi-row{grid-template-columns:1fr 1fr;} .grid{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 id="titulo">NEXXUS</h1>
+  <p class="sub" id="subtitulo">Cargando…</p>
+
+  <div class="login-box" id="login">
+    <input type="text" id="user" placeholder="Usuario">
+    <input type="password" id="pass" placeholder="Contraseña">
+    <button onclick="entrar()">Entrar</button>
+    <div class="error" id="error" hidden></div>
+  </div>
+
+  <div id="contenido" hidden>
+    <div class="panel" id="panel-alertas" hidden></div>
+    <div class="kpi-row" id="kpis"></div>
+    <div class="grid">
+      <div>
+        <div class="panel" id="panel-principal"></div>
+      </div>
+      <div>
+        <div class="panel" id="panel-secundario"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // El modo/slug se derivan de la URL: "/admin" es el panel de operador,
+  // "/{slug}/admin" es el panel de un negocio puntual.
+  var partes = location.pathname.split('/').filter(Boolean);
+  var modo = (partes.length === 1 && partes[0] === 'admin') ? 'operador' : 'negocio';
+  var slug = modo === 'negocio' ? partes[0] : '';
+  var authHeader = null;
+
+  document.getElementById('titulo').textContent = modo === 'operador' ? 'Panel de operador — NEXXUS' : 'Panel de ' + (slug || 'negocio');
+  document.getElementById('subtitulo').textContent = modo === 'operador'
+    ? 'Vista de Jorge: todos los negocios de NEXXUS AI Support.'
+    : 'Estadísticas y estado de cuenta de tus socios (datos reales de la base).';
+
+  function entrar(){
+    var user = document.getElementById('user').value;
+    var pass = document.getElementById('pass').value;
+    authHeader = 'Basic ' + btoa(user + ':' + pass);
+    cargar();
+  }
+
+  function fetchAuth(url){
+    return fetch(url, {headers: {'Authorization': authHeader}}).then(function(r){
+      if (r.status === 401){ throw new Error('401'); }
+      return r.json();
+    });
+  }
+
+  function pill(estado){
+    var map = {activo:'status-good', pausado:'status-warning', cancelado:'status-critical',
+               activa:'status-good', periodo_gracia:'status-warning', suspendida:'status-critical'};
+    var cls = map[estado] || 'status-neutral';
+    return '<span class="status '+cls+'">'+estado+'</span>';
+  }
+
+  function cargar(){
+    document.getElementById('error').hidden = true;
+    var base = modo === 'operador' ? '/api/admin' : '/api/' + slug;
+
+    var pStats = fetchAuth(modo === 'operador' ? base + '/estadisticas-globales' : base + '/estadisticas');
+    var pDetalle = modo === 'operador' ? fetchAuth(base + '/negocios') : fetchAuth(base + '/clientes');
+    var pLlamadas = modo === 'operador' ? Promise.resolve(null) : fetchAuth(base + '/llamadas-recientes');
+    var pAlertas = modo === 'operador' ? Promise.resolve(null) : fetchAuth('/api/' + slug + '/alertas');
+
+    Promise.all([pStats, pDetalle, pLlamadas, pAlertas]).then(function(res){
+      renderizar(res[0], res[1], res[2], res[3]);
+      if (res[3]) renderizarAlertas(res[3]);
+      document.getElementById('login').hidden = true;
+      document.getElementById('contenido').hidden = false;
+    }).catch(function(e){
+      document.getElementById('error').textContent = 'Usuario o contraseña incorrectos.';
+      document.getElementById('error').hidden = false;
+    });
+  }
+
+  function renderizarAlertas(alertas){
+    var cont = document.getElementById('panel-alertas');
+    if (!alertas.total_en_riesgo && !alertas.total_reactivacion){
+      cont.hidden = true;
+      return;
+    }
+    cont.hidden = false;
+    var html = '<h2>Alertas</h2>';
+
+    if (alertas.en_riesgo.length){
+      html += '<div class="alerta-grupo-titulo">En riesgo de irse (' + alertas.en_riesgo.length + ')</div>';
+      html += alertas.en_riesgo.map(function(r){
+        return '<div class="alerta-item ' + r.nivel + '">' +
+          '<div><a href="/' + slug + '/admin/clientes/' + r.cliente_id + '">' + r.nombre + '</a>' +
+          '<div class="motivos">' + r.motivos.join(' · ') + '</div></div>' +
+          '<span class="status ' + (r.nivel === 'critico' ? 'status-critical' : 'status-warning') + '">' + r.nivel + '</span>' +
+          '</div>';
+      }).join('');
+    }
+
+    if (alertas.reactivacion.length){
+      html += '<div class="alerta-grupo-titulo">Para reactivar (' + alertas.reactivacion.length + ')</div>';
+      html += alertas.reactivacion.map(function(r){
+        var ultima = r.ultima_visita ? 'última visita ' + r.ultima_visita.slice(0,10) : 'sin visitas registradas';
+        return '<div class="alerta-item">' +
+          '<div><a href="/' + slug + '/admin/clientes/' + r.cliente_id + '">' + r.nombre + '</a>' +
+          '<div class="motivos">' + ultima + '</div></div>' +
+          '<span class="status status-neutral">' + r.estado_membresia + '</span>' +
+          '</div>';
+      }).join('');
+    }
+
+    cont.innerHTML = html;
+  }
+
+  function kpi(label, value){
+    return '<div class="kpi"><div class="kpi-label">'+label+'</div><div class="kpi-value">'+value+'</div></div>';
+  }
+
+  function renderizar(stats, detalle, llamadas, alertas){
+    var kpis = document.getElementById('kpis');
+    var principal = document.getElementById('panel-principal');
+    var secundario = document.getElementById('panel-secundario');
+
+    if (modo === 'operador'){
+      kpis.innerHTML =
+        kpi('Negocios activos', stats.negocios_activos + ' / ' + stats.negocios_totales) +
+        kpi('Llamadas totales', stats.total_llamadas) +
+        kpi('Escaladas a supervisor', stats.escaladas_supervisor) +
+        kpi('Tasa de fallback', stats.tasa_fallback_porcentaje + '%');
+
+      var filas = detalle.map(function(n){
+        return '<tr><td>'+n.nombre+'</td><td>'+n.vertical+'</td><td>'+(n.plan||'—')+'</td>' +
+               '<td>'+pill(n.estado_suscripcion||'sin suscripción')+'</td>' +
+               '<td>'+(n.fecha_proximo_cobro ? n.fecha_proximo_cobro.slice(0,10) : '—')+'</td></tr>';
+      }).join('');
+      principal.innerHTML = '<h2>Negocios</h2><table><thead><tr><th>Negocio</th><th>Vertical</th><th>Plan</th><th>Suscripción</th><th>Próximo cobro</th></tr></thead><tbody>'+filas+'</tbody></table>';
+
+      var mix = {};
+      detalle.forEach(function(n){ if(n.plan) mix[n.plan] = (mix[n.plan]||0)+1; });
+      var mixHtml = Object.keys(mix).map(function(p){ return '<tr><td>'+p+'</td><td>'+mix[p]+'</td></tr>'; }).join('');
+      secundario.innerHTML = '<h2>Mezcla de planes</h2><table><thead><tr><th>Plan</th><th>Negocios</th></tr></thead><tbody>'+mixHtml+'</tbody></table>';
+    } else {
+      kpis.innerHTML =
+        kpi('Llamadas totales', stats.total_llamadas) +
+        kpi('Duración promedio', Math.round(stats.duracion_promedio_segundos)+'s') +
+        kpi('En riesgo de irse', alertas ? alertas.total_en_riesgo : '—') +
+        kpi('Para reactivar', alertas ? alertas.total_reactivacion : '—');
+
+      var filasL = (llamadas||[]).map(function(l){
+        return '<tr><td>'+(l.fecha_inicio ? l.fecha_inicio.slice(0,16).replace('T',' ') : '—')+'</td>' +
+               '<td>'+(l.numero_cliente||'—')+'</td><td>'+l.idioma+'</td>' +
+               '<td>'+pill(l.resultado)+'</td><td>'+Math.round(l.duracion_segundos)+'s</td></tr>';
+      }).join('');
+      principal.innerHTML = '<h2>Llamadas recientes</h2><table><thead><tr><th>Fecha</th><th>Número</th><th>Idioma</th><th>Resultado</th><th>Duración</th></tr></thead><tbody>'+filasL+'</tbody></table>';
+
+      var filasC = detalle
+        .filter(function(c){ return c.meses_adeudados > 0; })
+        .map(function(c){
+          return '<tr><td><a href="/'+slug+'/admin/clientes/'+c.id+'" style="color:var(--accent); text-decoration:none;">'+c.nombre+'</a></td><td>'+c.meses_adeudados+' mes(es)</td>' +
+                 '<td>'+(c.proximo_vencimiento ? c.proximo_vencimiento.slice(0,10) : '—')+'</td></tr>';
+        }).join('') || '<tr><td colspan="3">Nadie tiene pagos atrasados.</td></tr>';
+      secundario.innerHTML = '<h2>Pagos atrasados</h2><table><thead><tr><th>Socio</th><th>Debe</th><th>Vence</th></tr></thead><tbody>'+filasC+'</tbody></table>';
+
+      var filasSocios = detalle.map(function(c){
+        return '<tr><td><a href="/'+slug+'/admin/clientes/'+c.id+'" style="color:var(--accent); text-decoration:none;">'+c.nombre+'</a></td>' +
+               '<td>'+pill(c.estado_membresia)+'</td><td>'+(c.plan_membresia||'—')+'</td></tr>';
+      }).join('');
+      principal.innerHTML += '<h2 style="margin-top:18px;">Todos los socios</h2><table><thead><tr><th>Socio</th><th>Estado</th><th>Plan</th></tr></thead><tbody>'+filasSocios+'</tbody></table>';
+    }
+  }
+</script>
+</body>
+</html>
