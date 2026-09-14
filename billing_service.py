@@ -186,13 +186,11 @@ def chequear_suspensiones_vencidas() -> list:
 def verificar_y_procesar_webhook(payload: bytes, sig_header: str) -> dict:
     """Punto de entrada del webhook de Stripe. Verifica la firma (si hay
     STRIPE_WEBHOOK_SECRET configurado) y despacha al handler correspondiente."""
-    if STRIPE_WEBHOOK_SECRET:
-        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
-    else:
-        # Sin webhook secret configurado todavía (cuenta de Stripe no lista) —
-        # no verificamos firma. Solo para desarrollo, nunca para producción.
-        import json
-        event = json.loads(payload)
+    if not STRIPE_WEBHOOK_SECRET:
+        raise RuntimeError("STRIPE_WEBHOOK_SECRET no configurado; webhook rechazado")
+    if not sig_header:
+        raise ValueError("Falta Stripe-Signature")
+    event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
 
     tipo = event["type"] if isinstance(event, dict) else event.type
     data_obj = event["data"]["object"] if isinstance(event, dict) else event.data.object
