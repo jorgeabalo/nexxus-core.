@@ -35,6 +35,7 @@ os.environ["STRIPE_WEBHOOK_SECRET"] = ""
 os.environ["STRIPE_PRICE_STARTER"] = ""
 os.environ["STRIPE_PRICE_PROFESSIONAL"] = ""
 os.environ["STRIPE_PRICE_ENTERPRISE"] = ""
+os.environ["RATE_LIMIT_MAX_REQUESTS"] = "10000"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
