@@ -105,7 +105,7 @@ class NexxusIAService:
     # ---------- Llamadas ----------
 
     def iniciar_llamada(self, negocio_id: str, numero_cliente: str = None) -> dict:
-        llamada_id = str(uuid.uuid4())[:8]
+        llamada_id = str(uuid.uuid4())
         db = SessionLocal()
         try:
             negocio = self.obtener_negocio(db, negocio_id=negocio_id)
@@ -173,11 +173,11 @@ Reglas generales:
 Idioma de respuesta obligatorio: {nombre_idioma}"""
 
     def _guardar_mensaje(self, db, llamada_id, rol, mensaje, es_fallback=False):
-        c = Conversacion(id=str(uuid.uuid4())[:8], llamada_id=llamada_id, rol=rol, mensaje=mensaje, es_fallback=es_fallback)
+        c = Conversacion(id=str(uuid.uuid4()), llamada_id=llamada_id, rol=rol, mensaje=mensaje, es_fallback=es_fallback)
         db.add(c)
         return c
 
-    def procesar_mensaje(self, llamada_id: str, mensaje_usuario: str) -> dict:
+    def procesar_mensaje(self, llamada_id: str, mensaje_usuario: str, negocio_id: str = None) -> dict:
         if not mensaje_usuario or not mensaje_usuario.strip():
             return {"error": "Mensaje vacío"}
         if len(mensaje_usuario) > MAX_CARACTERES_MENSAJE:
@@ -185,7 +185,10 @@ Idioma de respuesta obligatorio: {nombre_idioma}"""
 
         db = SessionLocal()
         try:
-            llamada = db.query(Llamada).filter(Llamada.id == llamada_id).first()
+            filtros = [Llamada.id == llamada_id]
+            if negocio_id is not None:
+                filtros.append(Llamada.negocio_id == negocio_id)
+            llamada = db.query(Llamada).filter(*filtros).first()
             if not llamada:
                 return {"error": "Llamada no encontrada"}
 
@@ -285,10 +288,13 @@ Idioma de respuesta obligatorio: {nombre_idioma}"""
         # Si se agotaron los intentos, devolvemos lo último en texto (si hay) o fallback.
         return "Disculpá, tuve un problema consultando la información. ¿Podés reformular tu pregunta?", True
 
-    def finalizar_llamada(self, llamada_id: str, resultado: str = "completada") -> dict:
+    def finalizar_llamada(self, llamada_id: str, resultado: str = "completada", negocio_id: str = None) -> dict:
         db = SessionLocal()
         try:
-            llamada = db.query(Llamada).filter(Llamada.id == llamada_id).first()
+            filtros = [Llamada.id == llamada_id]
+            if negocio_id is not None:
+                filtros.append(Llamada.negocio_id == negocio_id)
+            llamada = db.query(Llamada).filter(*filtros).first()
             if not llamada:
                 return {"error": "Llamada no encontrada"}
             llamada.fecha_fin = datetime.utcnow()
