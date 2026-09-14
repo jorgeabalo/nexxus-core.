@@ -39,8 +39,10 @@ from verticals import VERTICALES
 import billing_service
 import progreso_service
 import riesgo_service
+from twilio_router import router as twilio_router
 
 app = FastAPI(title="NEXXUS AI Support")
+app.include_router(twilio_router)
 servicio = NexxusIAService()
 security = HTTPBasic()
 
