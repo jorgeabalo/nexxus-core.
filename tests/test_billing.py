@@ -97,35 +97,15 @@ def test_manejar_pago_fallido_suscripcion_inexistente(db):
     assert "error" in resultado
 
 
-def test_webhook_sin_secret_configurado_procesa_json_crudo(db):
-    import json
+def test_webhook_sin_secret_configurado_se_rechaza():
+    import pytest
 
-    negocio = crear_negocio_gym(db)
-    billing_service.crear_suscripcion(negocio.id, "starter", "dueno@fuerzatotal.com")
-
-    from models import Suscripcion
-    suscripcion = db.query(Suscripcion).filter(Suscripcion.negocio_id == negocio.id).first()
-    suscripcion.stripe_subscription_id = "sub_webhook_test"
-    db.commit()
-
-    payload = json.dumps({
-        "type": "invoice.payment_failed",
-        "data": {"object": {"subscription": "sub_webhook_test"}},
-    }).encode("utf-8")
-
-    resultado = billing_service.verificar_y_procesar_webhook(payload, sig_header="")
-
-    assert resultado["estado"] == "periodo_gracia"
+    with pytest.raises(RuntimeError, match="STRIPE_WEBHOOK_SECRET"):
+        billing_service.verificar_y_procesar_webhook(b"{}", sig_header="")
 
 
-def test_webhook_evento_no_manejado(db):
-    import json
+def test_webhook_evento_no_manejado_sin_secret_tambien_se_rechaza():
+    import pytest
 
-    payload = json.dumps({
-        "type": "algun.evento.desconocido",
-        "data": {"object": {"id": "algo"}},
-    }).encode("utf-8")
-
-    resultado = billing_service.verificar_y_procesar_webhook(payload, sig_header="")
-
-    assert resultado["procesado"] is False
+    with pytest.raises(RuntimeError, match="STRIPE_WEBHOOK_SECRET"):
+        billing_service.verificar_y_procesar_webhook(b"{}", sig_header="")
