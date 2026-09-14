@@ -111,11 +111,18 @@
     });
   }
 
+  function esc(valor){
+    return String(valor == null ? '' : valor)
+      .replaceAll('&', '&amp;').replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;').replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+
   function pill(estado){
     var map = {activo:'status-good', pausado:'status-warning', cancelado:'status-critical',
                activa:'status-good', periodo_gracia:'status-warning', suspendida:'status-critical'};
     var cls = map[estado] || 'status-neutral';
-    return '<span class="status '+cls+'">'+estado+'</span>';
+    return '<span class="status '+cls+'">'+esc(estado)+'</span>';
   }
 
   function cargar(){
@@ -150,10 +157,10 @@
     if (alertas.en_riesgo.length){
       html += '<div class="alerta-grupo-titulo">En riesgo de irse (' + alertas.en_riesgo.length + ')</div>';
       html += alertas.en_riesgo.map(function(r){
-        return '<div class="alerta-item ' + r.nivel + '">' +
-          '<div><a href="/' + slug + '/admin/clientes/' + r.cliente_id + '">' + r.nombre + '</a>' +
-          '<div class="motivos">' + r.motivos.join(' · ') + '</div></div>' +
-          '<span class="status ' + (r.nivel === 'critico' ? 'status-critical' : 'status-warning') + '">' + r.nivel + '</span>' +
+        return '<div class="alerta-item ' + esc(r.nivel) + '">' +
+          '<div><a href="/' + encodeURIComponent(slug) + '/admin/clientes/' + encodeURIComponent(r.cliente_id) + '">' + esc(r.nombre) + '</a>' +
+          '<div class="motivos">' + esc(r.motivos.join(' · ')) + '</div></div>' +
+          '<span class="status ' + (r.nivel === 'critico' ? 'status-critical' : 'status-warning') + '">' + esc(r.nivel) + '</span>' +
           '</div>';
       }).join('');
     }
@@ -163,9 +170,9 @@
       html += alertas.reactivacion.map(function(r){
         var ultima = r.ultima_visita ? 'última visita ' + r.ultima_visita.slice(0,10) : 'sin visitas registradas';
         return '<div class="alerta-item">' +
-          '<div><a href="/' + slug + '/admin/clientes/' + r.cliente_id + '">' + r.nombre + '</a>' +
-          '<div class="motivos">' + ultima + '</div></div>' +
-          '<span class="status status-neutral">' + r.estado_membresia + '</span>' +
+          '<div><a href="/' + encodeURIComponent(slug) + '/admin/clientes/' + encodeURIComponent(r.cliente_id) + '">' + esc(r.nombre) + '</a>' +
+          '<div class="motivos">' + esc(ultima) + '</div></div>' +
+          '<span class="status status-neutral">' + esc(r.estado_membresia) + '</span>' +
           '</div>';
       }).join('');
     }
@@ -190,7 +197,7 @@
         kpi('Tasa de fallback', stats.tasa_fallback_porcentaje + '%');
 
       var filas = detalle.map(function(n){
-        return '<tr><td>'+n.nombre+'</td><td>'+n.vertical+'</td><td>'+(n.plan||'—')+'</td>' +
+        return '<tr><td>'+esc(n.nombre)+'</td><td>'+esc(n.vertical)+'</td><td>'+esc(n.plan||'—')+'</td>' +
                '<td>'+pill(n.estado_suscripcion||'sin suscripción')+'</td>' +
                '<td>'+(n.fecha_proximo_cobro ? n.fecha_proximo_cobro.slice(0,10) : '—')+'</td></tr>';
       }).join('');
@@ -198,7 +205,7 @@
 
       var mix = {};
       detalle.forEach(function(n){ if(n.plan) mix[n.plan] = (mix[n.plan]||0)+1; });
-      var mixHtml = Object.keys(mix).map(function(p){ return '<tr><td>'+p+'</td><td>'+mix[p]+'</td></tr>'; }).join('');
+      var mixHtml = Object.keys(mix).map(function(p){ return '<tr><td>'+esc(p)+'</td><td>'+mix[p]+'</td></tr>'; }).join('');
       secundario.innerHTML = '<h2>Mezcla de planes</h2><table><thead><tr><th>Plan</th><th>Negocios</th></tr></thead><tbody>'+mixHtml+'</tbody></table>';
     } else {
       kpis.innerHTML =
@@ -209,7 +216,7 @@
 
       var filasL = (llamadas||[]).map(function(l){
         return '<tr><td>'+(l.fecha_inicio ? l.fecha_inicio.slice(0,16).replace('T',' ') : '—')+'</td>' +
-               '<td>'+(l.numero_cliente||'—')+'</td><td>'+l.idioma+'</td>' +
+               '<td>'+esc(l.numero_cliente||'—')+'</td><td>'+esc(l.idioma)+'</td>' +
                '<td>'+pill(l.resultado)+'</td><td>'+Math.round(l.duracion_segundos)+'s</td></tr>';
       }).join('');
       principal.innerHTML = '<h2>Llamadas recientes</h2><table><thead><tr><th>Fecha</th><th>Número</th><th>Idioma</th><th>Resultado</th><th>Duración</th></tr></thead><tbody>'+filasL+'</tbody></table>';
@@ -217,14 +224,14 @@
       var filasC = detalle
         .filter(function(c){ return c.meses_adeudados > 0; })
         .map(function(c){
-          return '<tr><td><a href="/'+slug+'/admin/clientes/'+c.id+'" style="color:var(--accent); text-decoration:none;">'+c.nombre+'</a></td><td>'+c.meses_adeudados+' mes(es)</td>' +
+          return '<tr><td><a href="/'+encodeURIComponent(slug)+'/admin/clientes/'+encodeURIComponent(c.id)+'" style="color:var(--accent); text-decoration:none;">'+esc(c.nombre)+'</a></td><td>'+c.meses_adeudados+' mes(es)</td>' +
                  '<td>'+(c.proximo_vencimiento ? c.proximo_vencimiento.slice(0,10) : '—')+'</td></tr>';
         }).join('') || '<tr><td colspan="3">Nadie tiene pagos atrasados.</td></tr>';
       secundario.innerHTML = '<h2>Pagos atrasados</h2><table><thead><tr><th>Socio</th><th>Debe</th><th>Vence</th></tr></thead><tbody>'+filasC+'</tbody></table>';
 
       var filasSocios = detalle.map(function(c){
-        return '<tr><td><a href="/'+slug+'/admin/clientes/'+c.id+'" style="color:var(--accent); text-decoration:none;">'+c.nombre+'</a></td>' +
-               '<td>'+pill(c.estado_membresia)+'</td><td>'+(c.plan_membresia||'—')+'</td></tr>';
+        return '<tr><td><a href="/'+encodeURIComponent(slug)+'/admin/clientes/'+encodeURIComponent(c.id)+'" style="color:var(--accent); text-decoration:none;">'+esc(c.nombre)+'</a></td>' +
+               '<td>'+pill(c.estado_membresia)+'</td><td>'+esc(c.plan_membresia||'—')+'</td></tr>';
       }).join('');
       principal.innerHTML += '<h2 style="margin-top:18px;">Todos los socios</h2><table><thead><tr><th>Socio</th><th>Estado</th><th>Plan</th></tr></thead><tbody>'+filasSocios+'</tbody></table>';
     }
