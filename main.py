@@ -22,6 +22,7 @@ import time
 from collections import defaultdict, deque
 from typing import Optional
 from typing import Optional as _Optional
+import re
 
 from fastapi import FastAPI, HTTPException, Depends, status, Request
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -58,9 +59,33 @@ def _chequear_rate_limit(ip: str):
     cola.append(ahora)
 
 
-def _verificar_admin(credentials: HTTPBasicCredentials = Depends(security)):
-    usuario_correcto = os.getenv("ADMIN_USER", "admin")
-    clave_correcta = os.getenv("ADMIN_PASSWORD", "cambiar-esta-clave")
+def _leer_credencial(nombre: str) -> str:
+    valor = os.getenv(nombre)
+    if not valor:
+        raise HTTPException(status_code=503, detail="Credenciales del servidor no configuradas")
+    return valor
+
+
+def _sufijo_env_slug(slug: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "_", slug.upper())
+
+
+def _verificar_admin(negocio_slug: str, credentials: HTTPBasicCredentials = Depends(security)):
+    """Credenciales por negocio en producción.
+
+    Ejemplo para fuerza-total:
+    ADMIN_USER_FUERZA_TOTAL / ADMIN_PASSWORD_FUERZA_TOTAL.
+    En desarrollo se permite ADMIN_USER / ADMIN_PASSWORD como compatibilidad.
+    """
+    sufijo = _sufijo_env_slug(negocio_slug)
+    produccion = os.getenv("APP_ENV", "development").lower() == "production"
+    usuario_correcto = os.getenv(f"ADMIN_USER_{sufijo}")
+    clave_correcta = os.getenv(f"ADMIN_PASSWORD_{sufijo}")
+    if not produccion:
+        usuario_correcto = usuario_correcto or os.getenv("ADMIN_USER")
+        clave_correcta = clave_correcta or os.getenv("ADMIN_PASSWORD")
+    if not usuario_correcto or not clave_correcta:
+        raise HTTPException(status_code=503, detail="Credenciales del negocio no configuradas")
     ok_user = secrets.compare_digest(credentials.username, usuario_correcto)
     ok_pass = secrets.compare_digest(credentials.password, clave_correcta)
     if not (ok_user and ok_pass):
@@ -72,8 +97,8 @@ def _verificar_operador(credentials: HTTPBasicCredentials = Depends(security)):
     """Auth separada para el panel de Jorge como operador de la plataforma
     (ve TODOS los negocios) — distinta de la auth de admin de cada negocio
     individual, que solo ve sus propios datos."""
-    usuario_correcto = os.getenv("OPERADOR_USER", "jorge")
-    clave_correcta = os.getenv("OPERADOR_PASSWORD", "cambiar-esta-clave-tambien")
+    usuario_correcto = _leer_credencial("OPERADOR_USER")
+    clave_correcta = _leer_credencial("OPERADOR_PASSWORD")
     ok_user = secrets.compare_digest(credentials.username, usuario_correcto)
     ok_pass = secrets.compare_digest(credentials.password, clave_correcta)
     if not (ok_user and ok_pass):
@@ -114,8 +139,9 @@ def health():
 
 
 @app.post("/api/{negocio_slug}/iniciar")
-def iniciar(negocio_slug: str, req: IniciarLlamadaRequest):
+def iniciar(negocio_slug: str, req: IniciarLlamadaRequest, request: Request):
     negocio = _obtener_negocio_o_404(negocio_slug)
+    _chequear_rate_limit(request.client.host if request.client else "desconocido")
     resultado = servicio.iniciar_llamada(negocio.id, req.numero_cliente)
     if "error" in resultado:
         raise HTTPException(status_code=400, detail=resultado["error"])
@@ -123,19 +149,20 @@ def iniciar(negocio_slug: str, req: IniciarLlamadaRequest):
 
 
 @app.post("/api/{negocio_slug}/mensaje")
-def mensaje(negocio_slug: str, req: MensajeRequest):
-    _obtener_negocio_o_404(negocio_slug)  # valida que el negocio existe/activo
-    _chequear_rate_limit(f"{negocio_slug}:{req.llamada_id}")
-    resultado = servicio.procesar_mensaje(req.llamada_id, req.mensaje)
+def mensaje(negocio_slug: str, req: MensajeRequest, request: Request):
+    negocio = _obtener_negocio_o_404(negocio_slug)
+    _chequear_rate_limit(request.client.host if request.client else "desconocido")
+    resultado = servicio.procesar_mensaje(req.llamada_id, req.mensaje, negocio_id=negocio.id)
     if "error" in resultado:
         raise HTTPException(status_code=400, detail=resultado["error"])
     return resultado
 
 
 @app.post("/api/{negocio_slug}/finalizar")
-def finalizar(negocio_slug: str, req: FinalizarLlamadaRequest):
-    _obtener_negocio_o_404(negocio_slug)
-    resultado = servicio.finalizar_llamada(req.llamada_id, req.resultado)
+def finalizar(negocio_slug: str, req: FinalizarLlamadaRequest, request: Request):
+    negocio = _obtener_negocio_o_404(negocio_slug)
+    _chequear_rate_limit(request.client.host if request.client else "desconocido")
+    resultado = servicio.finalizar_llamada(req.llamada_id, req.resultado, negocio_id=negocio.id)
     if "error" in resultado:
         raise HTTPException(status_code=400, detail=resultado["error"])
     return resultado
@@ -258,8 +285,8 @@ async def webhook_stripe(request: Request):
     sig_header = request.headers.get("stripe-signature", "")
     try:
         resultado = billing_service.verificar_y_procesar_webhook(payload, sig_header)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Webhook inválido: {e}")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Webhook inválido")
     return resultado
 
 
@@ -317,7 +344,7 @@ def crear_negocio(req: CrearNegocioRequest, operador: str = Depends(_verificar_o
             raise HTTPException(status_code=409, detail=f"Ya existe un negocio con slug '{req.slug}'")
 
         negocio = Negocio(
-            id=str(uuid.uuid4())[:8],
+            id=str(uuid.uuid4()),
             slug=req.slug,
             nombre=req.nombre,
             vertical=req.vertical,
@@ -357,7 +384,7 @@ def crear_cliente(negocio_slug: str, req: CrearClienteRequest, admin: str = Depe
     db = SessionLocal()
     try:
         cliente = ClienteNegocio(
-            id=str(uuid.uuid4())[:8],
+            id=str(uuid.uuid4()),
             negocio_id=negocio.id,
             nombre=req.nombre,
             telefono=req.telefono,
