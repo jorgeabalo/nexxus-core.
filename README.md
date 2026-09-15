@@ -200,7 +200,7 @@ recepcionista-ia-proyecto/
 - Revisá los logs del servidor: si la key es inválida o el modelo no existe, se imprime el error ahí
 
 ### El panel admin pide usuario/contraseña que no tengo
-- Configurá `ADMIN_USER` y `ADMIN_PASSWORD` en tu `.env`. Si no lo hacés, usa una contraseña temporal (`cambiar-esta-clave`) que se imprime como advertencia al arrancar — cambiala antes de exponer el servidor públicamente.
+- Configurá `ADMIN_USER`/`ADMIN_PASSWORD` para el panel de negocio y `OPERADOR_USER`/`OPERADOR_PASSWORD` para el panel de plataforma. El acceso queda deshabilitado (503) si falta la contraseña o se mantiene la contraseña pública de ejemplo.
 
 ### Error: "Database is locked"
 - La BD está siendo accedida por múltiples procesos
@@ -219,3 +219,15 @@ Para preguntas o reportar bugs, contacta a Jorge.
 **Versión**: 1.0.1
 **Última actualización**: Agosto 2026
 **Status**: MVP funcional para un solo negocio / bajo volumen. Revisar sección "Pendiente para producción real" antes de escalar a múltiples clientes.
+
+
+## Integración Claude + AITA (rama de revisión)
+
+Consulta [INTEGRACION_CLAUDE_AITA.md](INTEGRACION_CLAUDE_AITA.md) para los cambios,
+las pruebas reproducibles y los requisitos previos a desplegar. La interfaz
+actual del operador es `/admin`; la del negocio es `/{slug}/admin`.
+
+El nuevo onboarding prepara propuestas desde el panel de operador. Las altas
+se guardan sólo al pulsar **Confirmar cambios**. Los webhooks de Stripe requieren
+`STRIPE_WEBHOOK_SECRET` y una firma válida incluso en desarrollo; las pruebas
+usan eventos sintéticos firmados, sin conexión con Stripe.

@@ -56,6 +56,24 @@
   .alertas-vacio{color:var(--text-muted); font-size:12.5px;}
   [hidden]{display:none !important;}
   @media (max-width:800px){ .kpi-row{grid-template-columns:1fr 1fr;} .grid{grid-template-columns:1fr;} }
+
+  /* Agente de Configuración — copiloto interno de Jorge (solo modo operador) */
+  .chat-panel{display:flex; flex-direction:column; gap:10px;}
+  .chat-panel h2{display:flex; align-items:center; gap:8px;}
+  .chat-panel .chat-badge{font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--accent); background:var(--accent-soft); padding:2px 8px; border-radius:999px;}
+  .chat-mensajes{display:flex; flex-direction:column; gap:8px; max-height:340px; overflow-y:auto; padding:4px 2px;}
+  .chat-msg{max-width:82%; padding:9px 12px; border-radius:12px; font-size:13px; line-height:1.42; white-space:pre-wrap;}
+  .chat-msg.usuario{align-self:flex-end; background:var(--accent); color:#fff; border-bottom-right-radius:3px;}
+  .chat-msg.bot{align-self:flex-start; background:var(--surface-2); color:var(--text-primary); border-bottom-left-radius:3px;}
+  .chat-msg .chat-acciones{margin-top:6px; display:flex; flex-wrap:wrap; gap:5px;}
+  .chat-accion-tag{font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:999px; background:var(--good-soft); color:var(--good);}
+  .chat-accion-tag.fallo{background:var(--critical-soft); color:var(--critical);}
+  .chat-vacio{color:var(--text-muted); font-size:12.5px; padding:6px 2px;}
+  .chat-input-row{display:flex; gap:8px;}
+  .chat-input-row input{flex:1; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:var(--bg); color:var(--text-primary); font-size:13px;}
+  .chat-input-row button{padding:0 16px; border-radius:10px; border:none; background:var(--accent); color:#fff; font-weight:700; font-size:13px; cursor:pointer;}
+  .chat-input-row button:disabled{opacity:.6; cursor:default;}
+  .chat-hint{color:var(--text-muted); font-size:11.5px; margin:0;}
 </style>
 </head>
 <body>
@@ -72,6 +90,19 @@
 
   <div id="contenido" hidden>
     <div class="panel" id="panel-alertas" hidden></div>
+
+    <div class="panel chat-panel" id="panel-agente-config" hidden>
+      <h2>Agente de Onboarding <span class="chat-badge">copiloto interno</span></h2>
+      <p class="chat-hint">Prepara altas de negocios y socios. Revisa cada propuesta y pulsa Confirmar cambios para guardarla. No incluyas claves ni datos bancarios o fiscales.</p>
+      <div class="chat-mensajes" id="chat-mensajes">
+        <div class="chat-vacio" id="chat-vacio">Todavía no hablaste con el agente en esta sesión.</div>
+      </div>
+      <div class="chat-input-row">
+        <input type="text" id="chat-input" maxlength="8000" aria-label="Mensaje al asistente" placeholder="Escribí acá…" onkeydown="if(event.key==='Enter') enviarMensajeAgente();">
+        <button id="chat-enviar" onclick="enviarMensajeAgente()">Enviar</button>
+      </div>
+    </div>
+
     <div class="kpi-row" id="kpis"></div>
     <div class="grid">
       <div>
@@ -106,16 +137,26 @@
 
   function fetchAuth(url){
     return fetch(url, {headers: {'Authorization': authHeader}}).then(function(r){
-      if (r.status === 401){ throw new Error('401'); }
+      if (!r.ok){ throw new Error('Solicitud rechazada'); }
       return r.json();
     });
+  }
+
+  // Todo lo que viene de la base (nombre de un socio, teléfono, slug, etc.)
+  // es texto que alguien cargó en algún momento — nunca confiamos en que sea
+  // HTML seguro antes de meterlo en innerHTML. Esto evita que un nombre como
+  // "<img src=x onerror=...>" guardado en un socio ejecute algo en el panel.
+  function esc(valor){
+    return String(valor == null ? '' : valor)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   function pill(estado){
     var map = {activo:'status-good', pausado:'status-warning', cancelado:'status-critical',
                activa:'status-good', periodo_gracia:'status-warning', suspendida:'status-critical'};
     var cls = map[estado] || 'status-neutral';
-    return '<span class="status '+cls+'">'+estado+'</span>';
+    return '<span class="status '+cls+'">'+esc(estado)+'</span>';
   }
 
   function cargar(){
@@ -132,10 +173,136 @@
       if (res[3]) renderizarAlertas(res[3]);
       document.getElementById('login').hidden = true;
       document.getElementById('contenido').hidden = false;
+      if (modo === 'operador'){ document.getElementById('panel-agente-config').hidden = false; }
     }).catch(function(e){
       document.getElementById('error').textContent = 'Usuario o contraseña incorrectos.';
       document.getElementById('error').hidden = false;
     });
+  }
+
+  // ---------- Agente de Configuración (solo modo operador) ----------
+  // Historial en memoria de esta pestaña — el agente en sí no guarda estado
+  // entre llamadas (ver agente_configuracion.py), así que el frontend es
+  // quien manda el historial completo en cada mensaje, igual que cualquier
+  // chat de tool-calling con Claude.
+  var historialAgenteConfig = [];
+
+  function chatAgregarMensaje(rol, texto, acciones){
+    var cont = document.getElementById('chat-mensajes');
+    var vacio = document.getElementById('chat-vacio');
+    if (vacio) vacio.hidden = true;
+
+    var div = document.createElement('div');
+    div.className = 'chat-msg ' + (rol === 'usuario' ? 'usuario' : 'bot');
+    div.textContent = texto;
+
+    if (acciones && acciones.length){
+      var accionesDiv = document.createElement('div');
+      accionesDiv.className = 'chat-acciones';
+      acciones.forEach(function(a){
+        var ok = a.resultado && (a.resultado.creado || a.resultado.cargado || a.resultado.actualizado ||
+                                   (typeof a.resultado.cargados === 'number' && a.resultado.cargados > 0) ||
+                                   a.resultado.encontrado === true);
+        var tag = document.createElement('span');
+        tag.className = 'chat-accion-tag' + (ok ? '' : ' fallo');
+        tag.textContent = a.tool;
+        accionesDiv.appendChild(tag);
+      });
+      div.appendChild(accionesDiv);
+    }
+
+    cont.appendChild(div);
+    cont.scrollTop = cont.scrollHeight;
+  }
+
+  function enviarMensajeAgente(){
+    var input = document.getElementById('chat-input');
+    var boton = document.getElementById('chat-enviar');
+    var mensaje = input.value.trim();
+    if (!mensaje || boton.disabled) return;
+
+    chatAgregarMensaje('usuario', mensaje, null);
+    input.value = '';
+    input.disabled = true;
+    boton.disabled = true;
+
+    fetch('/api/admin/agente-configuracion', {
+      method: 'POST',
+      headers: {'Authorization': authHeader, 'Content-Type': 'application/json'},
+      body: JSON.stringify({mensaje: mensaje, historial: historialAgenteConfig}),
+    }).then(function(r){
+      if (!r.ok) throw new Error('No se pudo completar la solicitud');
+      return r.json();
+    }).then(function(data){
+      historialAgenteConfig = data.historial || historialAgenteConfig;
+      chatAgregarMensaje('bot', data.respuesta || '(sin respuesta)', data.acciones_realizadas);
+      (data.propuestas || []).forEach(mostrarPropuesta);
+    }).catch(function(e){
+      chatAgregarMensaje('bot', 'No se pudo contactar al agente — probá de nuevo.', null);
+    }).finally(function(){
+      input.disabled = false;
+      boton.disabled = false;
+      input.focus();
+    });
+  }
+
+  function describirDatos(datos){
+    var etiquetas = {slug:'Dirección del negocio', negocio_slug:'Negocio', nombre:'Nombre',
+      vertical:'Tipo de negocio', idioma_principal:'Idioma principal', idioma_secundario:'Idioma secundario',
+      nombre_asistente:'Asistente', plan:'Plan de servicio', telefono:'Teléfono', email:'Correo',
+      estado_membresia:'Estado de membresía', meses_adeudados:'Meses adeudados',
+      proximo_vencimiento:'Próximo vencimiento', plan_membresia:'Membresía', altura_cm:'Altura (cm)',
+      fecha_ingreso:'Fecha de ingreso', activo:'Servicio activo', socios:'Socios'};
+    return Object.keys(datos).map(function(key){
+      var valor = datos[key];
+      if (Array.isArray(valor)) return 'Socios:\n' + valor.map(function(socio, i){
+        return (i+1) + '. ' + describirDatos(socio);
+      }).join('\n\n');
+      if (typeof valor === 'boolean') valor = valor ? 'Sí' : 'No';
+      return (etiquetas[key] || key) + ': ' + valor;
+    }).join('\n');
+  }
+
+  var propuestasMostradas = new Set();
+  function mostrarPropuesta(propuesta){
+    if (propuestasMostradas.has(propuesta.id)) return;
+    propuestasMostradas.add(propuesta.id);
+    var panel = document.createElement('div');
+    panel.className = 'chat-msg bot';
+    var titulo = document.createElement('strong');
+    var nombres = {crear_negocio:'Alta de negocio', cargar_socio:'Alta de socio',
+      cargar_socios_multiples:'Alta de socios', actualizar_configuracion_negocio:'Cambio de configuración'};
+    titulo.textContent = nombres[propuesta.tool] || 'Propuesta';
+    panel.appendChild(titulo);
+    var detalle = document.createElement('pre');
+    detalle.style.whiteSpace = 'pre-wrap';
+    detalle.textContent = describirDatos(propuesta.datos);
+    panel.appendChild(detalle);
+    var boton = document.createElement('button');
+    boton.textContent = 'Confirmar cambios';
+    var estado = document.createElement('p');
+    estado.setAttribute('role', 'status');
+    estado.textContent = 'Pendiente de tu confirmación. Caduca en 30 minutos.';
+    boton.onclick = function(){
+      boton.disabled = true;
+      fetch('/api/admin/agente-configuracion/propuestas/' + encodeURIComponent(propuesta.id) + '/confirmar', {
+        method:'POST', headers:{'Authorization':authHeader, 'Content-Type':'application/json'},
+        body:JSON.stringify({confirmar:true})
+      }).then(function(r){
+        if (!r.ok) throw new Error('No se pudo guardar. Revisa los datos o pide una nueva propuesta.');
+        return r.json();
+      }).then(function(){
+        estado.textContent = 'Cambios guardados.';
+        boton.textContent = 'Confirmado';
+        cargar();
+      }).catch(function(e){
+        estado.textContent = e.message;
+        boton.disabled = false;
+      });
+    };
+    panel.appendChild(boton);
+    panel.appendChild(estado);
+    document.getElementById('chat-mensajes').appendChild(panel);
   }
 
   function renderizarAlertas(alertas){
@@ -150,10 +317,10 @@
     if (alertas.en_riesgo.length){
       html += '<div class="alerta-grupo-titulo">En riesgo de irse (' + alertas.en_riesgo.length + ')</div>';
       html += alertas.en_riesgo.map(function(r){
-        return '<div class="alerta-item ' + r.nivel + '">' +
-          '<div><a href="/' + slug + '/admin/clientes/' + r.cliente_id + '">' + r.nombre + '</a>' +
-          '<div class="motivos">' + r.motivos.join(' · ') + '</div></div>' +
-          '<span class="status ' + (r.nivel === 'critico' ? 'status-critical' : 'status-warning') + '">' + r.nivel + '</span>' +
+        return '<div class="alerta-item ' + esc(r.nivel) + '">' +
+          '<div><a href="/' + esc(encodeURIComponent(slug)) + '/admin/clientes/' + esc(encodeURIComponent(r.cliente_id)) + '">' + esc(r.nombre) + '</a>' +
+          '<div class="motivos">' + esc(r.motivos.join(' · ')) + '</div></div>' +
+          '<span class="status ' + (r.nivel === 'critico' ? 'status-critical' : 'status-warning') + '">' + esc(r.nivel) + '</span>' +
           '</div>';
       }).join('');
     }
@@ -163,9 +330,9 @@
       html += alertas.reactivacion.map(function(r){
         var ultima = r.ultima_visita ? 'última visita ' + r.ultima_visita.slice(0,10) : 'sin visitas registradas';
         return '<div class="alerta-item">' +
-          '<div><a href="/' + slug + '/admin/clientes/' + r.cliente_id + '">' + r.nombre + '</a>' +
-          '<div class="motivos">' + ultima + '</div></div>' +
-          '<span class="status status-neutral">' + r.estado_membresia + '</span>' +
+          '<div><a href="/' + esc(encodeURIComponent(slug)) + '/admin/clientes/' + esc(encodeURIComponent(r.cliente_id)) + '">' + esc(r.nombre) + '</a>' +
+          '<div class="motivos">' + esc(ultima) + '</div></div>' +
+          '<span class="status status-neutral">' + esc(r.estado_membresia) + '</span>' +
           '</div>';
       }).join('');
     }
@@ -174,7 +341,7 @@
   }
 
   function kpi(label, value){
-    return '<div class="kpi"><div class="kpi-label">'+label+'</div><div class="kpi-value">'+value+'</div></div>';
+    return '<div class="kpi"><div class="kpi-label">'+esc(label)+'</div><div class="kpi-value">'+esc(value)+'</div></div>';
   }
 
   function renderizar(stats, detalle, llamadas, alertas){
@@ -190,15 +357,15 @@
         kpi('Tasa de fallback', stats.tasa_fallback_porcentaje + '%');
 
       var filas = detalle.map(function(n){
-        return '<tr><td>'+n.nombre+'</td><td>'+n.vertical+'</td><td>'+(n.plan||'—')+'</td>' +
+        return '<tr><td>'+esc(n.nombre)+'</td><td>'+esc(n.vertical)+'</td><td>'+esc(n.plan||'—')+'</td>' +
                '<td>'+pill(n.estado_suscripcion||'sin suscripción')+'</td>' +
-               '<td>'+(n.fecha_proximo_cobro ? n.fecha_proximo_cobro.slice(0,10) : '—')+'</td></tr>';
+               '<td>'+(n.fecha_proximo_cobro ? esc(n.fecha_proximo_cobro.slice(0,10)) : '—')+'</td></tr>';
       }).join('');
       principal.innerHTML = '<h2>Negocios</h2><table><thead><tr><th>Negocio</th><th>Vertical</th><th>Plan</th><th>Suscripción</th><th>Próximo cobro</th></tr></thead><tbody>'+filas+'</tbody></table>';
 
       var mix = {};
       detalle.forEach(function(n){ if(n.plan) mix[n.plan] = (mix[n.plan]||0)+1; });
-      var mixHtml = Object.keys(mix).map(function(p){ return '<tr><td>'+p+'</td><td>'+mix[p]+'</td></tr>'; }).join('');
+      var mixHtml = Object.keys(mix).map(function(p){ return '<tr><td>'+esc(p)+'</td><td>'+mix[p]+'</td></tr>'; }).join('');
       secundario.innerHTML = '<h2>Mezcla de planes</h2><table><thead><tr><th>Plan</th><th>Negocios</th></tr></thead><tbody>'+mixHtml+'</tbody></table>';
     } else {
       kpis.innerHTML =
@@ -208,8 +375,8 @@
         kpi('Para reactivar', alertas ? alertas.total_reactivacion : '—');
 
       var filasL = (llamadas||[]).map(function(l){
-        return '<tr><td>'+(l.fecha_inicio ? l.fecha_inicio.slice(0,16).replace('T',' ') : '—')+'</td>' +
-               '<td>'+(l.numero_cliente||'—')+'</td><td>'+l.idioma+'</td>' +
+        return '<tr><td>'+(l.fecha_inicio ? esc(l.fecha_inicio.slice(0,16).replace('T',' ')) : '—')+'</td>' +
+               '<td>'+esc(l.numero_cliente||'—')+'</td><td>'+esc(l.idioma)+'</td>' +
                '<td>'+pill(l.resultado)+'</td><td>'+Math.round(l.duracion_segundos)+'s</td></tr>';
       }).join('');
       principal.innerHTML = '<h2>Llamadas recientes</h2><table><thead><tr><th>Fecha</th><th>Número</th><th>Idioma</th><th>Resultado</th><th>Duración</th></tr></thead><tbody>'+filasL+'</tbody></table>';
@@ -217,14 +384,14 @@
       var filasC = detalle
         .filter(function(c){ return c.meses_adeudados > 0; })
         .map(function(c){
-          return '<tr><td><a href="/'+slug+'/admin/clientes/'+c.id+'" style="color:var(--accent); text-decoration:none;">'+c.nombre+'</a></td><td>'+c.meses_adeudados+' mes(es)</td>' +
-                 '<td>'+(c.proximo_vencimiento ? c.proximo_vencimiento.slice(0,10) : '—')+'</td></tr>';
+          return '<tr><td><a href="/'+esc(encodeURIComponent(slug))+'/admin/clientes/'+esc(encodeURIComponent(c.id))+'" style="color:var(--accent); text-decoration:none;">'+esc(c.nombre)+'</a></td><td>'+c.meses_adeudados+' mes(es)</td>' +
+                 '<td>'+(c.proximo_vencimiento ? esc(c.proximo_vencimiento.slice(0,10)) : '—')+'</td></tr>';
         }).join('') || '<tr><td colspan="3">Nadie tiene pagos atrasados.</td></tr>';
       secundario.innerHTML = '<h2>Pagos atrasados</h2><table><thead><tr><th>Socio</th><th>Debe</th><th>Vence</th></tr></thead><tbody>'+filasC+'</tbody></table>';
 
       var filasSocios = detalle.map(function(c){
-        return '<tr><td><a href="/'+slug+'/admin/clientes/'+c.id+'" style="color:var(--accent); text-decoration:none;">'+c.nombre+'</a></td>' +
-               '<td>'+pill(c.estado_membresia)+'</td><td>'+(c.plan_membresia||'—')+'</td></tr>';
+        return '<tr><td><a href="/'+esc(encodeURIComponent(slug))+'/admin/clientes/'+esc(encodeURIComponent(c.id))+'" style="color:var(--accent); text-decoration:none;">'+esc(c.nombre)+'</a></td>' +
+               '<td>'+pill(c.estado_membresia)+'</td><td>'+esc(c.plan_membresia||'—')+'</td></tr>';
       }).join('');
       principal.innerHTML += '<h2 style="margin-top:18px;">Todos los socios</h2><table><thead><tr><th>Socio</th><th>Estado</th><th>Plan</th></tr></thead><tbody>'+filasSocios+'</tbody></table>';
     }

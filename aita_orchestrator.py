@@ -39,7 +39,8 @@ AGENT_REGISTRY: Dict[str, AgentSpec] = {
         key="onboarding",
         name="Configuration Agent",
         purpose="Configurar un negocio nuevo, su marca, servicios y preferencias.",
-        capabilities=("business_profile", "brand_profile", "service_catalog", "channel_setup"),
+        capabilities=("business_profile", "brand_profile", "service_catalog", "channel_setup", "business_directory"),
+        external_actions=("create_business", "import_customers", "change_configuration"),
     ),
     "reception": AgentSpec(
         key="reception",
@@ -112,7 +113,7 @@ class AITAOrchestrator:
     """
 
     def __init__(self, registry: Optional[Dict[str, AgentSpec]] = None):
-        self.registry = registry or AGENT_REGISTRY
+        self.registry = AGENT_REGISTRY if registry is None else registry
 
     def list_agents(self) -> List[dict]:
         return [
@@ -131,10 +132,16 @@ class AITAOrchestrator:
         spec = self.registry.get(agent)
         if not spec:
             raise ValueError(f"Agente desconocido: {agent}")
+        if not spec.enabled_by_default:
+            raise ValueError(f"Agente deshabilitado: {agent}")
+        if not negocio_id or not negocio_id.strip():
+            raise ValueError("negocio_id es obligatorio")
+        if context and context.get("negocio_id", negocio_id) != negocio_id:
+            raise ValueError("El contexto no puede cambiar el negocio autorizado")
         if capability not in spec.capabilities and capability not in spec.external_actions:
             raise ValueError(f"Capacidad '{capability}' no permitida para agente '{agent}'")
 
-        requires_approval = capability in ALWAYS_REQUIRE_APPROVAL
+        requires_approval = capability in spec.external_actions or capability in ALWAYS_REQUIRE_APPROVAL
         reason = (
             "Acción con efecto externo: requiere aprobación humana."
             if requires_approval
@@ -145,7 +152,7 @@ class AITAOrchestrator:
             capability=capability,
             requires_human_approval=requires_approval,
             reason=reason,
-            context={"negocio_id": negocio_id, **(context or {})},
+            context={**(context or {}), "negocio_id": negocio_id},
         )
 
 

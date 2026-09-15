@@ -177,7 +177,7 @@ Idioma de respuesta obligatorio: {nombre_idioma}"""
         db.add(c)
         return c
 
-    def procesar_mensaje(self, llamada_id: str, mensaje_usuario: str) -> dict:
+    def procesar_mensaje(self, llamada_id: str, mensaje_usuario: str, negocio_id: str = None) -> dict:
         if not mensaje_usuario or not mensaje_usuario.strip():
             return {"error": "Mensaje vacío"}
         if len(mensaje_usuario) > MAX_CARACTERES_MENSAJE:
@@ -187,6 +187,13 @@ Idioma de respuesta obligatorio: {nombre_idioma}"""
         try:
             llamada = db.query(Llamada).filter(Llamada.id == llamada_id).first()
             if not llamada:
+                return {"error": "Llamada no encontrada"}
+            # negocio_id viene del negocio_slug de la URL (main.py) — si no
+            # coincide con el negocio real de esta llamada, tratamos como "no
+            # encontrada" (nunca revelamos que el ID existe en otro negocio).
+            # Sin esto, conocer un llamada_id alcanzaba para leer/escribir en
+            # la conversación de OTRO negocio pegándole a /api/{otro-slug}/mensaje.
+            if negocio_id and llamada.negocio_id != negocio_id:
                 return {"error": "Llamada no encontrada"}
 
             negocio = self.obtener_negocio(db, negocio_id=llamada.negocio_id)
@@ -285,11 +292,13 @@ Idioma de respuesta obligatorio: {nombre_idioma}"""
         # Si se agotaron los intentos, devolvemos lo último en texto (si hay) o fallback.
         return "Disculpá, tuve un problema consultando la información. ¿Podés reformular tu pregunta?", True
 
-    def finalizar_llamada(self, llamada_id: str, resultado: str = "completada") -> dict:
+    def finalizar_llamada(self, llamada_id: str, resultado: str = "completada", negocio_id: str = None) -> dict:
         db = SessionLocal()
         try:
             llamada = db.query(Llamada).filter(Llamada.id == llamada_id).first()
             if not llamada:
+                return {"error": "Llamada no encontrada"}
+            if negocio_id and llamada.negocio_id != negocio_id:
                 return {"error": "Llamada no encontrada"}
             llamada.fecha_fin = datetime.utcnow()
             llamada.resultado = resultado

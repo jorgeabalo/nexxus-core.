@@ -212,6 +212,24 @@ class MedicionCliente(Base):
         return f"<MedicionCliente {self.cliente_negocio_id} @ {self.fecha} ({self.peso_kg}kg)>"
 
 
+class OnboardingAction(Base):
+    """Propuesta confirmable; resultado duradero para impedir dobles escrituras.
+
+    payload puede contener datos de socios. Aplicar la misma retención y acceso
+    restringido que a clientes_negocio; no enviarlo a logs ni a otros agentes.
+    """
+    __tablename__ = "onboarding_actions"
+    id = Column(String, primary_key=True)
+    operador = Column(String, nullable=False)
+    negocio_id = Column(String, nullable=False)
+    tool = Column(String, nullable=False)
+    payload = Column(JSON, nullable=False)
+    estado = Column(String, nullable=False, default="pendiente")
+    resultado = Column(JSON, nullable=True)
+    fecha_creacion = Column(DateTime, nullable=False, default=datetime.utcnow)
+    fecha_confirmacion = Column(DateTime, nullable=True)
+
+
 # Motor de BD (SQLite para desarrollo — ver nota arriba sobre PostgreSQL en producción).
 # El nombre del archivo es configurable por variable de entorno para que los
 # tests automatizados (ver tests/) puedan usar un archivo aparte del de

@@ -20,27 +20,55 @@ finalizar_llamada) — no hace falta reescribir el motor.
 import os
 import time
 from collections import defaultdict, deque
-from typing import Optional
+from typing import Optional, Literal
 from typing import Optional as _Optional
+
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Depends, status, Request
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
+from fastapi.responses import HTMLResponse, JSONResponse
+from sqlalchemy.exc import IntegrityError
+from pydantic import BaseModel, Field, ConfigDict
 from pathlib import Path
 from datetime import datetime
 import secrets
 import uuid
 
 from generic_service import NexxusIAService
+from agente_configuracion import AgenteConfiguracion
+import onboarding_service
+from onboarding_service import BusinessInput, CustomerInput, OnboardingError
 from models import SessionLocal, Negocio, ClienteNegocio
 from verticals import VERTICALES
 import billing_service
 import progreso_service
 import riesgo_service
 
-app = FastAPI(title="NEXXUS AI Support")
+def _advertir_credenciales_por_defecto():
+    """Advierte sin mostrar credenciales; la autenticación queda cerrada."""
+    inseguras = []
+    if os.getenv("ADMIN_PASSWORD") in (None, "", "cambiar-esta-clave"):
+        inseguras.append("ADMIN_PASSWORD")
+    if os.getenv("OPERADOR_PASSWORD") in (None, "", "cambiar-esta-clave-tambien"):
+        inseguras.append("OPERADOR_PASSWORD")
+    if inseguras:
+        print(
+            "🚨 ATENCIÓN: " + ", ".join(inseguras) + " no está(n) configurada(s) — "
+            "el acceso administrativo quedará deshabilitado. "
+            "Configurá variables de entorno reales antes de usar esto con datos de verdad."
+        )
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    _advertir_credenciales_por_defecto()
+    yield
+
+
+app = FastAPI(title="NEXXUS AI Support", lifespan=_lifespan)
 servicio = NexxusIAService()
+agente_configuracion = AgenteConfiguracion()
 security = HTTPBasic()
 
 RATE_LIMIT_MAX_REQUESTS = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "20"))
@@ -48,9 +76,12 @@ RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 _peticiones_por_ip = defaultdict(deque)
 
 
-def _chequear_rate_limit(ip: str):
+def _chequear_rate_limit(clave: str):
+    """Limitador genérico de tasa — la `clave` puede ser una IP real o
+    cualquier otro identificador (ej. "negocio:llamada") según qué se quiera
+    limitar; el mecanismo (ventana deslizante en memoria) es el mismo."""
     ahora = time.time()
-    cola = _peticiones_por_ip[ip]
+    cola = _peticiones_por_ip[clave]
     while cola and ahora - cola[0] > RATE_LIMIT_WINDOW_SECONDS:
         cola.popleft()
     if len(cola) >= RATE_LIMIT_MAX_REQUESTS:
@@ -58,11 +89,21 @@ def _chequear_rate_limit(ip: str):
     cola.append(ahora)
 
 
+def _ip_cliente(request: Request) -> str:
+    """Usa el peer validado por el servidor; no confía en X-Forwarded-For del cliente.
+
+    El proxy debe configurarse en el servidor ASGI con una lista de IPs fiables.
+    """
+    return request.client.host if request.client else "desconocida"
+
+
 def _verificar_admin(credentials: HTTPBasicCredentials = Depends(security)):
     usuario_correcto = os.getenv("ADMIN_USER", "admin")
-    clave_correcta = os.getenv("ADMIN_PASSWORD", "cambiar-esta-clave")
-    ok_user = secrets.compare_digest(credentials.username, usuario_correcto)
-    ok_pass = secrets.compare_digest(credentials.password, clave_correcta)
+    clave_correcta = os.getenv("ADMIN_PASSWORD")
+    if not clave_correcta or clave_correcta == "cambiar-esta-clave":
+        raise HTTPException(status_code=503, detail="Acceso administrativo no configurado")
+    ok_user = secrets.compare_digest(credentials.username.encode("utf-8"), usuario_correcto.encode("utf-8"))
+    ok_pass = secrets.compare_digest(credentials.password.encode("utf-8"), clave_correcta.encode("utf-8"))
     if not (ok_user and ok_pass):
         raise HTTPException(status_code=401, detail="No autorizado", headers={"WWW-Authenticate": "Basic"})
     return credentials.username
@@ -73,9 +114,11 @@ def _verificar_operador(credentials: HTTPBasicCredentials = Depends(security)):
     (ve TODOS los negocios) — distinta de la auth de admin de cada negocio
     individual, que solo ve sus propios datos."""
     usuario_correcto = os.getenv("OPERADOR_USER", "jorge")
-    clave_correcta = os.getenv("OPERADOR_PASSWORD", "cambiar-esta-clave-tambien")
-    ok_user = secrets.compare_digest(credentials.username, usuario_correcto)
-    ok_pass = secrets.compare_digest(credentials.password, clave_correcta)
+    clave_correcta = os.getenv("OPERADOR_PASSWORD")
+    if not clave_correcta or clave_correcta == "cambiar-esta-clave-tambien":
+        raise HTTPException(status_code=503, detail="Acceso administrativo no configurado")
+    ok_user = secrets.compare_digest(credentials.username.encode("utf-8"), usuario_correcto.encode("utf-8"))
+    ok_pass = secrets.compare_digest(credentials.password.encode("utf-8"), clave_correcta.encode("utf-8"))
     if not (ok_user and ok_pass):
         raise HTTPException(status_code=401, detail="No autorizado", headers={"WWW-Authenticate": "Basic"})
     return credentials.username
@@ -114,7 +157,12 @@ def health():
 
 
 @app.post("/api/{negocio_slug}/iniciar")
-def iniciar(negocio_slug: str, req: IniciarLlamadaRequest):
+def iniciar(negocio_slug: str, req: IniciarLlamadaRequest, request: Request):
+    # Rate limit por IP real acá (antes solo estaba en /mensaje, y ni
+    # siquiera por IP) — este es el endpoint que de verdad crea trabajo
+    # nuevo (una llamada), así que es el que hay que frenar para que nadie
+    # pueda generar llamadas ilimitadas y, con eso, costo ilimitado de IA.
+    _chequear_rate_limit("iniciar:" + _ip_cliente(request))
     negocio = _obtener_negocio_o_404(negocio_slug)
     resultado = servicio.iniciar_llamada(negocio.id, req.numero_cliente)
     if "error" in resultado:
@@ -124,9 +172,12 @@ def iniciar(negocio_slug: str, req: IniciarLlamadaRequest):
 
 @app.post("/api/{negocio_slug}/mensaje")
 def mensaje(negocio_slug: str, req: MensajeRequest):
-    _obtener_negocio_o_404(negocio_slug)  # valida que el negocio existe/activo
+    negocio = _obtener_negocio_o_404(negocio_slug)  # valida que el negocio existe/activo
     _chequear_rate_limit(f"{negocio_slug}:{req.llamada_id}")
-    resultado = servicio.procesar_mensaje(req.llamada_id, req.mensaje)
+    # Pasamos negocio.id para que el motor verifique que req.llamada_id
+    # pertenece a ESTE negocio — sin esto, conocer un llamada_id de otro
+    # negocio alcanzaba para leer/escribir su conversación.
+    resultado = servicio.procesar_mensaje(req.llamada_id, req.mensaje, negocio_id=negocio.id)
     if "error" in resultado:
         raise HTTPException(status_code=400, detail=resultado["error"])
     return resultado
@@ -134,8 +185,8 @@ def mensaje(negocio_slug: str, req: MensajeRequest):
 
 @app.post("/api/{negocio_slug}/finalizar")
 def finalizar(negocio_slug: str, req: FinalizarLlamadaRequest):
-    _obtener_negocio_o_404(negocio_slug)
-    resultado = servicio.finalizar_llamada(req.llamada_id, req.resultado)
+    negocio = _obtener_negocio_o_404(negocio_slug)
+    resultado = servicio.finalizar_llamada(req.llamada_id, req.resultado, negocio_id=negocio.id)
     if "error" in resultado:
         raise HTTPException(status_code=400, detail=resultado["error"])
     return resultado
@@ -259,7 +310,7 @@ async def webhook_stripe(request: Request):
     try:
         resultado = billing_service.verificar_y_procesar_webhook(payload, sig_header)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Webhook inválido: {e}")
+        raise HTTPException(status_code=400, detail="Webhook inválido") from None
     return resultado
 
 
@@ -295,85 +346,84 @@ def panel_negocio(negocio_slug: str):
 # socios por API (o desde el panel, si se conecta un formulario más
 # adelante) sin tocar código.
 
-class CrearNegocioRequest(BaseModel):
-    slug: str
-    nombre: str
-    vertical: str = "gym"
-    idioma_principal: str = "es"
-    idioma_secundario: str = "en"
-    nombre_asistente: str = "María"
-    plan: str = "starter"
+class CrearNegocioRequest(BusinessInput):
     email_facturacion: _Optional[str] = None
+
+
+@app.exception_handler(OnboardingError)
+async def onboarding_error_handler(request, exc):
+    return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
+
+
+@app.exception_handler(IntegrityError)
+async def database_conflict_handler(request, exc):
+    return JSONResponse(status_code=409, content={"detail": "Conflicto al guardar los datos"})
 
 
 @app.post("/api/admin/negocios")
 def crear_negocio(req: CrearNegocioRequest, operador: str = Depends(_verificar_operador)):
-    if req.vertical not in VERTICALES:
-        raise HTTPException(status_code=400, detail=f"Vertical desconocido: {req.vertical}. Disponibles: {list(VERTICALES.keys())}")
-
-    db = SessionLocal()
-    try:
-        if db.query(Negocio).filter(Negocio.slug == req.slug).first():
-            raise HTTPException(status_code=409, detail=f"Ya existe un negocio con slug '{req.slug}'")
-
-        negocio = Negocio(
-            id=str(uuid.uuid4())[:8],
-            slug=req.slug,
-            nombre=req.nombre,
-            vertical=req.vertical,
-            idioma_principal=req.idioma_principal,
-            idioma_secundario=req.idioma_secundario,
-            nombre_asistente=req.nombre_asistente,
-            plan=req.plan,
-            activo=True,
+    with SessionLocal() as db:
+        resultado = onboarding_service.create_business(
+            db, BusinessInput.model_validate(req.model_dump(exclude={"email_facturacion"}))
         )
-        db.add(negocio)
         db.commit()
-        negocio_id = negocio.id
-    finally:
-        db.close()
-
-    resultado = {"negocio_id": negocio_id, "slug": req.slug, "suscripcion": None}
     if req.email_facturacion:
-        resultado["suscripcion"] = billing_service.crear_suscripcion(negocio_id, req.plan, req.email_facturacion)
+        resultado["suscripcion"] = billing_service.crear_suscripcion(
+            resultado["negocio_id"], req.plan, req.email_facturacion
+        )
     return resultado
 
 
-class CrearClienteRequest(BaseModel):
-    nombre: str
-    telefono: _Optional[str] = None
-    email: _Optional[str] = None
-    estado_membresia: str = "activo"
-    meses_adeudados: int = 0
-    proximo_vencimiento: _Optional[str] = None  # ISO date, ej. "2026-10-01"
-    plan_membresia: _Optional[str] = None
-    altura_cm: _Optional[float] = None
-    fecha_ingreso: _Optional[str] = None  # ISO date; si no se manda, es "hoy"
+# ---------- Agente de Configuración (Fase 3: back office interno de NEXXUS) ----------
+# Copiloto de Jorge para dar de alta negocios y cargar socios charlando en
+# vez de llamar a la API a mano — ver agente_configuracion.py. Gateado por
+# _verificar_operador porque es SOLO para Jorge (nunca para un dueño de gym).
+
+class HistoryMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=8000)
+
+
+class AgenteConfiguracionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mensaje: str = Field(min_length=1, max_length=8000)
+    historial: list[HistoryMessage] = Field(default_factory=list, max_length=20)
+
+
+@app.post("/api/admin/agente-configuracion")
+def agente_configuracion_endpoint(req: AgenteConfiguracionRequest, operador: str = Depends(_verificar_operador)):
+    if sum(len(m.content) for m in req.historial) + len(req.mensaje) > 40000:
+        raise HTTPException(status_code=422, detail="Conversación demasiado larga; inicia una nueva")
+    if not req.mensaje.strip():
+        raise HTTPException(status_code=422, detail="Mensaje vacío")
+    _chequear_rate_limit("onboarding:" + operador)
+    return agente_configuracion.procesar_mensaje(
+        req.mensaje, [m.model_dump() for m in req.historial], operador=operador
+    )
+
+
+class ConfirmacionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirmar: Literal[True]
+
+
+@app.post("/api/admin/agente-configuracion/propuestas/{propuesta_id}/confirmar")
+def confirmar_propuesta(propuesta_id: str, req: ConfirmacionRequest, operador: str = Depends(_verificar_operador)):
+    return onboarding_service.confirm_action(propuesta_id, operador)
+
+
+class CrearClienteRequest(CustomerInput):
+    pass
 
 
 @app.post("/api/{negocio_slug}/clientes")
 def crear_cliente(negocio_slug: str, req: CrearClienteRequest, admin: str = Depends(_verificar_admin)):
     negocio = _obtener_negocio_o_404(negocio_slug)
-    db = SessionLocal()
-    try:
-        cliente = ClienteNegocio(
-            id=str(uuid.uuid4())[:8],
-            negocio_id=negocio.id,
-            nombre=req.nombre,
-            telefono=req.telefono,
-            email=req.email,
-            estado_membresia=req.estado_membresia,
-            meses_adeudados=req.meses_adeudados,
-            proximo_vencimiento=datetime.fromisoformat(req.proximo_vencimiento) if req.proximo_vencimiento else None,
-            plan_membresia=req.plan_membresia,
-            altura_cm=req.altura_cm,
-            fecha_ingreso=datetime.fromisoformat(req.fecha_ingreso) if req.fecha_ingreso else datetime.utcnow(),
-        )
-        db.add(cliente)
+    with SessionLocal() as db:
+        result = onboarding_service.create_customer(db, negocio, req)
         db.commit()
-        return {"cliente_id": cliente.id, "nombre": cliente.nombre}
-    finally:
-        db.close()
+        return result
 
 
 class ActualizarClienteRequest(BaseModel):
@@ -514,5 +564,8 @@ def chat_negocio(negocio_slug: str):
 if __name__ == "__main__":
     import os
     import uvicorn
+    # Railway (y otros hosts) asignan el puerto real vía la variable de
+    # entorno PORT — si no está definida (desarrollo local), sigue usando
+    # 8000 como antes.
     puerto = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=puerto)
