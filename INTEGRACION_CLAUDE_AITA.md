@@ -73,7 +73,7 @@ Resultados:
 
 - Revisión humana de esta PR y de la base AITA; no se ha fusionado ninguna rama.
 - Prueba de staging con una clave de Anthropic autorizada y configuración de Stripe de prueba. Las pruebas actuales usan respuestas simuladas y firmas sintéticas; no prueban una llamada real al proveedor.
-- Revisión visual en navegador real: la automatización headless local no pudo iniciarse en el entorno. Las seis pruebas DOM sí se ejecutaron; no sustituyen una revisión de apariencia y comportamiento en dispositivos.
+- La revisión básica de escritorio ya se completó en el navegador interno de Codex sobre localhost: login de operador/admin, propuesta, confirmación, perfil y guardado de mediciones. Quedan pruebas de dispositivos móviles y del entorno de staging.
 - Configurar contraseñas administrativas propias y `STRIPE_WEBHOOK_SECRET`; esta versión rechaza configuraciones inseguras antes permitidas.
 - Revisar proxy de confianza en ASGI/Railway. El límite sigue siendo por proceso; sin proxy confiable puede agrupar tráfico por IP del proxy. Redis/límite distribuido queda fuera de alcance.
 - La autenticación Basic compartida existente no se ha migrado a usuarios/roles por tenant. La comprobación de tenant añadida a llamadas no sustituye autenticación de cada socio.
@@ -81,3 +81,15 @@ Resultados:
 - La idempotencia de confirmaciones sí está cubierta; la deduplicación y ordenación de todos los eventos Stripe sigue siendo trabajo previo pendiente.
 
 No se incluyeron archivos `.env`, claves, bases SQLite ni resultados de pruebas con datos reales. No se configuró ni ejecutó despliegue, auto-merge o cobro.
+
+## Validación posterior en navegador
+
+Se ejecutó la aplicación del commit `3aa7b621ac564c05fcc23ea6762da6826b1c8115` en `127.0.0.1`, usando una base SQLite temporal, usuarios ficticios y respuestas de Anthropic simuladas. No se utilizaron datos ni claves reales.
+
+- Alta propuesta: cero socios nuevos antes de confirmar; una propuesta pendiente.
+- Confirmación por el botón del panel: un socio nuevo, una propuesta confirmada y botón deshabilitado con el mensaje «Cambios guardados».
+- Perfil: gráfico de tres mediciones, BMI, asistencia, membresía, alerta e historial visibles.
+- Guardado desde el formulario: la medición ficticia de 78.5 kg se persistió una sola vez; el gráfico, BMI e historial se actualizaron y apareció «Medición guardada».
+- No se observaron bloqueos de uso en la vista de escritorio revisada. Esto no sustituye pruebas de un proveedor real ni certifica todos los tamaños de pantalla.
+
+Railway mostró su pantalla de login en el navegador disponible. Todavía no se ha podido confirmar si existe un entorno staging; requiere que el usuario inicie sesión. No se crearon entornos ni se modificó producción.
