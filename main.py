@@ -8,7 +8,8 @@ propios datos aislados (nunca se cruzan, igual principio que ya se probó
 para llamadas concurrentes en el MVP anterior, ahora extendido a nivel
 negocio).
 
-Todavía NO conectado a Twilio (llamadas telefónicas reales) — estos
+Incluye un saludo de prueba en POST /webhooks/twilio/voice.
+El motor conversacional todavía NO está conectado a Twilio — estos
 endpoints son el mismo patrón de chat de texto del MVP anterior, pensado
 para que el motor (generic_service.py) y el modelo de datos multi-tenant
 queden probados y firmes ANTES de sumarle la capa de telefonía real. Cuando
@@ -25,7 +26,7 @@ from typing import Optional as _Optional
 
 from fastapi import FastAPI, HTTPException, Depends, status, Request
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 from pathlib import Path
 from datetime import datetime
@@ -111,6 +112,27 @@ class FinalizarLlamadaRequest(BaseModel):
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+
+# ---------- Twilio Voice: prueba de llamadas entrantes ----------
+@app.post("/webhooks/twilio/voice", response_class=Response)
+def twilio_voice():
+    """Saludo de prueba sin acceso a datos, sesiones ni servicios de pago.
+
+    Acepta el POST application/x-www-form-urlencoded enviado por Twilio.
+    El cuerpo se ignora: esta ruta pública solo devuelve TwiML estático.
+    Antes de añadir acciones o datos de clientes, validar X-Twilio-Signature.
+    """
+    return Response(
+        content='<?xml version="1.0" encoding="UTF-8"?>'
+        '<Response><Say voice="woman" language="es-ES">'
+        'Hola, soy AITA, la asistente virtual de Nexxus. '
+        'La conexión telefónica funciona correctamente. '
+        'Esta es una llamada de prueba. Gracias por llamar.'
+        '</Say><Hangup/></Response>',
+        media_type="application/xml",
+    )
 
 
 @app.post("/api/{negocio_slug}/iniciar")
