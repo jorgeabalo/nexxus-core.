@@ -147,3 +147,26 @@ def crear_checkin(db, negocio, cliente, hace_dias=0):
     db.commit()
     db.refresh(checkin)
     return checkin
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    import main
+    main._peticiones_por_ip.clear()
+    yield
+    main._peticiones_por_ip.clear()
+
+
+@pytest.fixture
+def signed_webhook(monkeypatch):
+    import billing_service
+    import hashlib
+    import hmac
+    import time
+    secret = "whsec_synthetic_test_only"
+    monkeypatch.setattr(billing_service, "STRIPE_WEBHOOK_SECRET", secret)
+    def sign(payload):
+        timestamp = str(int(time.time()))
+        digest = hmac.new(secret.encode(), timestamp.encode() + b"." + payload, hashlib.sha256).hexdigest()
+        return f"t={timestamp},v1={digest}"
+    return sign

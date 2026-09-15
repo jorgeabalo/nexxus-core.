@@ -97,7 +97,7 @@ def test_manejar_pago_fallido_suscripcion_inexistente(db):
     assert "error" in resultado
 
 
-def test_webhook_sin_secret_configurado_procesa_json_crudo(db):
+def test_webhook_firmado_procesa_evento(db, signed_webhook):
     import json
 
     negocio = crear_negocio_gym(db)
@@ -113,12 +113,12 @@ def test_webhook_sin_secret_configurado_procesa_json_crudo(db):
         "data": {"object": {"subscription": "sub_webhook_test"}},
     }).encode("utf-8")
 
-    resultado = billing_service.verificar_y_procesar_webhook(payload, sig_header="")
+    resultado = billing_service.verificar_y_procesar_webhook(payload, sig_header=signed_webhook(payload))
 
     assert resultado["estado"] == "periodo_gracia"
 
 
-def test_webhook_evento_no_manejado(db):
+def test_webhook_evento_no_manejado(db, signed_webhook):
     import json
 
     payload = json.dumps({
@@ -126,6 +126,6 @@ def test_webhook_evento_no_manejado(db):
         "data": {"object": {"id": "algo"}},
     }).encode("utf-8")
 
-    resultado = billing_service.verificar_y_procesar_webhook(payload, sig_header="")
+    resultado = billing_service.verificar_y_procesar_webhook(payload, sig_header=signed_webhook(payload))
 
     assert resultado["procesado"] is False

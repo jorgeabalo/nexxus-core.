@@ -30,7 +30,8 @@ from models import SessionLocal, Negocio, Suscripcion
 
 load_dotenv()
 
-stripe.api_key = os.getenv("STRIPE_SECRET_KEY")  # clave de test (sk_test_...) hasta que la cuenta esté verificada
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+stripe.api_key = STRIPE_SECRET_KEY  # clave de test (sk_test_...) hasta que la cuenta esté verificada
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 
 DIAS_GRACIA = 3
@@ -184,15 +185,14 @@ def chequear_suspensiones_vencidas() -> list:
 
 
 def verificar_y_procesar_webhook(payload: bytes, sig_header: str) -> dict:
-    """Punto de entrada del webhook de Stripe. Verifica la firma (si hay
-    STRIPE_WEBHOOK_SECRET configurado) y despacha al handler correspondiente."""
-    if STRIPE_WEBHOOK_SECRET:
-        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
-    else:
-        # Sin webhook secret configurado todavía (cuenta de Stripe no lista) —
-        # no verificamos firma. Solo para desarrollo, nunca para producción.
-        import json
-        event = json.loads(payload)
+    """Todo evento HTTP requiere firma, incluso sin una cuenta configurada.
+
+    Las pruebas locales pueden invocar los handlers directamente o firmar
+    eventos sintéticos. La ausencia de claves no habilita eventos sin verificar.
+    """
+    if not STRIPE_WEBHOOK_SECRET:
+        raise ValueError("Webhook de Stripe no configurado")
+    event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
 
     tipo = event["type"] if isinstance(event, dict) else event.type
     data_obj = event["data"]["object"] if isinstance(event, dict) else event.data.object

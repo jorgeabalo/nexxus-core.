@@ -48,6 +48,7 @@ class BrandProfile:
     primary_language: str = "es"
     secondary_language: Optional[str] = "en"
     colors: List[str] = field(default_factory=list)
+    logo_asset_refs: List[str] = field(default_factory=list)
     visual_style: List[str] = field(default_factory=list)
     calls_to_action: List[str] = field(default_factory=list)
     social_channels: Dict[str, str] = field(default_factory=dict)
@@ -111,10 +112,33 @@ def golden_age_template() -> BusinessProfile:
         vertical="gym",
         brand=BrandProfile(
             business_name="Golden Age",
+            colors=["#FFD700", "#000000"],  # amarillo provisional; confirmar tono corporativo
+            logo_asset_refs=["assets/golden-age/logo-full.png", "assets/golden-age/logo-mark.png"],
+            visual_style=["Identidad amarillo/negro; usar los logos oficiales de Golden Age."],
             audience=["socios actuales", "socios inactivos", "prospectos locales"],
             tone=["cercano", "motivador", "profesional"],
             calls_to_action=["Solicita información", "Reserva una visita", "Reactiva tu membresía"],
         ),
         enabled_channels=["web"],
         operational_notes=["Piloto AITA: completar datos reales durante onboarding."],
+    )
+
+
+def profile_from_negocio(negocio) -> BusinessProfile:
+    """Proyección del tenant existente; no crea otra fuente de configuración.
+
+    legal_name usa el nombre disponible como valor provisional (no verificado).
+    La plantilla Golden Age es un brief futuro, no datos confirmados del tenant.
+    """
+    return BusinessProfile(
+        negocio_id=negocio.id,
+        legal_name=negocio.nombre,
+        display_name=negocio.nombre,
+        vertical=negocio.vertical,
+        brand=BrandProfile(
+            business_name=negocio.nombre,
+            primary_language=negocio.idioma_principal,
+            secondary_language=negocio.idioma_secundario,
+        ),
+        operational_notes=["Nombre legal pendiente de verificación."],
     )
