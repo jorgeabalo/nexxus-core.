@@ -118,7 +118,7 @@ def health():
 
 
 # ---------- Twilio Voice: conversación entrante ----------
-TWILIO_NEGOCIO_SLUG = os.getenv("TWILIO_NEGOCIO_SLUG", "fuerza-total")
+TWILIO_NEGOCIO_SLUG = os.getenv("TWILIO_NEGOCIO_SLUG", "golden-age")
 
 
 def _twiml(contenido: str) -> Response:
