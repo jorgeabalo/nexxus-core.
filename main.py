@@ -161,6 +161,23 @@ async def twilio_voice(request: Request):
         db.close()
 
     if not negocio:
+        # Los despliegues demo usan SQLite efímero. Si el contenedor arranca
+        # vacío, crea una sola vez el tenant de demostración.
+        try:
+            from seed_demo import sembrar
+            sembrar()
+            db = SessionLocal()
+            try:
+                negocio = db.query(Negocio).filter(
+                    Negocio.slug == TWILIO_NEGOCIO_SLUG,
+                    Negocio.activo.is_(True),
+                ).first()
+            finally:
+                db.close()
+        except Exception as exc:
+            print(f"Error inicializando negocio demo para Twilio: {exc}")
+
+    if not negocio:
         return _twiml(
             '<Say voice="woman" language="es-MX">'
             'Lo siento, el servicio no está disponible en este momento.'
