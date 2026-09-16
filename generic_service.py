@@ -33,7 +33,7 @@ load_dotenv()
 
 MODELO_CLAUDE = os.getenv("MODELO_CLAUDE", "claude-haiku-4-5-20251001")
 MAX_CARACTERES_MENSAJE = 2000
-UMBRAL_ESCALADO_SEGUNDOS = 20 * 60
+UMBRAL_ESCALADO_SEGUNDOS = 10 * 60
 MAX_ITERACIONES_TOOL_USE = 4  # tope de seguridad para no loopear infinito
 
 NOMBRES_IDIOMA = {
@@ -168,7 +168,7 @@ Reglas generales:
 - Nunca inventes datos de pagos, membresías ni cuentas — si la pregunta requiere un dato real, usá la herramienta correspondiente antes de responder.
 - Respondé de forma concisa (máximo 2-3 oraciones), cálida pero profesional.
 - Si no entendés, pedí que repitan.
-- Después de 20 minutos de conversación, ofrecé transferir con un supervisor humano.
+- Al llegar a 10 minutos de conversación, transferí con un supervisor humano o cerrá la llamada de forma cortés.
 
 Idioma de respuesta obligatorio: {nombre_idioma}"""
 
