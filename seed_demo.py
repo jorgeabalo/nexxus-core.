@@ -28,7 +28,7 @@ def sembrar():
             vertical="gym",
             idioma_principal="es",
             idioma_secundario="en",
-            nombre_asistente="María",
+            nombre_asistente="Sofía",
             plan="professional",
             activo=True,
         )
