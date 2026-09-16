@@ -224,6 +224,33 @@ async def twilio_respond(request: Request, llamada_id: str):
 
     respuesta = resultado.get("respuesta") or "¿Puedes repetirlo, por favor?"
     idioma = "en-US" if resultado.get("idioma") == "en" else "es-MX"
+
+    if resultado.get("requiere_supervisor"):
+        numero_transferencia = os.getenv("TRANSFER_PHONE_NUMBER", "").strip()
+        servicio.finalizar_llamada(
+            llamada_id,
+            "transferida" if numero_transferencia else "limite_10_minutos",
+        )
+        if numero_transferencia:
+            numero_xml = html.escape(numero_transferencia)
+            return _twiml(
+                '<Say voice="Polly.Lupe-Neural" language="es-US">'
+                'Hemos llegado al límite de diez minutos. Voy a comunicarte con un encargado. '
+                'Por favor, permanece en línea.'
+                '</Say>'
+                f'<Dial timeout="20" answerOnBridge="true">{numero_xml}</Dial>'
+                '<Say voice="Polly.Lupe-Neural" language="es-US">'
+                'En este momento no pudimos comunicarte. Golden Age devolverá tu llamada. Gracias.'
+                '</Say><Hangup/>'
+            )
+        return _twiml(
+            '<Say voice="Polly.Lupe-Neural" language="es-US">'
+            'Hemos llegado al límite de diez minutos de esta llamada. '
+            'Gracias por comunicarte con Golden Age. Un encargado podrá continuar ayudándote. '
+            'Que tengas un excelente día.'
+            '</Say><Hangup/>'
+        )
+
     return _gather_twiml(respuesta, llamada_id, idioma)
 
 
