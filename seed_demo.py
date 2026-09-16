@@ -1,5 +1,5 @@
 """
-Siembra un negocio de prueba ("Fuerza Total", vertical gym) con socios
+Siembra un negocio de prueba ("Golden Age", vertical gym) con socios
 ficticios — los mismos datos que se usaron en el boceto visual del
 dashboard, para que ambos coincidan. Sirve para probar el motor de punta a
 punta mientras Jorge consigue un gym real (dijo que ya está en camino).
@@ -16,19 +16,19 @@ from models import SessionLocal, Negocio, ClienteNegocio, Suscripcion, MedicionC
 def sembrar():
     db = SessionLocal()
     try:
-        existente = db.query(Negocio).filter(Negocio.slug == "fuerza-total").first()
+        existente = db.query(Negocio).filter(Negocio.slug == "golden-age").first()
         if existente:
-            print("Ya existe 'fuerza-total' — no se vuelve a crear. Borrá nexxus_core.sqlite si querés reiniciar.")
+            print("Ya existe 'golden-age' — no se vuelve a crear. Borrá nexxus_core.sqlite si querés reiniciar.")
             return existente
 
         negocio = Negocio(
             id=str(uuid.uuid4())[:8],
-            slug="fuerza-total",
-            nombre="Fuerza Total",
+            slug="golden-age",
+            nombre="Golden Age",
             vertical="gym",
             idioma_principal="es",
             idioma_secundario="en",
-            nombre_asistente="Sofía",
+            nombre_asistente="Claudia",
             plan="professional",
             activo=True,
         )
