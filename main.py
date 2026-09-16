@@ -32,6 +32,8 @@ from pathlib import Path
 from datetime import datetime
 import secrets
 import uuid
+import html
+from urllib.parse import parse_qs
 
 from generic_service import NexxusIAService
 from models import SessionLocal, Negocio, ClienteNegocio
@@ -115,24 +117,95 @@ def health():
 
 
 
-# ---------- Twilio Voice: prueba de llamadas entrantes ----------
-@app.post("/webhooks/twilio/voice", response_class=Response)
-def twilio_voice():
-    """Saludo de prueba sin acceso a datos, sesiones ni servicios de pago.
+# ---------- Twilio Voice: conversación entrante ----------
+TWILIO_NEGOCIO_SLUG = os.getenv("TWILIO_NEGOCIO_SLUG", "fuerza-total")
 
-    Acepta el POST application/x-www-form-urlencoded enviado por Twilio.
-    El cuerpo se ignora: esta ruta pública solo devuelve TwiML estático.
-    Antes de añadir acciones o datos de clientes, validar X-Twilio-Signature.
-    """
+
+def _twiml(contenido: str) -> Response:
     return Response(
-        content='<?xml version="1.0" encoding="UTF-8"?>'
-        '<Response><Say voice="woman" language="es-ES">'
-        'Hola, soy AITA, la asistente virtual de Nexxus. '
-        'La conexión telefónica funciona correctamente. '
-        'Esta es una llamada de prueba. Gracias por llamar.'
-        '</Say><Hangup/></Response>',
+        content='<?xml version="1.0" encoding="UTF-8"?><Response>' + contenido + '</Response>',
         media_type="application/xml",
     )
+
+
+def _gather_twiml(mensaje: str, llamada_id: str, idioma: str = "es-MX") -> Response:
+    texto = html.escape(mensaje)
+    action = f"/webhooks/twilio/respond?llamada_id={html.escape(llamada_id, quote=True)}"
+    return _twiml(
+        f'<Gather input="speech" action="{action}" method="POST" '
+        f'language="{idioma}" speechTimeout="auto" timeout="5" actionOnEmptyResult="true">'
+        f'<Say voice="woman" language="{idioma}">{texto}</Say>'
+        '</Gather>'
+    )
+
+
+async def _twilio_form(request: Request) -> dict:
+    """Lee el formulario URL-encoded de Twilio sin añadir dependencias."""
+    body = (await request.body()).decode("utf-8", errors="replace")
+    return {k: values[-1] for k, values in parse_qs(body).items()}
+
+
+@app.post("/webhooks/twilio/voice", response_class=Response)
+async def twilio_voice(request: Request):
+    """Inicia una sesión real y pide al llamante que hable."""
+    datos = await _twilio_form(request)
+    numero_cliente = datos.get("From")
+
+    db = SessionLocal()
+    try:
+        negocio = db.query(Negocio).filter(
+            Negocio.slug == TWILIO_NEGOCIO_SLUG,
+            Negocio.activo.is_(True),
+        ).first()
+    finally:
+        db.close()
+
+    if not negocio:
+        return _twiml(
+            '<Say voice="woman" language="es-MX">'
+            'Lo siento, el servicio no está disponible en este momento.'
+            '</Say><Hangup/>'
+        )
+
+    inicio = servicio.iniciar_llamada(negocio.id, numero_cliente)
+    if "error" in inicio:
+        return _twiml(
+            '<Say voice="woman" language="es-MX">'
+            'Lo siento, no pude iniciar la llamada. Intenta nuevamente más tarde.'
+            '</Say><Hangup/>'
+        )
+
+    return _gather_twiml(
+        f"Hola, soy {negocio.nombre_asistente}, la asistente virtual de {negocio.nombre}. "
+        "¿En qué puedo ayudarte?",
+        inicio["llamada_id"],
+    )
+
+
+@app.post("/webhooks/twilio/respond", response_class=Response)
+async def twilio_respond(request: Request, llamada_id: str):
+    """Convierte voz a texto, consulta a Claude y mantiene la conversación."""
+    datos = await _twilio_form(request)
+    mensaje = (datos.get("SpeechResult") or "").strip()
+
+    if not mensaje:
+        return _gather_twiml(
+            "No logré escucharte. Por favor, repite tu pregunta.",
+            llamada_id,
+        )
+
+    resultado = servicio.procesar_mensaje(llamada_id, mensaje)
+    if "error" in resultado:
+        servicio.finalizar_llamada(llamada_id, "error")
+        return _twiml(
+            '<Say voice="woman" language="es-MX">'
+            'Lo siento, ocurrió un problema procesando tu solicitud.'
+            '</Say><Hangup/>'
+        )
+
+    respuesta = resultado.get("respuesta") or "¿Puedes repetirlo, por favor?"
+    idioma = "en-US" if resultado.get("idioma") == "en" else "es-MX"
+    return _gather_twiml(respuesta, llamada_id, idioma)
 
 
 @app.post("/api/{negocio_slug}/iniciar")
