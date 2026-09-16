@@ -131,10 +131,12 @@ def _twiml(contenido: str) -> Response:
 def _gather_twiml(mensaje: str, llamada_id: str, idioma: str = "es-MX") -> Response:
     texto = html.escape(mensaje)
     action = f"/webhooks/twilio/respond?llamada_id={html.escape(llamada_id, quote=True)}"
+    voice = "Polly.Joanna-Neural" if idioma == "en-US" else "Polly.Lupe-Neural"
+    voice_language = "en-US" if idioma == "en-US" else "es-US"
     return _twiml(
         f'<Gather input="speech" action="{action}" method="POST" '
         f'language="{idioma}" speechTimeout="auto" timeout="5" actionOnEmptyResult="true">'
-        f'<Say voice="woman" language="{idioma}">{texto}</Say>'
+        f'<Say voice="{voice}" language="{voice_language}">{texto}</Say>'
         '</Gather>'
     )
 
@@ -179,7 +181,7 @@ async def twilio_voice(request: Request):
 
     if not negocio:
         return _twiml(
-            '<Say voice="woman" language="es-MX">'
+            '<Say voice="Polly.Lupe-Neural" language="es-US">'
             'Lo siento, el servicio no está disponible en este momento.'
             '</Say><Hangup/>'
         )
@@ -187,7 +189,7 @@ async def twilio_voice(request: Request):
     inicio = servicio.iniciar_llamada(negocio.id, numero_cliente)
     if "error" in inicio:
         return _twiml(
-            '<Say voice="woman" language="es-MX">'
+            '<Say voice="Polly.Lupe-Neural" language="es-US">'
             'Lo siento, no pude iniciar la llamada. Intenta nuevamente más tarde.'
             '</Say><Hangup/>'
         )
@@ -215,7 +217,7 @@ async def twilio_respond(request: Request, llamada_id: str):
     if "error" in resultado:
         servicio.finalizar_llamada(llamada_id, "error")
         return _twiml(
-            '<Say voice="woman" language="es-MX">'
+            '<Say voice="Polly.Lupe-Neural" language="es-US">'
             'Lo siento, ocurrió un problema procesando tu solicitud.'
             '</Say><Hangup/>'
         )
