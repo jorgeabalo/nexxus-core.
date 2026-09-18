@@ -35,6 +35,7 @@ os.environ["STRIPE_WEBHOOK_SECRET"] = ""
 os.environ["STRIPE_PRICE_STARTER"] = ""
 os.environ["STRIPE_PRICE_PROFESSIONAL"] = ""
 os.environ["STRIPE_PRICE_ENTERPRISE"] = ""
+os.environ["RATE_LIMIT_MAX_REQUESTS"] = "10000"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -52,6 +53,13 @@ def _base_de_datos_limpia():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield
+
+
+@pytest.fixture
+def client():
+    from fastapi.testclient import TestClient
+    from main import app
+    return TestClient(app)
 
 
 @pytest.fixture

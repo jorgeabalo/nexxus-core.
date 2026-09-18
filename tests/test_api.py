@@ -345,3 +345,40 @@ def test_checkin_por_voz_se_refleja_en_el_perfil(client):
 
     r_perfil = client.get(f"/api/fuerza-total/clientes/{cliente_id}/perfil", auth=ADMIN_AUTH)
     assert r_perfil.json()["asistencia"]["total_checkins_historico"] == 1
+
+
+
+def test_llamada_no_puede_cruzar_de_negocio(client, db):
+    """Un ID de llamada de un tenant no sirve bajo la URL de otro."""
+    from conftest import crear_negocio_gym
+
+    crear_negocio_gym(db, slug="gym-a", nombre="Gym A")
+    crear_negocio_gym(db, slug="gym-b", nombre="Gym B")
+
+    inicio = client.post("/api/gym-a/iniciar", json={})
+    assert inicio.status_code == 200
+    llamada_id = inicio.json()["llamada_id"]
+    assert len(llamada_id) == 36
+
+    mensaje_cruzado = client.post(
+        "/api/gym-b/mensaje",
+        json={"llamada_id": llamada_id, "mensaje": "hola"},
+    )
+    assert mensaje_cruzado.status_code == 400
+
+    finalizar_cruzado = client.post(
+        "/api/gym-b/finalizar",
+        json={"llamada_id": llamada_id, "resultado": "completada"},
+    )
+    assert finalizar_cruzado.status_code == 400
+
+
+def test_webhook_stripe_rechaza_evento_sin_secreto(client):
+    """Nunca se aceptan eventos de pago sin verificar la firma de Stripe."""
+    r = client.post(
+        "/webhooks/stripe",
+        content=b'{"type":"invoice.payment_succeeded","data":{"object":{"subscription":"sub_fake"}}}',
+        headers={"content-type": "application/json"},
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Webhook inválido"

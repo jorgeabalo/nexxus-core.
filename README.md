@@ -23,6 +23,20 @@ Se rediseñaron el chat (`recepcionista.html`) y el panel admin (`admin_recepcio
 
 Para que no haya sorpresas en el lanzamiento: este zip es **solo el motor de chat de la recepcionista + panel de estadísticas**. No incluye pagos con Stripe, sistema de reservas, ni telefonía real (Twilio) — eso son los siguientes pasos de la Fase 2, no algo ya construido.
 
+## ☎️ Telefonía Twilio (rama de endurecimiento)
+
+La telefonía usa webhooks firmados. Antes de configurarla:
+
+1. Define `PUBLIC_BASE_URL`, `TWILIO_AUTH_TOKEN` y las demás variables de `.env.example` como secretos del servidor.
+2. Configura el número de Twilio para enviar llamadas entrantes por `POST` a:
+   `https://TU_DOMINIO/webhooks/twilio/voice/SLUG_DEL_NEGOCIO`
+3. No desactives la validación de `X-Twilio-Signature`.
+4. Para transferencias reales, define `SUPERVISOR_PHONE_NUMBER` en formato E.164.
+
+El webhook de estado disponible es:
+`POST /webhooks/twilio/status/SLUG_DEL_NEGOCIO?llamada_id=...`.
+La asociación automática de ese callback se completará al aprovisionar cada número.
+
 ## ✨ Características
 
 - **Multiidioma**: Detecta y responde en 12 idiomas (español, inglés, francés, alemán, italiano, portugués, japonés, chino, ruso, árabe, hindi, coreano)
