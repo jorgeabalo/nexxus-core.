@@ -1,0 +1,65 @@
+{
+  "negocio": {
+    "nombre": "Golden Age Fitness & Training",
+    "direccion": "1914 Gessner Rd, Houston, TX",
+    "telefono": "281-352-4784",
+    "website": "https://goldenagefitness.com",
+    "email": "contacto@goldenagefitness.com"
+  },
+  "contactos": {
+    "propietario": {
+      "nombre": "Roberto Gracian",
+      "telefono": "832-245-4634",
+      "rol": "Propietario"
+    },
+    "entrenadores": [
+      {
+        "nombre": "Edgar",
+        "rol": "Entrenador Principal",
+        "especialidad": "Fuerza y Movilidad"
+      }
+    ]
+  },
+  "horarios": {
+    "lunes_viernes": "7:00 AM - 9:00 PM",
+    "sabado": "8:00 AM - 2:00 PM",
+    "domingo": "Cerrado",
+    "descripcion": "Abierto 6 días a la semana"
+  },
+  "servicios": [
+    "Pesas y levantamiento",
+    "Bicicletas estacionarias",
+    "Caminadoras",
+    "Entrenamiento personalizado",
+    "Masajes terapéuticos",
+    "Terapia de luz roja",
+    "Magnetoterapia",
+    "Asesoría nutricional",
+    "Seguimiento de progreso",
+    "Clases grupales"
+  ],
+  "precios": {
+    "sesion_individual": "$60 por sesión",
+    "entrenamiento_personal": "$280/mes (3 entrenamientos por semana)",
+    "planes_familia": "Disponibles - consulta al propietario",
+    "nota": "Precios sujetos a cambios, contacta para promociones"
+  },
+  "que_es": "Golden Age es un gimnasio privado especializado en adultos y personas mayores, enfocado en fuerza, movilidad y longevidad. Ofrecemos un ambiente seguro, cálido y profesional donde puedes alcanzar tus objetivos de salud.",
+  "filosofia_claudia": {
+    "presentarse_como": "Entrenadora de Golden Age",
+    "tono": "Cálido, profesional, inspirador, multilingüe (inglés y español)",
+    "limites": {
+      "duracion_maxima_llamada": "10 minutos",
+      "transferir_a_supervisor": "832-245-4634 (Roberto Gracian)",
+      "razones_transferencia": [
+        "Cliente solicita explícitamente hablar con el propietario",
+        "Quejas o problemas graves",
+        "Asuntos de pagos o finanzas",
+        "Decisiones de negocio importantes",
+        "Información que Claudia no tiene"
+      ]
+    },
+    "respuestas_permitidas": "Preguntas sobre horarios, servicios, precios, ubicación, filosofía, personal, operaciones, membresías",
+    "no_decir": "No responder que 'no puede procesar' - siempre intentar ayudar primero"
+  }
+}
