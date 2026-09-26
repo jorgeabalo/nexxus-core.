@@ -356,7 +356,7 @@ class CrearNegocioRequest(BaseModel):
 
 
 @app.post("/api/admin/negocios")
-def crear_negocio(req: CrearNegocioRequest, operador: str = Depends(_verificar_operador)):
+# def crear_negocio(req: CrearNegocioRequest, operador: str = Depends(_verificar_operador)):
     if req.vertical not in VERTICALES:
         raise HTTPException(status_code=400, detail=f"Vertical desconocido: {req.vertical}. Disponibles: {list(VERTICALES.keys())}")
 
@@ -480,7 +480,7 @@ def actualizar_cliente(negocio_slug: str, cliente_id: str, req: ActualizarClient
         db.close()
 
 
-def _obtener_cliente_o_404(negocio: Negocio, cliente_id: str) -> ClienteNegocio:
+# def _obtener_cliente_o_404(negocio: Negocio, cliente_id: str) -> ClienteNegocio:
     db = SessionLocal()
     try:
         cliente = db.query(ClienteNegocio).filter(
