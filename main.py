@@ -138,6 +138,7 @@ async def twilio_mensaje_callback(request: Request):
         call_data = dict(form_data)
         
         call_sid = call_data.get("CallSid", "UNKNOWN")
+        logger.info(f"[{call_sid}] TODOS LOS PARÁMETROS TWILIO: {call_data}")
         speech_result = call_data.get("SpeechResult", "")
         recording_url = call_data.get("RecordingUrl", "")
         
