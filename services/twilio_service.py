@@ -133,14 +133,19 @@ class TwiMLResponseBuilder:
         """
         Crea una respuesta TwiML que:
         1. Reproduce un saludo
-        2. Graba audio
-        3. Envía el audio a callback_url
+        2. Captura input de voz del usuario
+        3. Transcriba automáticamente
+        4. Envía la transcripción a callback_url
+
+        CAMBIO CLAVE: Usa <Gather> en lugar de <Record>
+        - <Gather input="speech"> captura voz INTERACTIVA
+        - <Record> solo graba sin transcribir en tiempo real
 
         Args:
             session_id: ID de sesión para la llamada
             greeting: Texto que Twilio debe decir
             max_duration_seconds: Duración máxima de grabación
-            callback_url: Endpoint donde enviar la grabación
+            callback_url: Endpoint donde enviar la transcripción
 
         Returns:
             String XML válido (TwiML)
@@ -149,16 +154,17 @@ class TwiMLResponseBuilder:
 
         xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="alice" language="es-ES">{safe_greeting}</Say>
-    <Record
+    <Gather
+        input="speech"
         action="{callback_url}"
         method="POST"
-        maxLength="{max_duration_seconds}"
-        transcribe="true"
-        transcribeCallback="/api/twilio/mensaje"
-        playBeep="true"
-    />
-    <Say voice="alice" language="es-ES">Llamada finalizada. Adiós.</Say>
+        language="es-US"
+        speechTimeout="auto"
+        numDigits="1"
+    >
+        <Say voice="Polly.Conchita" language="es-ES">{safe_greeting}</Say>
+    </Gather>
+    <Say voice="Polly.Conchita" language="es-ES">No escuché tu respuesta. Por favor llama de nuevo.</Say>
     <Hangup/>
 </Response>"""
         return xml
@@ -172,7 +178,7 @@ class TwiMLResponseBuilder:
 
         xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="alice" language="es-ES">{safe_message}</Say>
+    <Say voice="Polly.Conchita" language="es-ES">{safe_message}</Say>
     <Hangup/>
 </Response>"""
         return xml
