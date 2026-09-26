@@ -35,7 +35,7 @@ class PhoneTenantResolver:
         logger.info(f"PhoneTenantResolver inicializado con {len(self.mapping)} números")
 
     def _load_mapping(self, mapping_file: str) -> Dict[str, Dict[str, str]]:
-        """Carga el mapeo de números a tenants desde JSON"""
+        """arga el mapeo de números a tenants desde JSON"""
         try:
             if not os.path.exists(mapping_file):
                 logger.warning(f"Archivo {mapping_file} no existe. Usando mapeo vacío.")
@@ -133,14 +133,19 @@ class TwiMLResponseBuilder:
         """
         Crea una respuesta TwiML que:
         1. Reproduce un saludo
-        2. Graba audio
-        3. Envía el audio a callback_url
+        2. Captura input de voz del usuario
+        3. Transcriba automáticamente
+        4. Envía la transcripción a callback_url
+
+        CAMBIO CLAVE: Usa <Gather> en lugar de <Record>
+        - <Gather input="speech"> captura voz INTERACTIVA
+        - <Record> solo graba sin transcribir en tiempo real
 
         Args:
             session_id: ID de sesión para la llamada
             greeting: Texto que Twilio debe decir
             max_duration_seconds: Duración máxima de grabación
-            callback_url: Endpoint donde enviar la grabación
+            callback_url: Endpoint donde enviar la transcripción
 
         Returns:
             String XML válido (TwiML)
@@ -149,16 +154,17 @@ class TwiMLResponseBuilder:
 
         xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="alice" language="es-ES">{safe_greeting}</Say>
-    <Record
+    <Gather
+        input="speech"
         action="{callback_url}"
         method="POST"
-        maxLength="{max_duration_seconds}"
-        transcribe="true"
-        transcribeCallback="/api/twilio/mensaje"
-        playBeep="true"
-    />
-    <Say voice="alice" language="es-ES">Llamada finalizada. Adiós.</Say>
+        language="es-US"
+        speechTimeout="auto"
+        numDigits="1"
+    >
+        <Say voice="Polly.Conchita" language="es-ES">{safe_greeting}</Say>
+    </Gather>
+    <Say voice="Polly.Conchita" language="es-ES">No escuché tu respuesta. Por favor llama de nuevo.</Say>
     <Hangup/>
 </Response>"""
         return xml
@@ -172,7 +178,7 @@ class TwiMLResponseBuilder:
 
         xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="alice" language="es-ES">{safe_message}</Say>
+    <Say voice="Polly.Conchita" language="es-ES">{safe_message}</Say>
     <Hangup/>
 </Response>"""
         return xml
@@ -294,4 +300,43 @@ class TwilioWebhookHandler:
                 self.twiml_builder.error_response("Error procesando su llamada"),
                 500,
                 "application/xml"
+            )     EOF
+Last login: Sat Sep 26 12:37:24 on ttys000
+jorgeabalo@iMac-de-Jorge ~ % cd ~/nexxus-core-repo
+cat > services/twilio_service.py << 'EOF'
+heredoc> >....                                                                                                          
+                logger.error(f"[{call_sid}] Error creando sesión: {e}")
+                return (
+                    self.twiml_builder.error_response("Error iniciando sesión"),
+                    500,
+                    "application/xml"
+                )
+
+        # 5. Generar respuesta TwiML
+        greeting = f"Hola, soy {agent} de {tenant}. ¿En qué puedo ayudarte?"
+
+        try:
+            twiml = self.twiml_builder.gather_response(
+                session_id=session_id or call_sid,
+                greeting=greeting,
+                max_duration_seconds=600,
+                callback_url="/api/twilio/mensaje"
             )
+
+            logger.info(f"[{call_sid}] TwiML generado correctamente")
+
+            return (twiml, 200, "application/xml")
+
+        except Exception as e:
+            logger.error(f"[{call_sid}] Error generando TwiML: {e}")
+            return (
+                self.twiml_builder.error_response("Error procesando su llamada"),
+                500,
+                "application/xml" EOF
+cd ~/nexxus-core-repo
+git add services/twilio_service.py
+git commit -m "Fix: Use Gather for voice input instead of Record - enable Claude to listen to user responses"
+git push
+^C
+cd ~/nexxus-core-repo
+rm services/twilio_service.py
