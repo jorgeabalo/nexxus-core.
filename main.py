@@ -142,6 +142,7 @@ async def twilio_mensaje_callback(request: Request):
         recording_url = call_data.get("RecordingUrl", "")
         
         logger.info(f"[{call_sid}] Callback Twilio: speech='{speech_result[:50]}'")
+        logger.info(f"[{call_sid}] PARÁMETROS RECIBIDOS: {list(call_data.keys())}")
         
         if not speech_result and not recording_url:
             # No hay entrada del usuario
@@ -154,6 +155,13 @@ async def twilio_mensaje_callback(request: Request):
             return Response(content=no_input_twiml, status_code=200, media_type="application/xml")
         
         # Procesar con Claudia
+        if not recepcionista:
+            logger.error(f"[{call_sid}] RecepcionistaIAService no inicializado")
+            return Response(content="""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="alice" language="es-ES">Sistema no disponible.</Say>
+    <Hangup/>
+</Response>""", status_code=200, media_type="application/xml")
         session_id = f"{call_sid}"
         respuesta = recepcionista.procesar_mensaje(session_id, speech_result)
         
