@@ -69,7 +69,7 @@ async def _lifespan(app: FastAPI):
 
 app = FastAPI(title="NEXXUS AI Support", lifespan=_lifespan)
 servicio = NexxusIAService()
-agente_configuracion = AgenteConfiguracion()
+# agente_configuracion = AgenteConfiguracion()
 security = HTTPBasic()
 
 RATE_LIMIT_MAX_REQUESTS = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "20"))
