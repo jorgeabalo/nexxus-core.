@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request
-from fastapi.responses import PlainTextResponse, Response, XMLResponse
+from fastapi.responses import PlainTextResponse, Response
 import uuid
 import logging
 
@@ -95,7 +95,7 @@ async def twilio_voice_webhook(request: Request):
     <Say voice="alice" language="es-ES">Error: Sistema no configurado correctamente.</Say>
     <Hangup/>
 </Response>"""
-            return XMLResponse(content=error_twiml, status_code=500, media_type="application/xml")
+            return Response(content=error_twiml, status_code=500, media_type="application/xml")
         
         twiml_response, status_code, content_type = twilio_handler.handle_incoming_call(
             call_data=call_data,
@@ -117,7 +117,7 @@ async def twilio_voice_webhook(request: Request):
     <Say voice="alice" language="es-ES">Error procesando su llamada. Por favor intente más tarde.</Say>
     <Hangup/>
 </Response>"""
-        return XMLResponse(
+        return Response(
             content=error_twiml,
             status_code=500,
             media_type="application/xml"
