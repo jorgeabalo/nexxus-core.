@@ -150,8 +150,8 @@ LÍMITES:
         
         # Agregar mensaje al historial
         sesion['historial'].append({
-            'rol': 'usuario',
-            'contenido': mensaje_usuario
+            'role': 'user',
+            'content': mensaje_usuario
         })
         
         try:
@@ -167,8 +167,8 @@ LÍMITES:
             
             # Agregar respuesta al historial
             sesion['historial'].append({
-                'rol': 'asistente',
-                'contenido': respuesta_texto
+                'role': 'assistant',
+                'content': respuesta_texto
             })
             
             return respuesta_texto
