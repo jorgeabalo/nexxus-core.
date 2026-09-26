@@ -122,7 +122,7 @@ def _verificar_operador(credentials: HTTPBasicCredentials = Depends(security)):
     return credentials.username
 
 
-# def _obtener_negocio_o_404(slug: str) -> Negocio:
+# # def _obtener_negocio_o_404(slug: str) -> Negocio:
     db = SessionLocal()
     try:
         negocio = db.query(Negocio).filter(Negocio.slug == slug).first()
