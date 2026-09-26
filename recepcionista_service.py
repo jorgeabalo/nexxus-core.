@@ -10,7 +10,14 @@ class RecepcionistaIAService:
     UMBRAL_ESCALADO_SEGUNDOS = 10 * 60  # 10 minutos
     
     def __init__(self):
-        self.client = Anthropic()
+        try:
+            self.client = Anthropic()
+            print("✓ Anthropic client inicializado correctamente")
+        except Exception as e:
+            import traceback
+            print(f"✗ ERROR inicializando Anthropic: {str(e)}")
+            print(f"TRACEBACK: {traceback.format_exc()}")
+            raise
         self.sesiones = {}
         self.cargar_config()
     
@@ -167,6 +174,10 @@ LÍMITES:
             return respuesta_texto
         
         except Exception as e:
+            # Log the actual error for debugging
+            import traceback
+            print(f"ERROR EN PROCESAR_MENSAJE: {str(e)}")
+            print(f"TRACEBACK: {traceback.format_exc()}")
             # Fallback si hay error con la API
             return f"Disculpa, tengo un problema técnico. Por favor, llama directamente al 281-352-4784 o habla con Roberto Gracian al 832-245-4634. ¡Gracias!"
     
