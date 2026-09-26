@@ -295,13 +295,3 @@ class TwilioWebhookHandler:
                 500,
                 "application/xml"
             )
-EOFls -la /mnt/user-data/outputs/ 2>/dev/null | grep twilio
-ls -la services/
-wc -l services/twilio_service.py
-cat > main_twilio_imports.txt << 'EOF'
-from fastapi.responses import XMLResponse
-from services.twilio_service import TwilioWebhookHandler
-import logging
-
-logger = logging.getLogger(__name__)
-twilio_handler = TwilioWebhookHandler()
