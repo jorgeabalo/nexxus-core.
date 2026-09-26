@@ -82,7 +82,10 @@ async def twilio_voice_webhook(request: Request):
         signature = request.headers.get("X-Twilio-Signature", "")
         
         # Construir URL exacta
-        request_url = str(request.url)
+        # Construir URL correcta (forzar https en Railway)
+        scheme = request.headers.get("X-Forwarded-Proto", "https")
+        host = request.headers.get("X-Forwarded-Host") or request.url.netloc
+        request_url = f"{scheme}://{host}{request.url.path}
         
         logger.info(f"Webhook Twilio recibido: {request_url}")
         logger.debug(f"CallSid={call_data.get('CallSid')}, From={call_data.get('From')}, To={call_data.get('To')}")
