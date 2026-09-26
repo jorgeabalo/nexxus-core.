@@ -35,9 +35,9 @@ import secrets
 import uuid
 
 from generic_service import NexxusIAService
-from agente_configuracion import AgenteConfiguracion
-from models import SessionLocal, Negocio, ClienteNegocio
-from verticals import VERTICALES
+# from agente_configuracion import AgenteConfiguracion
+# from models import SessionLocal, Negocio, ClienteNegocio
+# from verticals import VERTICALES
 import billing_service
 import progreso_service
 import riesgo_service
