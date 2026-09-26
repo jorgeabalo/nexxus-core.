@@ -125,3 +125,56 @@ async def twilio_voice_webhook(request: Request):
             status_code=500,
             media_type="application/xml"
         )
+
+@app.post("/api/twilio/mensaje")
+async def twilio_mensaje_callback(request: Request):
+    """
+    Callback que Twilio invoca después de grabar/transcribir.
+    Procesa la entrada del usuario y devuelve TwiML con la respuesta.
+    """
+    try:
+        # Leer datos POST (form-urlencoded de Twilio)
+        form_data = await request.form()
+        call_data = dict(form_data)
+        
+        call_sid = call_data.get("CallSid", "UNKNOWN")
+        speech_result = call_data.get("SpeechResult", "")
+        recording_url = call_data.get("RecordingUrl", "")
+        
+        logger.info(f"[{call_sid}] Callback Twilio: speech='{speech_result[:50]}'")
+        
+        if not speech_result and not recording_url:
+            # No hay entrada del usuario
+            no_input_twiml = """<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="alice" language="es-ES">No escuché tu pregunta. Por favor intenta de nuevo.</Say>
+    <Record action="/api/twilio/mensaje" method="POST" maxLength="600" transcribe="true" transcribeCallback="/api/twilio/mensaje" playBeep="true"/>
+    <Hangup/>
+</Response>"""
+            return Response(content=no_input_twiml, status_code=200, media_type="application/xml")
+        
+        # Procesar con Claudia
+        session_id = f"{call_sid}"
+        respuesta = recepcionista.procesar_mensaje(session_id, speech_result)
+        
+        logger.info(f"[{call_sid}] Respuesta Claudia: {respuesta[:100]}")
+        
+        # Generar TwiML con la respuesta
+        safe_response = respuesta.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        response_twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="alice" language="es-ES">{safe_response}</Say>
+    <Record action="/api/twilio/mensaje" method="POST" maxLength="600" transcribe="true" transcribeCallback="/api/twilio/mensaje" playBeep="true"/>
+    <Hangup/>
+</Response>"""
+        
+        return Response(content=response_twiml, status_code=200, media_type="application/xml")
+        
+    except Exception as e:
+        logger.error(f"Error en callback Twilio: {e}", exc_info=True)
+        error_twiml = """<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="alice" language="es-ES">Error procesando tu mensaje. Adiós.</Say>
+    <Hangup/>
+</Response>"""
+        return Response(content=error_twiml, status_code=500, media_type="application/xml")

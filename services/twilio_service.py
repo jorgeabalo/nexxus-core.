@@ -128,7 +128,7 @@ class TwiMLResponseBuilder:
         session_id: str,
         greeting: str,
         max_duration_seconds: int = 10,
-        callback_url: str = "/api/mensaje"
+        callback_url: str = "/api/twilio/mensaje"
     ) -> str:
         """
         Crea una respuesta TwiML que:
@@ -155,7 +155,7 @@ class TwiMLResponseBuilder:
         method="POST"
         maxLength="{max_duration_seconds}"
         transcribe="true"
-        transcribeCallback="/api/mensaje"
+        transcribeCallback="/api/twilio/mensaje"
         playBeep="true"
     />
     <Say voice="alice" language="es-ES">Llamada finalizada. Adiós.</Say>
@@ -281,7 +281,7 @@ class TwilioWebhookHandler:
                 session_id=session_id or call_sid,
                 greeting=greeting,
                 max_duration_seconds=600,
-                callback_url="/api/mensaje"
+                callback_url="/api/twilio/mensaje"
             )
 
             logger.info(f"[{call_sid}] TwiML generado correctamente")
