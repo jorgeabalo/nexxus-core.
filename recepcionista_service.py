@@ -157,7 +157,7 @@ LÍMITES:
         try:
             # Llamar a Claude API con el prompt del sistema
             respuesta = self.client.messages.create(
-           model="claude-haiku",
+             model=os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
                 max_tokens=500,
                 system=self._generar_prompt_sistema(),
                 messages=sesion['historial']
