@@ -177,7 +177,7 @@ async def twilio_mensaje_callback(request: Request):
 
         session_id = f"{call_sid}"
         try:
-            respuesta = recepcionista.procesar_mensaje(session_id, speech_result, call_data.get("From"))
+            respuesta = recepcionista.procesar_mensaje(session_id, speech_result, call_data.get("From"), call_data.get("To"))
             logger.info(f"[{call_sid}] Respuesta de Claude: {respuesta[:100]}")
         except Exception as e:
             logger.error(f"[{call_sid}] Error procesando mensaje con Claude: {e}")

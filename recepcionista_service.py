@@ -2,6 +2,7 @@ import json
 import os
 import re
 import logging
+import threading
 from datetime import datetime
 from typing import Optional, Dict, Any
 from anthropic import Anthropic
@@ -161,7 +162,8 @@ DEJAR DATOS DE CONTACTO:
         }
     
     def procesar_mensaje(self, sesion_id: str, mensaje_usuario: str,
-                         telefono_llamante: Optional[str] = None) -> str:
+                         telefono_llamante: Optional[str] = None,
+                         numero_negocio: Optional[str] = None) -> str:
         """Procesa un mensaje del usuario y retorna la respuesta de Claudia"""
         
         if sesion_id not in self.sesiones:
@@ -197,7 +199,7 @@ DEJAR DATOS DE CONTACTO:
                 'content': respuesta_texto
             })
             
-            return self._extraer_contacto(sesion_id, respuesta_texto, telefono_llamante)
+            return self._extraer_contacto(sesion_id, respuesta_texto, telefono_llamante, numero_negocio)
         
         except Exception as e:
             # Log the actual error for debugging
@@ -208,7 +210,8 @@ DEJAR DATOS DE CONTACTO:
             return f"Disculpa, tengo un problema técnico. Por favor, llama directamente al 281-352-4784 o habla con Roberto Gracian al 832-245-4634. ¡Gracias!"
     
     def _extraer_contacto(self, sesion_id: str, texto: str,
-                          telefono_llamante: Optional[str]) -> str:
+                          telefono_llamante: Optional[str],
+                          numero_negocio: Optional[str] = None) -> str:
         """Registra los datos de contacto que dejó el cliente y devuelve el texto limpio para leer en voz alta."""
         for match in PATRON_CONTACTO.finditer(texto):
             lead = {"sesion_id": sesion_id, "telefono_llamante": telefono_llamante,
@@ -220,9 +223,48 @@ DEJAR DATOS DE CONTACTO:
             self.sesiones.get(sesion_id, {}).setdefault('contactos', []).append(lead)
             logger.warning(f"NUEVO_CONTACTO {json.dumps(lead, ensure_ascii=False)}")
             print(f"NUEVO_CONTACTO {json.dumps(lead, ensure_ascii=False)}", flush=True)
+            # El SMS se envía en segundo plano para no retrasar la respuesta de voz
+            threading.Thread(target=self._avisar_por_sms, args=(lead, numero_negocio), daemon=True).start()
         limpio = PATRON_CONTACTO.sub("", texto)
         limpio = limpio.replace("*", "").replace("#", "")
         return re.sub(r"\s+", " ", limpio).strip()
+
+    @staticmethod
+    def _a_e164(numero: str) -> str:
+        digitos = re.sub(r"\D", "", numero or "")
+        if len(digitos) == 10:
+            digitos = "1" + digitos
+        return f"+{digitos}" if digitos else ""
+
+    def _avisar_por_sms(self, lead: Dict[str, Any], numero_negocio: Optional[str]) -> None:
+        """Envía un SMS al dueño con los datos del contacto para que devuelva la llamada."""
+        try:
+            sid = os.getenv("TWILIO_ACCOUNT_SID")
+            token = os.getenv("TWILIO_AUTH_TOKEN")
+            destino = self._a_e164(os.getenv("LEADS_SMS_TO") or
+                                   self.config.get("contactos", {}).get("propietario", {}).get("telefono", ""))
+            origen = self._a_e164(os.getenv("LEADS_SMS_FROM") or numero_negocio or "")
+            if not (sid and token and destino and origen):
+                logger.error("SMS de contacto NO enviado: faltan TWILIO_ACCOUNT_SID/TOKEN, destino u origen")
+                return
+            telefono = lead.get("telefono") or lead.get("telefono_llamante") or "-"
+            partes = [
+                "Golden Age Gym - Nuevo contacto (Claudia)",
+                f"Nombre: {lead.get('nombre') or '-'}",
+                f"Tel: {telefono}",
+            ]
+            if lead.get("email"):
+                partes.append(f"Email: {lead['email']}")
+            if lead.get("motivo"):
+                partes.append(f"Motivo: {lead['motivo']}")
+            partes.append("Por favor devolver la llamada.")
+            from twilio.rest import Client
+            msg = Client(sid, token).messages.create(to=destino, from_=origen, body="\n".join(partes))
+            logger.warning(f"SMS de contacto enviado a {destino} (sid={msg.sid}, estado={msg.status})")
+            print(f"SMS_CONTACTO_OK sid={msg.sid} estado={msg.status}", flush=True)
+        except Exception as e:
+            logger.error(f"Error enviando SMS de contacto: {e}")
+            print(f"SMS_CONTACTO_ERROR {e}", flush=True)
 
     def finalizar_sesion(self, sesion_id: str) -> Dict[str, Any]:
         """Finaliza una sesión"""
