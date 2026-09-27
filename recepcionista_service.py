@@ -28,8 +28,19 @@ class RecepcionistaIAService:
             print(f"TRACEBACK: {traceback.format_exc()}")
             raise
         self.sesiones = {}
+        # Hook opcional: lo asigna main.py para registrar leads en Supabase.
+        # Firma: on_lead(sesion_id, lead_dict, numero_negocio). Nunca debe lanzar.
+        self.on_lead = None
         self.cargar_config()
     
+    @staticmethod
+    def modelo(variable: str = "ANTHROPIC_MODEL") -> str:
+        """Modelo LLM configurable por entorno. No se acopla a un ID concreto:
+        ANTHROPIC_MODEL (o MODELO_CLAUDE, nombre heredado). El valor por
+        defecto solo se usa si ninguna variable está definida."""
+        return (os.getenv(variable) or os.getenv("ANTHROPIC_MODEL")
+                or os.getenv("MODELO_CLAUDE") or "claude-haiku-4-5-20251001")
+
     def cargar_config(self):
         """Carga la configuración del negocio desde JSON"""
         try:
@@ -185,7 +196,7 @@ DEJAR DATOS DE CONTACTO:
         try:
             # Llamar a Claude API con el prompt del sistema
             respuesta = self.client.messages.create(
-                model=os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001"),
+                model=self.modelo(),
                 max_tokens=200,  # respuestas cortas = se generan y se leen más rápido
                 system=self._generar_prompt_sistema(telefono_llamante),
                 messages=sesion['historial']
@@ -225,6 +236,11 @@ DEJAR DATOS DE CONTACTO:
             print(f"NUEVO_CONTACTO {json.dumps(lead, ensure_ascii=False)}", flush=True)
             # El SMS se envía en segundo plano para no retrasar la respuesta de voz
             threading.Thread(target=self._avisar_por_sms, args=(lead, numero_negocio), daemon=True).start()
+            if self.on_lead:
+                try:
+                    self.on_lead(sesion_id, lead, numero_negocio)
+                except Exception as e:  # el registro nunca afecta a la llamada
+                    logger.error(f"on_lead falló: {e}")
         limpio = PATRON_CONTACTO.sub("", texto)
         limpio = limpio.replace("*", "").replace("#", "")
         return re.sub(r"\s+", " ", limpio).strip()
@@ -303,6 +319,48 @@ DEJAR DATOS DE CONTACTO:
         lineas.append("¡Te esperamos!")
         return self._enviar_sms(destino, os.getenv("LEADS_SMS_FROM") or numero_negocio,
                                 "\n".join(lineas), "SMS_DESPEDIDA")
+
+    def historial_de(self, sesion_id: str) -> list:
+        """Copia del historial de la sesión (para el resumen de fin de llamada)."""
+        sesion = self.sesiones.get(sesion_id) or {}
+        return [dict(m) for m in sesion.get('historial', [])]
+
+    def generar_resumen(self, historial: list) -> Optional[Dict[str, str]]:
+        """Resumen breve de la llamada para el Manager Panel.
+        Devuelve {summary, intent, outcome} o None si no hubo conversación.
+        No guarda ni devuelve el transcript. Modelo: SUMMARY_MODEL o ANTHROPIC_MODEL."""
+        if not historial:
+            return None
+        lineas = []
+        for m in historial[-30:]:
+            quien = "Cliente" if m.get("role") == "user" else "Claudia"
+            texto = PATRON_CONTACTO.sub("", str(m.get("content", ""))).strip()
+            if texto:
+                lineas.append(f"{quien}: {texto}")
+        if not lineas:
+            return None
+        instrucciones = (
+            "Resume esta llamada telefónica a un gimnasio para el panel del gerente. "
+            "Responde SOLO con JSON válido, sin texto extra, con estas claves:\n"
+            '"summary": 1-2 frases en español con lo que pidió el cliente y lo que se resolvió '
+            "(sin inventar nada que no esté en la conversación);\n"
+            '"intent": una de [information, pricing, schedule, membership, appointment, complaint, payment, other];\n'
+            '"outcome": una de [information_provided, lead_captured, appointment_booked, transfer_requested, unresolved, caller_hung_up].'
+        )
+        try:
+            r = self.client.messages.create(
+                model=self.modelo("SUMMARY_MODEL"),
+                max_tokens=250,
+                system=instrucciones,
+                messages=[{"role": "user", "content": "\n".join(lineas)}],
+            )
+            texto = r.content[0].text.strip()
+            inicio, fin = texto.find("{"), texto.rfind("}")
+            datos = json.loads(texto[inicio:fin + 1]) if inicio >= 0 and fin > inicio else {}
+            return {k: str(datos[k]) for k in ("summary", "intent", "outcome") if datos.get(k)}
+        except Exception as e:
+            logger.error(f"generar_resumen falló: {e}")
+            return None
 
     def finalizar_sesion(self, sesion_id: str) -> Dict[str, Any]:
         """Finaliza una sesión"""

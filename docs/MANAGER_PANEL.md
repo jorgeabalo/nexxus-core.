@@ -1,0 +1,116 @@
+# AITA/Nexxus — Manager Panel (Fase 1)
+
+Primer cliente: **Golden Age Fitness & Training** (`tenant_slug = golden_age`).
+URL: `https://nexxus-core-production.up.railway.app/manager`
+
+## Arquitectura
+
+```
+Cliente llama
+   │
+   ▼
+TWILIO (+1 346-245-7940) ── /webhooks/twilio/voice · /api/twilio/mensaje · /webhooks/twilio/status
+   │
+   ▼
+NEXXUS CORE (FastAPI, Railway)
+   ├─ Claudia (recepcionista_service.py) ── LLM configurable: ANTHROPIC_MODEL / SUMMARY_MODEL
+   ├─ services/call_logger.py ── hilo de fondo, no bloqueante ──┐   (service_role, solo servidor)
+   └─ /manager  (HTML/CSS/JS estático, sin datos)                │
+                                                                 ▼
+SUPABASE (proyecto "Golden-age")
+   ├─ tenants ─ tenant_users (owner/manager/staff) ─ tenant_invites ─ auth.users
+   ├─ members · staff · services · check_ins · appointments · payments · messages · …
+   ├─ calls · leads · alerts
+   ├─ vistas *_overview + RPC manager_dashboard / manager_activity / manager_alerts
+   └─ RLS: cada usuario solo ve/modifica su tenant
+                                                                 ▲
+MANAGER PANEL (navegador / teléfono)                             │
+   login Supabase Auth → JWT del usuario → consultas con RLS ────┘
+```
+
+### Principios
+* **Claudia tiene prioridad.** `call_logger` encola eventos y los procesa en un
+  hilo propio con timeout corto. Cualquier error de Supabase se captura y se
+  registra (`CALL_LOGGER_ERROR` en logs); la respuesta TwiML nunca espera.
+  Si faltan `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`, el logger se apaga solo.
+* **Nada inventado.** Sin filas → 0 / "No data yet". No hay datos demo.
+* **Sin transcript.** Al terminar la llamada se genera un resumen breve
+  (`calls.summary`, `intent`, `outcome`) con el modelo de `SUMMARY_MODEL`
+  (o `ANTHROPIC_MODEL`). El texto de la conversación no se guarda.
+* **Secretos.** El navegador solo recibe `SUPABASE_URL` y la clave pública
+  (`SUPABASE_ANON_KEY`) vía `GET /api/manager/config`. `SUPABASE_SERVICE_ROLE_KEY`,
+  `ANTHROPIC_API_KEY` y `TWILIO_AUTH_TOKEN` solo existen en el servidor.
+  `/manager` envía `Cache-Control: no-store`, CSP estricta y `X-Frame-Options: DENY`.
+
+## Trazabilidad
+
+```
+calls.id ◄── leads.call_id           calls.lead_id ──► leads.id
+calls.id ◄── appointments.call_id    leads.id ◄── appointments.lead_id
+calls.id ◄── payments.call_id        appointments.id ◄── payments.appointment_id
+alerts.call_id / lead_id / appointment_id / payment_id / member_id
+```
+Un trigger (`enforce_same_tenant`) impide enlazar filas de tenants distintos.
+
+## Qué escribe Claudia hoy
+
+| Evento | Escritura |
+|---|---|
+| Entra la llamada (`/voice`) | `calls` (in_progress, caller_phone, called_phone) — tenant por `tenants.twilio_phone` |
+| El cliente deja sus datos (`[CONTACTO: …]`) | `leads` (call_id) + `calls.lead_id`, `follow_up_required=true` + `alerts` tipo `follow_up` |
+| Termina la llamada (`/status`) | `calls.status`, `ended_at`, `duration_seconds`, `summary`, `intent`, `outcome` |
+| Llamada sin cierre > 30 min | `calls.status = abandoned` |
+
+### Pendiente de conectar (estructura ya lista)
+* **Citas desde Claudia:** Claudia aún no agenda. Cuando lo haga: `appointments`
+  con `source='claudia'`, `call_id`, `lead_id` y `calls.appointment_id`.
+* **Transferencias:** Claudia hoy da el teléfono de Roberto; no hace `<Dial>`.
+  Cuando transfiera de verdad: `calls.transferred = true`.
+* **Identificar socio que llama:** `calls.member_id` (buscar por teléfono).
+* **Check-ins:** la tabla existe; falta el registro por QR/recepción.
+* **Pagos online:** `payments.provider` / `provider_ref` preparados para Stripe/PayPal.
+* El status callback de Twilio debe estar configurado en el número
+  (`/webhooks/twilio/status`) para cerrar llamadas y generar resúmenes.
+
+## Base de datos (migraciones en `supabase/migrations/`)
+1. `20260927120000_tenancy_core.sql` — `tenants`, `tenant_users`, `tenant_invites`; `tenant_id` en las 9 tablas existentes; FKs compuestas (id, tenant_id); índices.
+2. `20260927120100_operations.sql` — columnas nuevas en `appointments` y `payments`; tablas `calls`, `leads`, `alerts`; triggers `updated_at`.
+3. `20260927120200_security_rls.sql` — helpers de tenant, alta por invitación, RLS en todas las tablas.
+4. `20260927120300_manager_views.sql` — vistas `member_overview`, `appointment_overview`, `payment_overview`, `call_overview`; RPC `manager_dashboard`, `manager_activity`, `manager_alerts`.
+5. `20260927120400_traceability_links.sql` — `payments.appointment_id/lead_id/call_id`, trigger `enforce_same_tenant`.
+6. `20260927120500_private_auth_helpers.sql` — helpers SECURITY DEFINER movidos al esquema `private`.
+
+No se borró ni renombró ninguna tabla. Único cambio de restricción existente:
+`members.member_id` pasó de único global a único por tenant.
+
+## Roles
+| Rol | Ver | Crear/editar | Borrar | Equipo |
+|---|---|---|---|---|
+| owner | su tenant | sí | sí | invita/gestiona |
+| manager | su tenant | sí | sí | ve invitaciones |
+| staff | su tenant | sí | no | — |
+
+## Alta de usuarios (sin contraseñas en código)
+1. Registrar la invitación (SQL Editor de Supabase):
+   ```sql
+   insert into public.tenant_invites (tenant_id, email, role, staff_id)
+   select t.id, 'EMAIL_EN_MINUSCULAS', 'owner',            -- o 'manager' / 'staff'
+          (select s.id from public.staff s where s.tenant_id = t.id and s.first_name = 'Roberto' limit 1)
+   from public.tenants t where t.slug = 'golden_age';
+   ```
+2. Supabase → Authentication → Users → **Invite user** con ese mismo email.
+3. La persona abre el email, llega a `/manager`, crea su contraseña y entra.
+   El vínculo tenant/rol se crea solo (trigger), exista o no el usuario antes.
+
+## Añadir otro tenant
+`insert into tenants (slug, name, vertical, timezone, twilio_phone, branding, modules)`,
+mapear su número en `phone_tenant_mapping.json`, e invitar a su owner. El
+mismo frontend cambia marca, colores y módulos según `tenants.branding/modules`.
+
+## Tests
+* `tests/test_manager_and_claudia.py` — Supabase caído/lento no afecta a
+  `/voice`, `/api/twilio/mensaje` ni `/status`; trazabilidad call→lead→alert;
+  idempotencia; modelo configurable; `/api/manager/config` sin secretos;
+  cabeceras de seguridad; endpoints existentes.
+* RLS y aislamiento: probado en SQL con usuarios simulados de dos tenants
+  (transacción revertida, sin datos residuales).

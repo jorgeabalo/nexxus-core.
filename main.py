@@ -1,6 +1,9 @@
 from fastapi import FastAPI, Request
-from fastapi.responses import Response
+from fastapi.responses import Response, FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 import logging
+import os
+from pathlib import Path
 
 # Importar servicios de Twilio
 from services.twilio_service import TwilioWebhookHandler
@@ -25,6 +28,107 @@ try:
 except Exception as e:
     logger.error(f"Error al inicializar RecepcionistaIAService: {e}")
     recepcionista = None
+
+# ---------------------------------------------------------------------------
+# Registro de llamadas en Supabase (Manager Panel). NO bloqueante: si Supabase
+# falla o no está configurado, Claudia sigue funcionando exactamente igual.
+# ---------------------------------------------------------------------------
+try:
+    from services.call_logger import CallLogger
+    call_logger = CallLogger()
+except Exception as e:
+    logger.error(f"CallLogger no disponible: {e}")
+    call_logger = None
+
+if recepcionista and call_logger:
+    recepcionista.on_lead = lambda sesion_id, lead, numero: call_logger.lead_captured(sesion_id, lead, numero)
+
+_ESTADOS_FINALES = {"completed", "busy", "no-answer", "failed", "canceled"}
+_llamadas_cerradas = set()
+
+
+def _registrar_inicio_llamada(call_data: dict) -> None:
+    """Nunca lanza: Claudia tiene prioridad."""
+    try:
+        if not call_logger:
+            return
+        slug = None
+        if twilio_handler:
+            info = twilio_handler.phone_resolver.resolve(call_data.get("To", "")) or {}
+            slug = info.get("tenant")
+        call_logger.call_started(call_data, slug)
+    except Exception as e:
+        logger.error(f"registrar_inicio_llamada falló: {e}")
+
+
+def _registrar_fin_llamada(call_data: dict) -> None:
+    """Nunca lanza. El resumen se genera en el hilo de fondo."""
+    try:
+        call_sid = call_data.get("CallSid", "")
+        if (not call_logger or not call_sid or call_sid in _llamadas_cerradas
+                or call_data.get("CallStatus") not in _ESTADOS_FINALES):
+            return
+        _llamadas_cerradas.add(call_sid)
+        historial = recepcionista.historial_de(call_sid) if recepcionista else []
+        resumir = (lambda: recepcionista.generar_resumen(historial)) if (recepcionista and historial) else None
+        call_logger.call_ended(call_data, resumir)
+    except Exception as e:
+        logger.error(f"registrar_fin_llamada falló: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Manager Panel (/manager). La página es solo la "cáscara" (login + JS): no
+# contiene datos. Los datos se piden a Supabase con el JWT del usuario y RLS
+# los filtra por tenant. Al navegador solo llega la URL y la clave pública
+# (anon); SUPABASE_SERVICE_ROLE_KEY nunca sale del servidor.
+# ---------------------------------------------------------------------------
+MANAGER_DIR = Path(__file__).parent / "manager"
+
+
+def _manager_csp() -> str:
+    supa = (os.getenv("SUPABASE_URL") or "").rstrip("/")
+    ws = supa.replace("https://", "wss://") if supa else ""
+    return (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data:; "
+        f"connect-src 'self' {supa} {ws}; "
+        "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    )
+
+
+@app.middleware("http")
+async def manager_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/manager") or request.url.path.startswith("/api/manager"):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Content-Security-Policy"] = _manager_csp()
+    return response
+
+
+@app.get("/api/manager/config")
+async def manager_config():
+    """Configuración PÚBLICA del panel. Nunca incluir claves privadas aquí."""
+    url = os.getenv("SUPABASE_URL")
+    anon = os.getenv("SUPABASE_ANON_KEY")
+    if not url or not anon:
+        return JSONResponse({"error": "manager_not_configured"}, status_code=503)
+    return {"supabaseUrl": url.rstrip("/"), "supabaseAnonKey": anon}
+
+
+if MANAGER_DIR.is_dir():
+    app.mount("/manager/assets", StaticFiles(directory=MANAGER_DIR / "assets"), name="manager-assets")
+
+    @app.get("/manager")
+    @app.get("/manager/")
+    async def manager_index():
+        return FileResponse(MANAGER_DIR / "index.html", media_type="text/html")
+
 
 @app.get("/")
 async def root():
@@ -106,6 +210,9 @@ async def twilio_voice_webhook(request: Request):
             session_creator_callback=None
         )
         
+        if status_code == 200:
+            _registrar_inicio_llamada(call_data)
+
         return Response(
             content=twiml_response,
             status_code=status_code,
@@ -151,6 +258,7 @@ async def twilio_status_callback(request: Request):
             return Response(status_code=403)
 
         logger.info(f"[{call_sid}] Estado de llamada: {estado}")
+        _registrar_fin_llamada(call_data)
         if (estado == "completed" and recepcionista and call_sid
                 and call_sid not in _sms_despedida_enviados):
             _sms_despedida_enviados.add(call_sid)
