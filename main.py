@@ -125,6 +125,48 @@ async def twilio_voice_webhook(request: Request):
             media_type="application/xml"
         )
 
+# CallSids a los que ya se envió el SMS de despedida (evita duplicados si Twilio reintenta)
+_sms_despedida_enviados = set()
+
+@app.post("/webhooks/twilio/status")
+async def twilio_status_callback(request: Request):
+    """
+    Status callback de Twilio. Configurarlo en el número de Twilio
+    (Voice -> "Call status changes"). Cuando la llamada termina (completed),
+    se envía al cliente un SMS de agradecimiento con dirección, teléfono y web.
+    """
+    try:
+        form_data = await request.form()
+        call_data = dict(form_data)
+        call_sid = call_data.get("CallSid", "")
+        estado = call_data.get("CallStatus", "")
+
+        # Validar que la petición viene de Twilio
+        signature = request.headers.get("X-Twilio-Signature", "")
+        scheme = request.headers.get("X-Forwarded-Proto", "https")
+        host = request.headers.get("X-Forwarded-Host") or request.url.netloc
+        request_url = f"{scheme}://{host}{request.url.path}"
+        if twilio_handler and not twilio_handler.signature_validator.validate(request_url, call_data, signature):
+            logger.warning(f"[{call_sid}] Status callback con firma inválida, ignorado")
+            return Response(status_code=403)
+
+        logger.info(f"[{call_sid}] Estado de llamada: {estado}")
+        if (estado == "completed" and recepcionista and call_sid
+                and call_sid not in _sms_despedida_enviados):
+            _sms_despedida_enviados.add(call_sid)
+            import threading
+            threading.Thread(
+                target=recepcionista.enviar_sms_despedida,
+                args=(call_data.get("From", ""), call_data.get("To", "")),
+                daemon=True,
+            ).start()
+            if recepcionista:
+                recepcionista.finalizar_sesion(call_sid)
+        return Response(status_code=204)
+    except Exception as e:
+        logger.error(f"Error en status callback: {e}", exc_info=True)
+        return Response(status_code=204)
+
 @app.post("/api/twilio/mensaje")
 async def twilio_mensaje_callback(request: Request):
     """

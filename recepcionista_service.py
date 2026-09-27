@@ -266,6 +266,44 @@ DEJAR DATOS DE CONTACTO:
             logger.error(f"Error enviando SMS de contacto: {e}")
             print(f"SMS_CONTACTO_ERROR {e}", flush=True)
 
+    def _enviar_sms(self, destino: str, origen: str, cuerpo: str, etiqueta: str) -> bool:
+        """Envía un SMS con Twilio. Devuelve True si Twilio lo aceptó."""
+        try:
+            sid = os.getenv("TWILIO_ACCOUNT_SID")
+            token = os.getenv("TWILIO_AUTH_TOKEN")
+            destino, origen = self._a_e164(destino), self._a_e164(origen)
+            if not (sid and token and destino and origen):
+                logger.error(f"{etiqueta}: SMS no enviado, faltan credenciales, destino u origen")
+                return False
+            from twilio.rest import Client
+            msg = Client(sid, token).messages.create(to=destino, from_=origen, body=cuerpo)
+            print(f"{etiqueta}_OK to={destino} sid={msg.sid} estado={msg.status}", flush=True)
+            return True
+        except Exception as e:
+            print(f"{etiqueta}_ERROR {e}", flush=True)
+            return False
+
+    def enviar_sms_despedida(self, telefono_llamante: str, numero_negocio: str) -> bool:
+        """SMS de agradecimiento al cliente cuando termina la llamada."""
+        if os.getenv("SMS_DESPEDIDA_ACTIVO", "true").lower() in ("false", "0", "no"):
+            return False
+        destino = self._a_e164(telefono_llamante)
+        # Solo números de EE. UU./Canadá válidos (evita ocultos, "anonymous", internacionales)
+        if not re.fullmatch(r"\+1\d{10}", destino or ""):
+            print(f"SMS_DESPEDIDA_OMITIDO numero={telefono_llamante!r}", flush=True)
+            return False
+        negocio = self.config.get("negocio", {})
+        lineas = [
+            "¡Gracias por llamar a Golden Age Gym! Fue un gusto atenderte.",
+            f"Dirección: {negocio.get('direccion', '1914 Gessner Rd, Houston, TX')}",
+            f"Teléfono: {negocio.get('telefono', '281-352-4784')}",
+        ]
+        if negocio.get("website"):
+            lineas.append(f"Web: {negocio['website']}")
+        lineas.append("¡Te esperamos!")
+        return self._enviar_sms(destino, os.getenv("LEADS_SMS_FROM") or numero_negocio,
+                                "\n".join(lineas), "SMS_DESPEDIDA")
+
     def finalizar_sesion(self, sesion_id: str) -> Dict[str, Any]:
         """Finaliza una sesión"""
         if sesion_id in self.sesiones:
