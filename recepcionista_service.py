@@ -1,8 +1,16 @@
 import json
 import os
+import re
+import logging
 from datetime import datetime
 from typing import Optional, Dict, Any
 from anthropic import Anthropic
+
+logger = logging.getLogger(__name__)
+
+# Etiqueta oculta que Claudia añade cuando el cliente deja sus datos.
+# Se quita del texto antes de leerlo en voz alta y se registra como lead.
+PATRON_CONTACTO = re.compile(r"\[CONTACTO:(.*?)\]", re.IGNORECASE | re.DOTALL)
 
 class RecepcionistaIAService:
     """Servicio de recepcionista IA para Golden Age Fitness"""
@@ -69,8 +77,13 @@ class RecepcionistaIAService:
             }
         }
     
-    def _generar_prompt_sistema(self) -> str:
+    def _generar_prompt_sistema(self, telefono_llamante: Optional[str] = None) -> str:
         """Genera el prompt del sistema con conocimiento del negocio"""
+        if telefono_llamante:
+            linea_telefono = (f"El cliente llama desde el número {telefono_llamante}. "
+                              "Pregúntale si podemos contactarle a ese mismo número antes de pedirle otro.")
+        else:
+            linea_telefono = "Pídele un número de teléfono o un correo electrónico."
         
         config = self.config
         negocio = config.get('negocio', {})
@@ -119,6 +132,18 @@ INSTRUCCIONES IMPORTANTES:
 LÍMITES:
 - Máximo 10 minutos de llamada. Si se acerca ese tiempo, ofrece transferir con Roberto si es necesario.
 - Si no sabes algo, ofrece transferir a Roberto o dejar un mensaje.
+
+ESTO ES UNA LLAMADA TELEFÓNICA (muy importante):
+- Responde en 1 o 2 frases cortas, como hablaría una persona por teléfono. Nada de listas, viñetas, asteriscos, emojis ni formato.
+- Si la respuesta tiene varios datos, da lo más importante y pregunta si quiere más detalle.
+- Escribe los números como se dicen en voz alta (por ejemplo "sesenta dólares", "de siete de la mañana a nueve de la noche").
+- Termina normalmente con una pregunta breve para seguir la conversación.
+
+DEJAR DATOS DE CONTACTO:
+- Si el cliente quiere más información, quiere inscribirse, pide algo que no puedes resolver, o Roberto no está disponible, ofrécele dejar su nombre y su teléfono o correo para que el equipo de Golden Age Gym le responda a la brevedad.
+- {linea_telefono}
+- Pide los datos de uno en uno, repítelos para confirmar (el correo deletreado si hace falta) y agradece: "Perfecto, el equipo de Golden Age Gym te contactará a la brevedad."
+- Cuando el cliente haya CONFIRMADO sus datos, añade al final de tu respuesta, en una línea aparte, exactamente: [CONTACTO: nombre=...; telefono=...; email=...; motivo=...] (deja vacío lo que no tengas). Esta etiqueta no se lee en voz alta; ponla solo una vez por cliente.
 """
         return prompt
     
@@ -135,7 +160,8 @@ LÍMITES:
             'mensaje': 'Sesión iniciada con Claudia'
         }
     
-    def procesar_mensaje(self, sesion_id: str, mensaje_usuario: str) -> str:
+    def procesar_mensaje(self, sesion_id: str, mensaje_usuario: str,
+                         telefono_llamante: Optional[str] = None) -> str:
         """Procesa un mensaje del usuario y retorna la respuesta de Claudia"""
         
         if sesion_id not in self.sesiones:
@@ -157,21 +183,21 @@ LÍMITES:
         try:
             # Llamar a Claude API con el prompt del sistema
             respuesta = self.client.messages.create(
-             model=os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
-                max_tokens=500,
-                system=self._generar_prompt_sistema(),
+                model=os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001"),
+                max_tokens=200,  # respuestas cortas = se generan y se leen más rápido
+                system=self._generar_prompt_sistema(telefono_llamante),
                 messages=sesion['historial']
             )
             
             respuesta_texto = respuesta.content[0].text
             
-            # Agregar respuesta al historial
+            # Agregar respuesta al historial (con la etiqueta, para que Claude sepa que ya guardó el contacto)
             sesion['historial'].append({
                 'role': 'assistant',
                 'content': respuesta_texto
             })
             
-            return respuesta_texto
+            return self._extraer_contacto(sesion_id, respuesta_texto, telefono_llamante)
         
         except Exception as e:
             # Log the actual error for debugging
@@ -181,6 +207,23 @@ LÍMITES:
             # Fallback si hay error con la API
             return f"Disculpa, tengo un problema técnico. Por favor, llama directamente al 281-352-4784 o habla con Roberto Gracian al 832-245-4634. ¡Gracias!"
     
+    def _extraer_contacto(self, sesion_id: str, texto: str,
+                          telefono_llamante: Optional[str]) -> str:
+        """Registra los datos de contacto que dejó el cliente y devuelve el texto limpio para leer en voz alta."""
+        for match in PATRON_CONTACTO.finditer(texto):
+            lead = {"sesion_id": sesion_id, "telefono_llamante": telefono_llamante,
+                    "fecha": datetime.now().isoformat(timespec="seconds")}
+            for parte in match.group(1).split(";"):
+                if "=" in parte:
+                    clave, valor = parte.split("=", 1)
+                    lead[clave.strip().lower()] = valor.strip()
+            self.sesiones.get(sesion_id, {}).setdefault('contactos', []).append(lead)
+            logger.warning(f"NUEVO_CONTACTO {json.dumps(lead, ensure_ascii=False)}")
+            print(f"NUEVO_CONTACTO {json.dumps(lead, ensure_ascii=False)}", flush=True)
+        limpio = PATRON_CONTACTO.sub("", texto)
+        limpio = limpio.replace("*", "").replace("#", "")
+        return re.sub(r"\s+", " ", limpio).strip()
+
     def finalizar_sesion(self, sesion_id: str) -> Dict[str, Any]:
         """Finaliza una sesión"""
         if sesion_id in self.sesiones:

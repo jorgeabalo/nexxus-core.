@@ -154,8 +154,10 @@ async def twilio_mensaje_callback(request: Request):
         action="/api/twilio/mensaje"
         method="POST"
         language="es-US"
+        speechModel="phone_call"
+        enhanced="true"
         speechTimeout="auto"
-        numDigits="1"
+        bargeIn="true"
     >
         <Say voice="Polly.Lupe-Neural" language="es-US">Adelante, te escucho.</Say>
     </Gather>
@@ -175,7 +177,7 @@ async def twilio_mensaje_callback(request: Request):
 
         session_id = f"{call_sid}"
         try:
-            respuesta = recepcionista.procesar_mensaje(session_id, speech_result)
+            respuesta = recepcionista.procesar_mensaje(session_id, speech_result, call_data.get("From"))
             logger.info(f"[{call_sid}] Respuesta de Claude: {respuesta[:100]}")
         except Exception as e:
             logger.error(f"[{call_sid}] Error procesando mensaje con Claude: {e}")
@@ -185,16 +187,18 @@ async def twilio_mensaje_callback(request: Request):
 
         response_twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="Polly.Lupe-Neural" language="es-US">{safe_response}</Say>
     <Gather
         input="speech"
         action="/api/twilio/mensaje"
         method="POST"
         language="es-US"
+        speechModel="phone_call"
+        enhanced="true"
         speechTimeout="auto"
-        numDigits="1"
+        bargeIn="true"
+        actionOnEmptyResult="true"
     >
-        <Say voice="Polly.Lupe-Neural" language="es-US">¿Hay algo más en lo que pueda ayudarte?</Say>
+        <Say voice="Polly.Lupe-Neural" language="es-US">{safe_response}</Say>
     </Gather>
     <Say voice="Polly.Lupe-Neural" language="es-US">No recibimos respuesta. Adiós.</Say>
     <Hangup/>

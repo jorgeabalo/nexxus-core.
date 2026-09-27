@@ -159,8 +159,11 @@ class TwiMLResponseBuilder:
         action="{callback_url}"
         method="POST"
         language="es-US"
+        speechModel="phone_call"
+        enhanced="true"
         speechTimeout="auto"
-        numDigits="1"
+        bargeIn="true"
+        actionOnEmptyResult="true"
     >
         <Say voice="Polly.Lupe-Neural" language="es-US">{safe_greeting}</Say>
     </Gather>
