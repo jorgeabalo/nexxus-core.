@@ -73,7 +73,7 @@ class RecepcionistaIAService:
             "contactos": {
                 "propietario": {
                     "nombre": "Roberto Gracian",
-                    "telefono": "832-245-4634"
+                    "telefono": "832-388-4711"
                 }
             }
         }
@@ -118,14 +118,14 @@ PRECIOS:
 
 PROPIETARIO:
 Nombre: {contactos.get('propietario', {}).get('nombre', 'Roberto Gracian')}
-Teléfono para Supervisor: {contactos.get('propietario', {}).get('telefono', '832-245-4634')}
+Teléfono para Supervisor: {contactos.get('propietario', {}).get('telefono', '832-388-4711')}
 
 INSTRUCCIONES IMPORTANTES:
 1. Eres entrenadora de Golden Age, no recepcionista. Habla con calidez y profesionalismo.
 2. Puedes responder cualquier pregunta sobre: horarios, servicios, precios, ubicación, personal, operaciones.
 3. Mantén las respuestas concisas y útiles.
 4. NUNCA digas "no puedo procesar" - siempre intenta ayudar primero.
-5. Si el cliente pide explícitamente hablar con el propietario, transferir a Roberto Gracian al {contactos.get('propietario', {}).get('telefono', '832-245-4634')}.
+5. Si el cliente pide explícitamente hablar con el propietario, transferir a Roberto Gracian al {contactos.get('propietario', {}).get('telefono', '832-388-4711')}.
 6. Si hay quejas graves, pagos, decisiones importantes o información que no tienes, transfiere a Roberto.
 7. Habla tanto en inglés como en español, según lo que pida el cliente.
 8. Sé inspiradora y profesional. Golden Age es un lugar especial para personas que quieren mejorar su salud.
@@ -174,7 +174,7 @@ DEJAR DATOS DE CONTACTO:
         
         # Verificar si pasó el tiempo límite
         if tiempo_transcurrido > self.UMBRAL_ESCALADO_SEGUNDOS:
-            return f"Ha pasado el tiempo máximo de esta llamada. Por favor, contacta a Roberto Gracian al 832-245-4634 para continuar. ¡Gracias!"
+            return f"Ha pasado el tiempo máximo de esta llamada. Por favor, contacta a Roberto Gracian al 832-388-4711 para continuar. ¡Gracias!"
         
         # Agregar mensaje al historial
         sesion['historial'].append({
@@ -207,7 +207,7 @@ DEJAR DATOS DE CONTACTO:
             print(f"ERROR EN PROCESAR_MENSAJE: {str(e)}")
             print(f"TRACEBACK: {traceback.format_exc()}")
             # Fallback si hay error con la API
-            return f"Disculpa, tengo un problema técnico. Por favor, llama directamente al 281-352-4784 o habla con Roberto Gracian al 832-245-4634. ¡Gracias!"
+            return f"Disculpa, tengo un problema técnico. Por favor, llama directamente al 281-352-4784 o habla con Roberto Gracian al 832-388-4711. ¡Gracias!"
     
     def _extraer_contacto(self, sesion_id: str, texto: str,
                           telefono_llamante: Optional[str],
