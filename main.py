@@ -94,7 +94,7 @@ async def twilio_voice_webhook(request: Request):
             logger.error("TwilioWebhookHandler no está inicializado")
             error_twiml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="Polly.Conchita" language="es-ES">Error: Sistema no configurado correctamente.</Say>
+    <Say voice="Polly.Lupe-Neural" language="es-US">Error: Sistema no configurado correctamente.</Say>
     <Hangup/>
 </Response>"""
             return Response(content=error_twiml, status_code=500, media_type="application/xml")
@@ -116,7 +116,7 @@ async def twilio_voice_webhook(request: Request):
         logger.error(f"Error en webhook Twilio: {e}", exc_info=True)
         error_twiml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="Polly.Conchita" language="es-ES">Error procesando su llamada. Por favor intente más tarde.</Say>
+    <Say voice="Polly.Lupe-Neural" language="es-US">Error procesando su llamada. Por favor intente más tarde.</Say>
     <Hangup/>
 </Response>"""
         return Response(
@@ -148,7 +148,7 @@ async def twilio_mensaje_callback(request: Request):
             logger.warning(f"[{call_sid}] No hay transcripción de voz, pidiendo que repita")
             no_input_twiml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="Polly.Conchita" language="es-ES">No escuché tu pregunta. Por favor intenta de nuevo.</Say>
+    <Say voice="Polly.Lupe-Neural" language="es-US">No escuché tu pregunta. Por favor intenta de nuevo.</Say>
     <Gather
         input="speech"
         action="/api/twilio/mensaje"
@@ -157,9 +157,9 @@ async def twilio_mensaje_callback(request: Request):
         speechTimeout="auto"
         numDigits="1"
     >
-        <Say voice="Polly.Conchita" language="es-ES">Adelante, te escucho.</Say>
+        <Say voice="Polly.Lupe-Neural" language="es-US">Adelante, te escucho.</Say>
     </Gather>
-    <Say voice="Polly.Conchita" language="es-ES">No recibimos respuesta. Adiós.</Say>
+    <Say voice="Polly.Lupe-Neural" language="es-US">No recibimos respuesta. Adiós.</Say>
     <Hangup/>
 </Response>"""
             return Response(content=no_input_twiml, status_code=200, media_type="application/xml")
@@ -168,7 +168,7 @@ async def twilio_mensaje_callback(request: Request):
             logger.error(f"[{call_sid}] RecepcionistaIAService no inicializado")
             error_twiml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="Polly.Conchita" language="es-ES">Sistema no disponible. Adiós.</Say>
+    <Say voice="Polly.Lupe-Neural" language="es-US">Sistema no disponible. Adiós.</Say>
     <Hangup/>
 </Response>"""
             return Response(content=error_twiml, status_code=200, media_type="application/xml")
@@ -185,7 +185,7 @@ async def twilio_mensaje_callback(request: Request):
 
         response_twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="Polly.Conchita" language="es-ES">{safe_response}</Say>
+    <Say voice="Polly.Lupe-Neural" language="es-US">{safe_response}</Say>
     <Gather
         input="speech"
         action="/api/twilio/mensaje"
@@ -194,9 +194,9 @@ async def twilio_mensaje_callback(request: Request):
         speechTimeout="auto"
         numDigits="1"
     >
-        <Say voice="Polly.Conchita" language="es-ES">¿Hay algo más en lo que pueda ayudarte?</Say>
+        <Say voice="Polly.Lupe-Neural" language="es-US">¿Hay algo más en lo que pueda ayudarte?</Say>
     </Gather>
-    <Say voice="Polly.Conchita" language="es-ES">No recibimos respuesta. Adiós.</Say>
+    <Say voice="Polly.Lupe-Neural" language="es-US">No recibimos respuesta. Adiós.</Say>
     <Hangup/>
 </Response>"""
 
@@ -207,7 +207,7 @@ async def twilio_mensaje_callback(request: Request):
         logger.error(f"Error en callback Twilio /api/twilio/mensaje: {e}", exc_info=True)
         error_twiml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="Polly.Conchita" language="es-ES">Error procesando tu mensaje. Adiós.</Say>
+    <Say voice="Polly.Lupe-Neural" language="es-US">Error procesando tu mensaje. Adiós.</Say>
     <Hangup/>
 </Response>"""
         return Response(content=error_twiml, status_code=500, media_type="application/xml")
