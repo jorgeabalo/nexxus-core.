@@ -275,6 +275,20 @@ async def twilio_status_callback(request: Request):
         logger.error(f"Error en status callback: {e}", exc_info=True)
         return Response(status_code=204)
 
+# Silencios consecutivos por llamada (para colgar si nadie habla)
+_silencios = {}
+
+
+def _twiml_despedida(texto: str) -> str:
+    seguro = (texto or "¡Gracias por llamar a Golden Age Gym! Hasta pronto.")
+    seguro = seguro.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="Polly.Lupe-Neural" language="es-US">{seguro}</Say>
+    <Hangup/>
+</Response>"""
+
+
 @app.post("/api/twilio/mensaje")
 async def twilio_mensaje_callback(request: Request):
     """
@@ -296,6 +310,12 @@ async def twilio_mensaje_callback(request: Request):
 
         if not speech_result:
             logger.warning(f"[{call_sid}] No hay transcripción de voz, pidiendo que repita")
+            _silencios[call_sid] = _silencios.get(call_sid, 0) + 1
+            if _silencios[call_sid] >= 2:
+                # Dos silencios seguidos: despedirse y colgar (evita llamadas "colgadas")
+                _silencios.pop(call_sid, None)
+                return Response(content=_twiml_despedida("Parece que no te escucho bien. Gracias por llamar a Golden Age Gym. ¡Hasta pronto!"),
+                                status_code=200, media_type="application/xml")
             no_input_twiml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Say voice="Polly.Lupe-Neural" language="es-US">No escuché tu pregunta. Por favor intenta de nuevo.</Say>
@@ -332,6 +352,11 @@ async def twilio_mensaje_callback(request: Request):
         except Exception as e:
             logger.error(f"[{call_sid}] Error procesando mensaje con Claude: {e}")
             respuesta = "Disculpa, hubo un error procesando tu mensaje. Por favor intenta de nuevo."
+
+        _silencios.pop(call_sid, None)
+        if recepcionista and recepcionista.debe_colgar(session_id):
+            logger.info(f"[{call_sid}] Despedida: se cuelga la llamada")
+            return Response(content=_twiml_despedida(respuesta), status_code=200, media_type="application/xml")
 
         safe_response = respuesta.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 

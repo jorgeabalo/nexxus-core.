@@ -12,6 +12,15 @@ logger = logging.getLogger(__name__)
 # Etiqueta oculta que Claudia añade cuando el cliente deja sus datos.
 # Se quita del texto antes de leerlo en voz alta y se registra como lead.
 PATRON_CONTACTO = re.compile(r"\[CONTACTO:(.*?)\]", re.IGNORECASE | re.DOTALL)
+# Etiqueta que Claudia añade cuando la conversación terminó: se cuelga tras despedirse.
+PATRON_FIN = re.compile(r"\[FIN\]", re.IGNORECASE)
+# Despedidas del cliente (respaldo por si el modelo no pone [FIN])
+PATRON_DESPEDIDA = re.compile(
+    r"^\W*(ok(ay)?|vale|bueno|listo|perfecto|gracias|muchas gracias|eso es todo|nada m[aá]s|no,? gracias|"
+    r"ad[ií][oó]s|chao|chau|bye|good ?bye|hasta luego|hasta pronto|nos vemos|thank you|thanks|that'?s all)"
+    r"([\s,.!¡]+(ad[ií][oó]s|chao|chau|bye|gracias|muchas gracias|hasta luego|hasta pronto|nos vemos|eso es todo|nada m[aá]s|thank you|thanks))*\W*$",
+    re.IGNORECASE)
+PALABRAS_ADIOS = re.compile(r"\b(ad[ií][oó]s|chao|chau|bye|goodbye|hasta luego|hasta pronto|nos vemos)\b", re.IGNORECASE)
 
 class RecepcionistaIAService:
     """Servicio de recepcionista IA para Golden Age Fitness"""
@@ -156,6 +165,10 @@ DEJAR DATOS DE CONTACTO:
 - {linea_telefono}
 - Pide los datos de uno en uno, repítelos para confirmar (el correo deletreado si hace falta) y agradece: "Perfecto, el equipo de Golden Age Gym te contactará a la brevedad."
 - Cuando el cliente haya CONFIRMADO sus datos, añade al final de tu respuesta, en una línea aparte, exactamente: [CONTACTO: nombre=...; telefono=...; email=...; motivo=...] (deja vacío lo que no tengas). Esta etiqueta no se lee en voz alta; ponla solo una vez por cliente.
+
+TERMINAR LA LLAMADA:
+- Si el cliente se despide ("chao", "adiós", "gracias, eso es todo", "bye") o dice que no necesita nada más, despídete en UNA frase corta y cálida, sin hacer más preguntas (por ejemplo: "¡Gracias por llamar a Golden Age Gym! Que tengas un excelente día.") y añade al final, en una línea aparte, exactamente: [FIN]
+- No pongas [FIN] si el cliente todavía tiene una pregunta pendiente.
 """
         return prompt
     
@@ -210,7 +223,10 @@ DEJAR DATOS DE CONTACTO:
                 'content': respuesta_texto
             })
             
-            return self._extraer_contacto(sesion_id, respuesta_texto, telefono_llamante, numero_negocio)
+            if PATRON_FIN.search(respuesta_texto) or self._es_despedida(mensaje_usuario):
+                sesion['finalizar'] = True
+            limpio = self._extraer_contacto(sesion_id, respuesta_texto, telefono_llamante, numero_negocio)
+            return PATRON_FIN.sub("", limpio).strip()
         
         except Exception as e:
             # Log the actual error for debugging
@@ -319,6 +335,21 @@ DEJAR DATOS DE CONTACTO:
         lineas.append("¡Te esperamos!")
         return self._enviar_sms(destino, os.getenv("LEADS_SMS_FROM") or numero_negocio,
                                 "\n".join(lineas), "SMS_DESPEDIDA")
+
+    @staticmethod
+    def _es_despedida(texto: str) -> bool:
+        """True si lo que dijo el cliente es claramente una despedida."""
+        t = (texto or "").strip()
+        if not t:
+            return False
+        if PATRON_DESPEDIDA.match(t) and PALABRAS_ADIOS.search(t):
+            return True
+        # frases cortas que terminan en adiós/chao ("ok, gracias, chao")
+        return len(t.split()) <= 6 and bool(PALABRAS_ADIOS.search(t)) and "?" not in t
+
+    def debe_colgar(self, sesion_id: str) -> bool:
+        """Claudia se despidió: el siguiente TwiML debe colgar."""
+        return bool((self.sesiones.get(sesion_id) or {}).get('finalizar'))
 
     def historial_de(self, sesion_id: str) -> list:
         """Copia del historial de la sesión (para el resumen de fin de llamada)."""
