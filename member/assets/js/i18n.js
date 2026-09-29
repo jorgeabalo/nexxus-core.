@@ -1,0 +1,113 @@
+// Textos del portal del socio. Español por defecto; inglés opcional.
+export const I18N = {
+  es: {
+    portal: 'Portal del socio', close: 'Cerrar', cancel: 'Cancelar', retry: 'Reintentar', signout: 'Salir',
+    hello: 'Hola, {name}',
+    'nav.home': 'Inicio', 'nav.appts': 'Citas', 'nav.pay': 'Pagos', 'nav.visits': 'Visitas', 'nav.me': 'Mis datos',
+
+    'login.title': 'Entra a tu portal', 'login.lead': 'Escribe el email que tienes registrado en el gimnasio y te enviaremos un enlace para entrar.',
+    'login.email': 'Email', 'login.send': 'Enviarme el enlace',
+    'login.sent': 'Si {email} está registrado, te llegará un enlace en unos minutos. Revisa también la carpeta de spam.',
+    'login.qrHint': '¿Tienes tu QR o enlace personal por SMS? Ábrelo y entrarás directamente.',
+
+    'home.membership': 'Membresía', 'home.since': 'Socio desde {date}', 'home.nextPayment': 'Próximo pago', 'home.overdue': 'Pago vencido',
+    'home.next': 'Próxima cita', 'home.noNext': 'No tienes citas próximas.',
+    'home.qr': 'Tu código personal', 'home.qrNote': 'Es tu llave personal: no la compartas.', 'home.qrError': 'No se pudo mostrar tu código ahora.',
+    'home.contact': 'Contacto del gimnasio', 'home.phone': 'Teléfono', 'home.address': 'Dirección',
+
+    'appt.appointment': 'Cita', 'appt.request': 'Pedir una cita', 'appt.upcoming': 'Próximas', 'appt.history': 'Historial',
+    'appt.noneUpcoming': 'No tienes citas próximas.', 'appt.noneHistory': 'Aún no hay citas anteriores.',
+    'appt.service': 'Servicio', 'appt.date': 'Fecha', 'appt.time': 'Hora', 'appt.notes': 'Comentario (opcional)', 'appt.notesPh': 'Algo que debamos saber',
+    'appt.requestHint': 'Tu solicitud queda "por confirmar" hasta que el gimnasio la confirme.',
+    'appt.pick': 'Elige fecha y hora.', 'appt.send': 'Enviar solicitud', 'appt.requested': 'Solicitud enviada. Te confirmaremos pronto.',
+    'appt.noServices': 'El gimnasio aún no tiene servicios disponibles para reservar.',
+    'appt.cancel': 'Cancelar cita', 'appt.cancelTitle': 'Cancelar cita', 'appt.cancelConfirm': '¿Cancelar {service} del {date}?',
+    'appt.cancelYes': 'Sí, cancelar', 'appt.cancelled': 'Cita cancelada.',
+
+    'pay.due': 'Pendiente', 'pay.history': 'Historial de pagos', 'pay.none': 'No hay pagos registrados.',
+    'pay.paidOn': 'pagado {date}', 'pay.dueOn': 'vence {date}', 'pay.help': 'Para pagar o resolver dudas, habla con recepción.',
+
+    'visits.month': 'Visitas este mes', 'visits.last': 'Última visita', 'visits.recent': 'Visitas recientes', 'visits.none': 'Aún no hay visitas registradas.',
+
+    'me.title': 'Mis datos', 'me.name': 'Nombre', 'me.contact': 'Contacto', 'me.phone': 'Teléfono', 'me.email': 'Email',
+    'me.emergency': 'Contacto de emergencia', 'me.emName': 'Nombre', 'me.emPhone': 'Teléfono',
+    'me.save': 'Guardar cambios', 'me.saved': 'Datos actualizados.', 'me.help': 'Para cambiar tu nombre o tu membresía, habla con recepción.',
+
+    'status.active': 'activa', 'status.inactive': 'inactiva', 'status.paused': 'pausada', 'status.cancelled': 'cancelada',
+    'status.scheduled': 'agendada', 'status.confirmed': 'confirmada', 'status.completed': 'completada', 'status.no_show': 'no asistió',
+    'status.rescheduled': 'reprogramada', 'status.pending_confirmation': 'por confirmar',
+    'status.paid': 'pagado', 'status.pending': 'pendiente', 'status.overdue': 'vencido', 'status.refunded': 'reembolsado',
+
+    'err.config': 'El portal no está disponible en este momento.', 'err.generic': 'Algo salió mal. Inténtalo de nuevo.',
+    'err.session': 'Tu sesión expiró. Vuelve a entrar.', 'err.email': 'Escribe un email válido.',
+    'err.rate': 'Demasiados intentos. Espera unos minutos.',
+    'err.membership': 'Tu membresía no está activa. Habla con recepción.', 'err.service': 'Ese servicio no está disponible.',
+    'err.future': 'Elige una fecha y hora futuras.', 'err.far': 'Solo puedes pedir citas hasta 90 días adelante.',
+    'err.pending': 'Ya tienes 3 solicitudes por confirmar.', 'err.cancel': 'Esta cita ya no se puede cancelar.',
+    'err.notMember': 'Esta cuenta no está vinculada a ningún socio.',
+    'err.linkUsed': 'Ese enlace ya se usó o expiró. Vuelve a abrir tu QR o pide un enlace por email.',
+    'err.linkInvalid': 'El enlace no es válido.',
+    'link.invalid_link': 'Este QR o enlace ya no es válido. Pide uno nuevo en recepción.',
+    'link.membership_inactive': 'Tu membresía no está activa. Habla con recepción.',
+    'link.rate_limited': 'Demasiados intentos. Espera un minuto.',
+    'link.portal_not_configured': 'El portal no está disponible en este momento.',
+    'link.account_conflict': 'Hay un problema con tu cuenta. Habla con recepción.',
+    'link.login_unavailable': 'No pudimos iniciar tu sesión. Inténtalo de nuevo en un momento.',
+    'link.otp_expired': 'El enlace del email expiró. Pide uno nuevo.',
+  },
+  en: {
+    portal: 'Member portal', close: 'Close', cancel: 'Cancel', retry: 'Retry', signout: 'Sign out',
+    hello: 'Hi, {name}',
+    'nav.home': 'Home', 'nav.appts': 'Bookings', 'nav.pay': 'Payments', 'nav.visits': 'Visits', 'nav.me': 'My info',
+
+    'login.title': 'Sign in to your portal', 'login.lead': 'Enter the email you have on file at the gym and we will send you a sign-in link.',
+    'login.email': 'Email', 'login.send': 'Send me the link',
+    'login.sent': 'If {email} is on file, a link will arrive in a few minutes. Check your spam folder too.',
+    'login.qrHint': 'Have your personal QR or link by text? Open it to sign in directly.',
+
+    'home.membership': 'Membership', 'home.since': 'Member since {date}', 'home.nextPayment': 'Next payment', 'home.overdue': 'Overdue payment',
+    'home.next': 'Next appointment', 'home.noNext': 'You have no upcoming appointments.',
+    'home.qr': 'Your personal code', 'home.qrNote': 'This is your personal key: do not share it.', 'home.qrError': 'Your code could not be shown right now.',
+    'home.contact': 'Gym contact', 'home.phone': 'Phone', 'home.address': 'Address',
+
+    'appt.appointment': 'Appointment', 'appt.request': 'Request an appointment', 'appt.upcoming': 'Upcoming', 'appt.history': 'History',
+    'appt.noneUpcoming': 'No upcoming appointments.', 'appt.noneHistory': 'No past appointments yet.',
+    'appt.service': 'Service', 'appt.date': 'Date', 'appt.time': 'Time', 'appt.notes': 'Note (optional)', 'appt.notesPh': 'Anything we should know',
+    'appt.requestHint': 'Your request stays "pending confirmation" until the gym confirms it.',
+    'appt.pick': 'Pick a date and time.', 'appt.send': 'Send request', 'appt.requested': 'Request sent. We will confirm soon.',
+    'appt.noServices': 'The gym has no bookable services yet.',
+    'appt.cancel': 'Cancel', 'appt.cancelTitle': 'Cancel appointment', 'appt.cancelConfirm': 'Cancel {service} on {date}?',
+    'appt.cancelYes': 'Yes, cancel', 'appt.cancelled': 'Appointment cancelled.',
+
+    'pay.due': 'Balance due', 'pay.history': 'Payment history', 'pay.none': 'No payments recorded.',
+    'pay.paidOn': 'paid {date}', 'pay.dueOn': 'due {date}', 'pay.help': 'To pay or ask about a charge, talk to the front desk.',
+
+    'visits.month': 'Visits this month', 'visits.last': 'Last visit', 'visits.recent': 'Recent visits', 'visits.none': 'No visits recorded yet.',
+
+    'me.title': 'My info', 'me.name': 'Name', 'me.contact': 'Contact', 'me.phone': 'Phone', 'me.email': 'Email',
+    'me.emergency': 'Emergency contact', 'me.emName': 'Name', 'me.emPhone': 'Phone',
+    'me.save': 'Save changes', 'me.saved': 'Info updated.', 'me.help': 'To change your name or membership, talk to the front desk.',
+
+    'status.active': 'active', 'status.inactive': 'inactive', 'status.paused': 'paused', 'status.cancelled': 'cancelled',
+    'status.scheduled': 'scheduled', 'status.confirmed': 'confirmed', 'status.completed': 'completed', 'status.no_show': 'no show',
+    'status.rescheduled': 'rescheduled', 'status.pending_confirmation': 'pending confirmation',
+    'status.paid': 'paid', 'status.pending': 'pending', 'status.overdue': 'overdue', 'status.refunded': 'refunded',
+
+    'err.config': 'The portal is not available right now.', 'err.generic': 'Something went wrong. Please try again.',
+    'err.session': 'Your session expired. Please sign in again.', 'err.email': 'Enter a valid email.',
+    'err.rate': 'Too many attempts. Wait a few minutes.',
+    'err.membership': 'Your membership is not active. Talk to the front desk.', 'err.service': 'That service is not available.',
+    'err.future': 'Pick a future date and time.', 'err.far': 'You can only book up to 90 days ahead.',
+    'err.pending': 'You already have 3 requests pending confirmation.', 'err.cancel': 'This appointment can no longer be cancelled.',
+    'err.notMember': 'This account is not linked to a member.',
+    'err.linkUsed': 'That link was already used or expired. Open your QR again or request an email link.',
+    'err.linkInvalid': 'The link is not valid.',
+    'link.invalid_link': 'This QR or link is no longer valid. Ask the front desk for a new one.',
+    'link.membership_inactive': 'Your membership is not active. Talk to the front desk.',
+    'link.rate_limited': 'Too many attempts. Wait a minute.',
+    'link.portal_not_configured': 'The portal is not available right now.',
+    'link.account_conflict': 'There is a problem with your account. Talk to the front desk.',
+    'link.login_unavailable': 'We could not sign you in. Try again in a moment.',
+    'link.otp_expired': 'The email link expired. Request a new one.',
+  },
+};

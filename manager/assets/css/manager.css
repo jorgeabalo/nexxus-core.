@@ -284,3 +284,13 @@ table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
   .row-actions { justify-content: flex-start; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* Member portal: QR */
+.check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.qr-img { width: 240px; max-width: 100%; height: auto; image-rendering: pixelated; margin: 0 auto; display: block; background: #fff; }
+@media print {
+  body.printing-qr * { visibility: hidden; }
+  body.printing-qr .qr-print, body.printing-qr .qr-print * { visibility: visible; }
+  body.printing-qr .qr-print { position: fixed; inset: 0; padding-top: 40px; }
+  body.printing-qr .qr-print input { display: none; }
+}

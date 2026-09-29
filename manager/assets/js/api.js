@@ -10,6 +10,16 @@ function must({ data, error }) {
   if (error) throw error;
   return data;
 }
+async function backend(method, path, body) {
+  const token = (await sb.auth.getSession()).data.session?.access_token;
+  const res = await fetch(path, {
+    method, headers: { Authorization: `Bearer ${token || ''}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error(data.error || `HTTP ${res.status}`); e.code = data.error; throw e; }
+  return data;
+}
 function uid() { return sb.auth.getSession().then(r => r.data.session?.user?.id); }
 
 export const api = {
@@ -120,6 +130,12 @@ export const api = {
     must(await sb.from('calls').update({ follow_up_required: false }).eq('tenant_id', tenantId).eq('id', call.id));
     must(await sb.from('alerts').update({ status: 'resolved', resolved_at: new Date().toISOString(), resolved_by: await uid() })
       .eq('tenant_id', tenantId).eq('call_id', call.id).eq('status', 'open'));
+  },
+
+  // ----- member portal (backend: valida owner/manager con el JWT) -----
+  async portalLink(memberId) { return backend('GET', `/api/manager/members/${encodeURIComponent(memberId)}/portal-link`); },
+  async portalAccess(memberId, { sms = false, email = false, regenerate = false } = {}) {
+    return backend('POST', `/api/manager/members/${encodeURIComponent(memberId)}/portal-access`, { sms, email, regenerate });
   },
 
   // ----- payments -----

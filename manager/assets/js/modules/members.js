@@ -86,6 +86,8 @@ async function renderDetail(root, ctx, id) {
     dt('Service', m.next_appointment_service),
     dt('Notes', m.notes))));
 
+  holder.appendChild(portalCard(m));
+
   holder.appendChild(el('div', { class: 'grid-2' },
     card('Appointments', table([
       { label: 'Date', render: a => `${fmtDate(a.appointment_date, { month: 'short', day: 'numeric' })} · ${fmtClock(a.start_time)}` },
@@ -141,4 +143,98 @@ function newMemberModal(ctx) {
       },
     }, 'Save member')],
   });
+}
+
+// ---------- Member portal: acceso personal (QR / enlace) ----------
+const PORTAL_ERRORS = {
+  portal_not_configured: 'The member portal is not configured on the server yet (PORTAL_TOKEN_SECRET).',
+  forbidden: 'Only owners and managers can manage portal access.',
+  unauthorized: 'Your session expired. Sign in again.',
+  account_conflict: 'That email already belongs to another member account.',
+};
+const portalMsg = (e) => PORTAL_ERRORS[e.code] || e.message || 'Something went wrong';
+const SEND_DETAIL = { no_phone: 'no phone on file', no_email: 'no email on file', twilio_not_configured: 'SMS not configured', twilio_error: 'SMS provider error' };
+
+function qrImage(link, cell = 6) {
+  const qr = window.qrcode(0, 'M');
+  qr.addData(link); qr.make();
+  return el('img', { class: 'qr-img', src: qr.createDataURL(cell, 4), alt: 'Personal QR code' });
+}
+
+function portalCard(m) {
+  const status = el('div', { class: 'detail-grid' }, loading());
+  const out = el('p', { class: 'muted small m0', role: 'status' });
+  const btn = (label, onclick, primary = false) => el('button', { class: `btn ${primary ? 'btn-primary' : ''}`, type: 'button', onclick }, label);
+  const dt = (k, v) => el('div', { class: 'dt' }, el('div', { class: 'k' }, k), el('div', { class: 'v' }, v ?? '—'));
+
+  async function refresh() {
+    try {
+      const r = await api.portalLink(m.id);
+      clear(status).append(
+        dt('Status', r.activated_at ? badge('active', 'activated') : r.invited_at ? badge('pending', 'invited') : badge('inactive', 'not invited')),
+        dt('Invited', r.invited_at ? fmtDateTime(r.invited_at) : null),
+        dt('First access', r.activated_at ? fmtDateTime(r.activated_at) : null),
+        dt('Last access', r.last_used_at ? fmtDateTime(r.last_used_at) : null));
+      return r;
+    } catch (e) { clear(status).appendChild(el('p', { class: 'form-error m0' }, portalMsg(e))); return null; }
+  }
+
+  async function send(e) {
+    const sms = el('input', { type: 'checkbox', checked: !!m.phone, disabled: !m.phone });
+    const mail = el('input', { type: 'checkbox', checked: !!m.email, disabled: !m.email });
+    const err = el('p', { class: 'form-error', role: 'alert' });
+    openModal({
+      title: 'Send portal access',
+      body: el('div', { class: 'stack' },
+        el('p', { class: 'm0' }, 'The member receives a personal link. Opening it (or scanning the QR) signs them in to their portal.'),
+        el('label', { class: 'check' }, sms, ` SMS to ${m.phone || '(no phone)'}`),
+        el('label', { class: 'check' }, mail, ` Email sign-in link to ${m.email || '(no email)'}`),
+        err),
+      actions: [(close) => btn('Send', async (ev) => {
+        if (!sms.checked && !mail.checked) { err.textContent = 'Choose SMS or email.'; return; }
+        ev.target.disabled = true;
+        try {
+          const r = await api.portalAccess(m.id, { sms: sms.checked, email: mail.checked });
+          const parts = [];
+          if (r.sms) parts.push(`SMS: ${r.sms.ok ? 'sent' : (SEND_DETAIL[r.sms.detail] || r.sms.detail)}`);
+          if (r.email) parts.push(`Email: ${r.email.ok ? 'sent' : (SEND_DETAIL[r.email.detail] || r.email.detail)}`);
+          close(); toast(parts.join(' · '), (r.sms?.ok || r.email?.ok) ? '' : 'error'); refresh();
+        } catch (ex) { ev.target.disabled = false; err.textContent = portalMsg(ex); }
+      }, true)],
+    });
+  }
+
+  async function showQr() {
+    let r;
+    try { r = await api.portalLink(m.id); } catch (e) { return toast(portalMsg(e), 'error'); }
+    const name = m.full_name || 'Member';
+    openModal({
+      title: 'Personal QR',
+      body: el('div', { class: 'stack center qr-print' },
+        el('p', { class: 'strong m0' }, name),
+        qrImage(r.link, 8),
+        el('p', { class: 'muted small m0' }, 'Personal key — do not share.'),
+        el('input', { class: 'input', readonly: true, value: r.link, 'aria-label': 'Personal link', onfocus: (e) => e.target.select() })),
+      actions: [
+        () => btn('Copy link', async () => { try { await navigator.clipboard.writeText(r.link); toast('Link copied'); } catch { toast('Copy failed', 'error'); } }),
+        () => btn('Print', () => { document.body.classList.add('printing-qr'); window.print(); document.body.classList.remove('printing-qr'); }, true),
+      ],
+    });
+  }
+
+  function regenerate() {
+    openModal({
+      title: 'Regenerate QR',
+      body: el('p', { class: 'm0' }, 'The current QR and link stop working immediately. The member will need the new one.'),
+      actions: [(close) => btn('Regenerate', async (ev) => {
+        ev.target.disabled = true;
+        try { await api.portalAccess(m.id, { regenerate: true }); close(); toast('New QR generated'); refresh(); showQr(); }
+        catch (ex) { ev.target.disabled = false; toast(portalMsg(ex), 'error'); }
+      }, true)],
+    });
+  }
+
+  refresh();
+  return card('Member portal', el('div', { class: 'stack' }, status,
+    el('div', { class: 'btn-row' }, btn('Send access', send, true), btn('Show / print QR', showQr), btn('Regenerate QR', regenerate)), out));
 }

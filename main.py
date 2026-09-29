@@ -102,7 +102,9 @@ def _manager_csp() -> str:
 @app.middleware("http")
 async def manager_security_headers(request: Request, call_next):
     response = await call_next(request)
-    if request.url.path.startswith("/manager") or request.url.path.startswith("/api/manager"):
+    p = request.url.path
+    if (p.startswith("/manager") or p.startswith("/api/manager")
+            or p == "/m" or p.startswith("/m/") or p.startswith("/api/member")):
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -128,6 +130,147 @@ if MANAGER_DIR.is_dir():
     @app.get("/manager/")
     async def manager_index():
         return FileResponse(MANAGER_DIR / "index.html", media_type="text/html")
+
+
+# ---------------------------------------------------------------------------
+# Member Panel (/m): portal del socio. Igual que /manager, la página no trae
+# datos; el socio entra con su QR/enlace personal o con enlace mágico por
+# email y todo lo que ve pasa por RLS con su propio JWT.
+# ---------------------------------------------------------------------------
+MEMBER_DIR = Path(__file__).parent / "member"
+
+try:
+    from services.member_portal import MemberPortal, PortalError
+    member_portal = MemberPortal()
+except Exception as e:
+    logger.error(f"MemberPortal no disponible: {e}")
+    member_portal = None
+    PortalError = Exception  # type: ignore
+
+import time as _time
+from collections import defaultdict, deque
+from starlette.concurrency import run_in_threadpool
+from fastapi.responses import RedirectResponse
+
+_portal_hits = defaultdict(deque)
+
+
+def _rate_limited(key: str, limit: int = 20, window: float = 60.0) -> bool:
+    now = _time.monotonic()
+    q = _portal_hits[key]
+    while q and now - q[0] > window:
+        q.popleft()
+    if len(q) >= limit:
+        return True
+    q.append(now)
+    if len(_portal_hits) > 5000:
+        _portal_hits.clear()
+    return False
+
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for", "")
+    return fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "?")
+
+
+def _base_url(request: Request) -> str:
+    env = (os.getenv("PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    if env:
+        return env
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    return f"{proto.split(',')[0].strip()}://{host.split(',')[0].strip()}"
+
+
+def _bearer(request: Request) -> str:
+    auth = request.headers.get("authorization", "")
+    return auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+
+
+def _portal_error(e: Exception) -> JSONResponse:
+    if isinstance(e, PortalError) and hasattr(e, "code"):
+        return JSONResponse({"error": e.code}, status_code=e.status)
+    logger.error(f"PORTAL_ERROR {type(e).__name__}")
+    return JSONResponse({"error": "server_error"}, status_code=500)
+
+
+@app.get("/m/q/{token}")
+async def member_qr_login(token: str, request: Request):
+    """Enlace/QR personal: valida y redirige al portal con un token de un solo uso."""
+    if _rate_limited("q:" + _client_ip(request)):
+        return RedirectResponse("/m/#error=rate_limited", status_code=303)
+    if not member_portal:
+        return RedirectResponse("/m/#error=portal_not_configured", status_code=303)
+    try:
+        hashed = await run_in_threadpool(member_portal.login_token_for, token)
+        return RedirectResponse(f"/m/#login={hashed}", status_code=303)
+    except Exception as e:
+        code = getattr(e, "code", "server_error")
+        if code == "server_error":
+            logger.error(f"PORTAL_QR_ERROR {type(e).__name__}")
+        return RedirectResponse(f"/m/#error={code}", status_code=303)
+
+
+@app.post("/api/manager/members/{member_id}/portal-access")
+async def manager_portal_access(member_id: str, request: Request):
+    """Owner/manager: enviar acceso (SMS y/o email) y/o regenerar el QR."""
+    if not member_portal:
+        return JSONResponse({"error": "portal_not_configured"}, status_code=503)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    try:
+        _, member = await run_in_threadpool(member_portal.staff_member, _bearer(request), member_id)
+        if body.get("regenerate"):
+            member = await run_in_threadpool(member_portal.regenerate, member)
+        sms, email = bool(body.get("sms")), bool(body.get("email"))
+        if sms or email:
+            result = await run_in_threadpool(member_portal.send_access, member, _base_url(request), sms, email)
+        else:
+            result = {"link": member_portal.link_for(member, _base_url(request)), "sms": None, "email": None}
+        result["regenerated"] = bool(body.get("regenerate"))
+        return result
+    except Exception as e:
+        return _portal_error(e)
+
+
+@app.get("/api/manager/members/{member_id}/portal-link")
+async def manager_portal_link(member_id: str, request: Request):
+    if not member_portal:
+        return JSONResponse({"error": "portal_not_configured"}, status_code=503)
+    try:
+        _, member = await run_in_threadpool(member_portal.staff_member, _bearer(request), member_id)
+        return {
+            "link": member_portal.link_for(member, _base_url(request)),
+            "activated_at": member.get("portal_activated_at"),
+            "invited_at": member.get("portal_invited_at"),
+            "last_used_at": member.get("portal_last_used_at"),
+        }
+    except Exception as e:
+        return _portal_error(e)
+
+
+@app.get("/api/member/qr")
+async def member_own_qr(request: Request):
+    """El socio obtiene su propio enlace personal (para mostrar su QR)."""
+    if not member_portal:
+        return JSONResponse({"error": "portal_not_configured"}, status_code=503)
+    try:
+        member = await run_in_threadpool(member_portal.member_from_jwt, _bearer(request))
+        return {"link": member_portal.link_for(member, _base_url(request))}
+    except Exception as e:
+        return _portal_error(e)
+
+
+if MEMBER_DIR.is_dir():
+    app.mount("/m/assets", StaticFiles(directory=MEMBER_DIR / "assets"), name="member-assets")
+
+    @app.get("/m")
+    @app.get("/m/")
+    async def member_index():
+        return FileResponse(MEMBER_DIR / "index.html", media_type="text/html")
 
 
 @app.get("/")

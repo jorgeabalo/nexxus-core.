@@ -114,3 +114,62 @@ mismo frontend cambia marca, colores y módulos según `tenants.branding/modules
   cabeceras de seguridad; endpoints existentes.
 * RLS y aislamiento: probado en SQL con usuarios simulados de dos tenants
   (transacción revertida, sin datos residuales).
+
+# Member Panel (portal del socio)
+
+URL: `https://nexxus-core-production.up.railway.app/m` (español por defecto, botón English).
+
+## Cómo entra el socio
+1. **QR / enlace personal** `…/m/q/<código>` — se lo envía el gym (SMS) o lo imprime.
+   * `código = <member_id>.<HMAC-SHA256(PORTAL_TOKEN_SECRET, member_id:portal_token_version)>`.
+     No se guarda en la base; se recalcula.
+   * El servidor valida la firma, asegura el usuario de Supabase Auth del socio
+     (`members.user_id`; si no tiene email se usa un alias técnico
+     `m-<id>@members.aita-nexxus.app` que nunca recibe correo), genera un enlace
+     mágico de un solo uso y redirige a `/m/#login=<token_hash>`; el navegador lo
+     canjea con `verifyOtp` y queda con sesión propia (clave `aita-member-auth`,
+     separada de `/manager`).
+   * **Regenerar QR** = `portal_token_version + 1` → el QR anterior deja de servir al instante.
+   * Límite: 20 aperturas/minuto por IP.
+2. **Enlace mágico por email** desde `/m` (`signInWithOtp`, `shouldCreateUser:false`:
+   solo socios ya vinculados; misma respuesta exista o no el email).
+
+## Qué ve y hace el socio (todo con su JWT; RLS + funciones `member_*`)
+| Vista | Datos |
+|---|---|
+| Inicio | estado de membresía, próximo pago / vencido, próxima cita, su QR, visitas, contacto del gym |
+| Citas | próximas e historial; **pedir cita** (`member_request_appointment`: queda `scheduled`, `source='member_portal'`, alerta `appointment_confirmation` al Manager; máx. 3 pendientes, ≤ 90 días); **cancelar** las suyas futuras |
+| Pagos | historial y saldo pendiente (solo lectura) |
+| Visitas | este mes, última, recientes |
+| Mis datos | edita solo teléfono, email y contacto de emergencia (`member_update_contact`) |
+
+Un socio NO puede llamar a `manager_dashboard/activity/alerts` (exigen ser staff del tenant).
+
+## Manager Panel → ficha del socio → "Member portal"
+Estado (not invited / invited / activated, primer y último acceso), **Send access**
+(SMS y/o email), **Show / print QR**, **Regenerate QR**. Solo owner/manager
+(el backend valida el JWT contra `tenant_users`).
+
+## Endpoints
+| Método | Ruta | Quién |
+|---|---|---|
+| GET | `/m`, `/m/assets/*` | público (sin datos) |
+| GET | `/m/q/{código}` | público, firmado + rate limit |
+| GET | `/api/member/qr` | socio (Bearer) |
+| GET | `/api/manager/members/{id}/portal-link` | owner/manager |
+| POST | `/api/manager/members/{id}/portal-access` `{sms,email,regenerate}` | owner/manager |
+
+## Configuración
+* Railway: `PORTAL_TOKEN_SECRET` (≥ 32 caracteres aleatorios; sin él el portal por QR devuelve 503).
+  Opcional `PUBLIC_BASE_URL` (si no, se usa el host de la petición).
+* Supabase → Authentication → URL Configuration → Redirect URLs: añadir
+  `https://nexxus-core-production.up.railway.app/**`.
+* SMS al socio: requiere el registro A2P 10DLC del número de Twilio.
+* Migración: `20260928120000_member_portal.sql`.
+
+## Tests
+`tests/test_member_portal.py` (firma, manipulación, secreto ausente, revocación al
+regenerar, socio cancelado, login QR, alias sin email, rate limit, permisos
+owner/manager/staff/otro tenant/socio, envío SMS+email, cabeceras) y E2E con
+Playwright del portal y de la tarjeta del Manager (sin violaciones de CSP).
+RLS del socio probado en SQL (solo sus filas; no escribe directo; no cancela citas ajenas).

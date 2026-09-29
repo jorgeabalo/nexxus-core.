@@ -12,7 +12,7 @@ Se usa httpx (ya en requirements) con timeouts cortos para no retener hilos.
 import os
 import re
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
@@ -90,3 +90,39 @@ class SupabaseAdmin:
 
     def update(self, table: str, filters: Dict[str, str], values: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
         return self._request("PATCH", table, params=filters, json=values, prefer="return=representation")
+
+    # -- Supabase Auth (GoTrue) -----------------------------------------
+    def auth(self, method: str, path: str, *, json=None, params=None, anon: bool = False,
+             bearer: Optional[str] = None) -> Tuple[int, Any]:
+        """Llamada a /auth/v1. Con service_role por defecto (admin);
+        anon=True usa la clave pública (p.ej. enviar enlace mágico);
+        bearer=<jwt> consulta como ese usuario (validar su sesión).
+        Devuelve (status, json). Nunca incluye claves en los errores."""
+        if not self.url:
+            return 0, None
+        apikey = self.anon_key if (anon or bearer) else self._key
+        if not apikey:
+            return 0, None
+        headers = {"apikey": apikey, "Authorization": f"Bearer {bearer or apikey}",
+                   "Content-Type": "application/json"}
+        try:
+            r = httpx.request(method, f"{self.url}/auth/v1{path}", json=json, params=params,
+                              headers=headers, timeout=_TIMEOUT)
+        except Exception as e:
+            raise RuntimeError(f"Supabase auth {method} {path}: {type(e).__name__}: {self._scrub(str(e))}") from None
+        try:
+            data = r.json() if r.content else None
+        except ValueError:
+            data = None
+        return r.status_code, data
+
+    @property
+    def anon_key(self) -> str:
+        return re.sub(r"\s+", "", os.getenv("SUPABASE_ANON_KEY") or "")
+
+    def user_from_jwt(self, jwt: str) -> Optional[Dict[str, Any]]:
+        """Valida un access token de Supabase y devuelve el usuario, o None."""
+        if not jwt or not self.url:
+            return None
+        status, data = self.auth("GET", "/user", bearer=jwt)
+        return data if status == 200 and isinstance(data, dict) and data.get("id") else None
