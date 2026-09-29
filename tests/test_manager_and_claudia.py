@@ -303,3 +303,25 @@ def test_existing_endpoints_still_respond(client, monkeypatch):
     r = client.post("/api/mensaje", json={"sesion_id": "web1", "mensaje": "hola"})
     assert r.status_code == 200 and r.json()["respuesta"] == "Hola, ¿en qué te ayudo?"
     assert client.post("/api/finalizar", json={"sesion_id": "web1"}).status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# 6. Clave pegada con salto de línea: se limpia y nunca aparece en errores
+# ---------------------------------------------------------------------------
+def test_supabase_key_whitespace_is_stripped_and_never_logged(monkeypatch):
+    from services.supabase_admin import SupabaseAdmin
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co\n")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "sb_secret_ABCDEFGH\nIJKLMNOP_123")
+    a = SupabaseAdmin()
+    assert a.url == "https://example.supabase.co"
+    assert a._key == "sb_secret_ABCDEFGHIJKLMNOP_123"
+    msg = a._scrub("Illegal header value b'sb_secret_ABCDEFGH\\nIJKLMNOP_123' sb_secret_ABCDEFGHIJKLMNOP_123")
+    assert "ABCDEFGH" not in msg and "IJKLMNOP" not in msg
+
+    class Boom:
+        def request(self, *a, **k):
+            raise ValueError("Illegal header value b'sb_secret_ABCDEFGHIJKLMNOP_123'")
+    a._client = Boom()
+    with pytest.raises(RuntimeError) as exc:
+        a.select("tenants", {"select": "id"})
+    assert "ABCDEFGH" not in str(exc.value)

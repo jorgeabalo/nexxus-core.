@@ -10,6 +10,7 @@ Usa SUPABASE_SERVICE_ROLE_KEY, que ignora RLS. Por eso:
 Se usa httpx (ya en requirements) con timeouts cortos para no retener hilos.
 """
 import os
+import re
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -22,8 +23,10 @@ _TIMEOUT = httpx.Timeout(float(os.getenv("SUPABASE_TIMEOUT_SECONDS", "4")), conn
 
 class SupabaseAdmin:
     def __init__(self, url: Optional[str] = None, service_key: Optional[str] = None):
-        self.url = (url or os.getenv("SUPABASE_URL") or "").rstrip("/")
-        self._key = service_key or os.getenv("SUPABASE_SERVICE_ROLE_KEY") or ""
+        # Se eliminan espacios/saltos de línea: al pegar la clave en un panel
+        # es fácil que se cuele un salto de línea y rompa la cabecera HTTP.
+        self.url = re.sub(r"\s+", "", url or os.getenv("SUPABASE_URL") or "").rstrip("/")
+        self._key = re.sub(r"\s+", "", service_key or os.getenv("SUPABASE_SERVICE_ROLE_KEY") or "")
         self.enabled = bool(self.url and self._key)
         self._client: Optional[httpx.Client] = None
         if not self.enabled:
@@ -47,14 +50,30 @@ class SupabaseAdmin:
         if not self.enabled:
             return None
         headers = {"Prefer": prefer} if prefer else None
-        r = self._http().request(method, f"/{table}", params=params, json=json, headers=headers)
+        try:
+            r = self._http().request(method, f"/{table}", params=params, json=json, headers=headers)
+        except Exception as e:
+            # Nunca propagar el texto original: algunas excepciones de httpx
+            # incluyen los valores de las cabeceras (la clave secreta).
+            raise RuntimeError(f"Supabase {method} {table}: {type(e).__name__}: {self._scrub(str(e))}") from None
         if r.status_code >= 400:
             # Nunca incluir cabeceras (contienen la clave) en el log
-            raise RuntimeError(f"Supabase {method} {table} -> {r.status_code}: {r.text[:300]}")
+            raise RuntimeError(f"Supabase {method} {table} -> {r.status_code}: {self._scrub(r.text)}")
         if not r.content:
             return []
         data = r.json()
         return data if isinstance(data, list) else [data]
+
+    def _scrub(self, text: str) -> str:
+        """Elimina cualquier rastro de la clave de un texto de error."""
+        if self._key:
+            text = text.replace(self._key, "***")
+            for trozo in re.split(r"\s+", os.getenv("SUPABASE_SERVICE_ROLE_KEY") or ""):
+                if len(trozo) >= 6:
+                    text = text.replace(trozo, "***")
+        text = re.sub(r"sb_secret_[A-Za-z0-9_\-\\n]+", "sb_secret_***", text)
+        text = re.sub(r"eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+", "***", text)
+        return text[:300]
 
     # -- API pública -----------------------------------------------------
     def select(self, table: str, params: Dict[str, str]) -> Optional[List[Dict[str, Any]]]:
