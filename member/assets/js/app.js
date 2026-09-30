@@ -315,8 +315,10 @@ function viewHome(main) {
 
 async function loadQr(box) {
   try {
-    const token = (await S.sb.auth.getSession()).data.session?.access_token;
-    const r = await fetch('/api/member/qr', { headers: { Authorization: `Bearer ${token || ''}` }, cache: 'no-store' });
+    const get = async () => fetch('/api/member/qr', {
+      headers: { Authorization: `Bearer ${(await S.sb.auth.getSession()).data.session?.access_token || ''}` }, cache: 'no-store' });
+    let r = await get();
+    if (r.status === 401 && !(await S.sb.auth.refreshSession()).error) r = await get();
     const d = await r.json().catch(() => ({}));
     if (!r.ok || !d.link) throw new Error(d.error || 'qr');
     const qr = window.qrcode(0, 'M');

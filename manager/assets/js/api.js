@@ -10,13 +10,20 @@ function must({ data, error }) {
   if (error) throw error;
   return data;
 }
-async function backend(method, path, body) {
+async function backend(method, path, body, retried = false) {
   const token = (await sb.auth.getSession()).data.session?.access_token;
   const res = await fetch(path, {
     method, headers: { Authorization: `Bearer ${token || ''}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && !retried) {
+    // El token puede pertenecer a una sesión ya cerrada: se renueva una vez;
+    // si no se puede, se cierra la sesión para volver a entrar.
+    const { error } = await sb.auth.refreshSession();
+    if (!error) return backend(method, path, body, true);
+    await sb.auth.signOut();
+  }
   if (!res.ok) { const e = new Error(data.error || `HTTP ${res.status}`); e.code = data.error; throw e; }
   return data;
 }
