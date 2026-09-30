@@ -48,8 +48,9 @@ async function boot() {
   });
   S.sb.auth.onAuthStateChange((event, session) => {
     S.session = session;
-    if (event === 'SIGNED_OUT') { S.data = null; renderLogin(); }
+    if (event === 'SIGNED_OUT') { S.data = null; wipeLocal(); renderLogin(); }
   });
+  startIdleGuard();
 
   if (qrMatch) {
     // Enlace / QR personal: el GET no inicia sesión (así las vistas previas de
@@ -103,6 +104,25 @@ function renderQrEntry(token, hasSession) {
     hasSession ? el('a', { class: 'link-btn center-block', href: '/m/' }, t('qr.already')) : null,
     el('p', { class: 'muted small center' }, t('qr.private')),
     el('div', { class: 'lang-row' }, langToggle('link-btn')))));
+}
+
+// ---------- protección en dispositivos compartidos ----------
+// Borra cualquier copia local de respuestas y cierra la sesión tras inactividad.
+function wipeLocal() {
+  try { sessionStorage.clear(); } catch { /* */ }
+  try { Object.keys(localStorage).filter(k => k.startsWith('aita-eval-draft:') || k.startsWith('aita-doc-review:')).forEach(k => localStorage.removeItem(k)); } catch { /* */ }
+}
+const IDLE_MS = 15 * 60 * 1000;
+function startIdleGuard() {
+  let last = Date.now();
+  const bump = () => { last = Date.now(); };
+  ['pointerdown', 'keydown', 'scroll', 'touchstart'].forEach(e => window.addEventListener(e, bump, { passive: true }));
+  setInterval(async () => {
+    if (!S.session || Date.now() - last < IDLE_MS) return;
+    last = Date.now();
+    S.notice = { kind: 'ok', text: t('idle.out') };
+    await S.sb.auth.signOut();
+  }, 30000);
 }
 
 let seenMarked = false;

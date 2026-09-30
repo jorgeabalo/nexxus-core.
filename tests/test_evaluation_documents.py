@@ -85,7 +85,8 @@ def env(monkeypatch):
     return db, docs, ai, TestClient(main.app)
 
 
-def with_questionnaire(db):
+def with_questionnaire(db, pdf_form=True):
+    db.tables["tenants"][0]["settings"] = {"evaluation_pdf_form": pdf_form}
     db.tables["questionnaires"].append({"id": Q_ID, "tenant_id": T1, "code": "onboarding", "active": True,
                                         "version": 3, "title": {"es": "Cuestionario PRUEBA"}, "definition": DEF})
 
@@ -185,8 +186,16 @@ def test_form_of_other_member_rejected(env):
     assert not db.storage
 
 
+def test_pdf_form_off_by_default(env):
+    db, docs, ai, c = env
+    with_questionnaire(db, pdf_form=False)
+    r = c.get("/api/member/evaluation-form.pdf", headers=H("jwt-m4"))
+    assert r.status_code == 404 and r.json()["error"] == "form_disabled"
+
+
 def test_form_without_questionnaire_is_409(env):
     db, docs, ai, c = env
+    db.tables["tenants"][0]["settings"] = {"evaluation_pdf_form": True}
     r = c.get("/api/member/evaluation-form.pdf", headers=H("jwt-m4"))
     assert r.status_code == 409 and r.json()["error"] == "questionnaire_missing"
 

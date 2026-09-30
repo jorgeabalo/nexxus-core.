@@ -456,11 +456,15 @@ class EvaluationDocuments:
     def fillable_form(self, jwt: str, lang: str = "es") -> bytes:
         from services.evaluation_form_pdf import build_fillable_form
         member = self.portal.member_from_jwt(jwt)
+        tenant = self.portal._tenant(member["tenant_id"])
+        # El cuestionario se llena en línea; el PDF rellenable solo si el gimnasio lo activa.
+        if not (tenant.get("settings") or {}).get("evaluation_pdf_form"):
+            raise PortalError("form_disabled", 404)
         q = self._questionnaire(member["tenant_id"])
         if not q:
             raise PortalError("questionnaire_missing", 409)     # no se inventan preguntas
         kind = self._kind(member)
-        pdf = build_fillable_form(q, member, self.portal._tenant(member["tenant_id"]), kind,
+        pdf = build_fillable_form(q, member, tenant, kind,
                                   form_ref(member["id"], q["id"], q["version"], kind), lang)
         self._log({"tenant_id": member["tenant_id"], "member_id": member["id"]}, member.get("user_id"),
                   "member", "download_form", detail=f"questionnaire v{q['version']}")

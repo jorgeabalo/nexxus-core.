@@ -130,7 +130,25 @@ def build_fillable_form(questionnaire: Dict[str, Any], member: Dict[str, Any], t
         for q in sec.get("questions") or []:
             qid, qtype = q["id"], q.get("type") or "text"
             label = L(q.get("label"), lang) + (" *" if q.get("required") else "")
+            if qtype == "yesno":
+                # una línea: pregunta a la izquierda, Sí / No a la derecha
+                lines = simpleSplit(label, "Helvetica", 10, X1 - X0 - 130)
+                need(13 * len(lines) + 5)
+                y = state["y"] - 12
+                c.setFont("Helvetica", 10)
+                for i, ln in enumerate(lines):
+                    c.drawString(X0 + 6, y + 2 - i * 13, ln)
+                for i, (v, lab) in enumerate((("yes", tx["yes"]), ("no", tx["no"]))):
+                    form.radio(name=field_name(qid), value=v, selected=False, x=X1 - 110 + i * 60, y=y, size=11,
+                               buttonStyle="circle", borderColor=NAVY, fillColor=colors.white, textColor=NAVY, forceBorder=True)
+                    c.drawString(X1 - 95 + i * 60, y + 2, lab)
+                c.setStrokeColor(colors.HexColor("#E3E8EF"))
+                c.line(X0 + 6, y - 4 - (len(lines) - 1) * 13, X1, y - 4 - (len(lines) - 1) * 13)
+                c.setStrokeColor(colors.black)
+                state["y"] -= 13 * len(lines) + 5
+                continue
             state["y"] -= 4
+            need(80 if q.get("long") else 40)          # la pregunta no se separa de su casilla
             text(label, 10, True)
             if q.get("help"):
                 text(L(q.get("help"), lang), 8, color=colors.grey)
@@ -155,11 +173,11 @@ def build_fillable_form(questionnaire: Dict[str, Any], member: Dict[str, Any], t
                         c.drawString(X0 + 24, y + 2 - i * 13, ln)
                     state["y"] -= 14 * len(lines) + 2
             else:
-                h = 54 if qtype == "text" else 18
+                h = 54 if (qtype == "text" and q.get("long")) else 18
                 need(h + 4)
                 form.textfield(name=field_name(qid), x=X0 + 6, y=state["y"] - h, width=(X1 - X0 - 6) if qtype == "text" else 180,
                                height=h, borderColor=NAVY, fillColor=colors.white, fontSize=10,
-                               fieldFlags="multiline" if qtype == "text" else "", maxlen=2000 if qtype == "text" else 40,
+                               fieldFlags="multiline" if (qtype == "text" and q.get("long")) else "", maxlen=2000 if qtype == "text" else 40,
                                tooltip=label[:120])
                 if qtype in ("number", "date"):
                     c.setFont("Helvetica", 8)

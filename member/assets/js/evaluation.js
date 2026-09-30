@@ -6,7 +6,7 @@
 // * "Enviar" confirma solo cuando Supabase devolvió OK. Si falla, el borrador
 //   se conserva y el reintento usa la misma referencia (sin duplicados).
 import {
-  S, el, clear, t, fmtDay, fmtDateTime, card, toast, errText, store, uuid4, authFetch, metric, toLb, toIn,
+  S, el, clear, t, fmtDay, fmtDateTime, card, toast, errText, uuid4, authFetch, metric, toLb, toIn,
   showWeight, showLength, showHeight, num,
 } from './util.js';
 import { uploadCard, pendingDocsCard, loadDocs, originalButtons, compareCard } from './upload.js';
@@ -139,6 +139,13 @@ async function downloadPdf(e, btn) {
 
 // ---------- formulario por pasos ----------
 const LOCAL_KEY = (kind) => `aita-eval-draft:${S.data.member.id}:${kind}`;
+// Copia local del borrador SOLO en sessionStorage: se borra al cerrar la pestaña o la sesión
+// (tablet compartida en recepción). El borrador principal vive en Supabase con RLS.
+const store = {
+  get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { sessionStorage.setItem(k, v); } catch { /* */ } },
+  del(k) { try { sessionStorage.removeItem(k); } catch { /* */ } },
+};
 
 function emptyForm() {
   return { units: S.units, q: {}, body: {}, strength: [{ exercise: '', load: '', reps: '', conditions: '' }],

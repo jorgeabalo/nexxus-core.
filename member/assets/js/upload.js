@@ -57,9 +57,10 @@ export function uploadCard({ qAvailable }) {
       toast(upErr(e), 'error');
     }
   });
-  const dl = qAvailable
+  // El cuestionario se llena en línea; el PDF rellenable no se ofrece (solo si el gimnasio lo activa).
+  const dl = qAvailable && S.data?.tenant?.settings?.evaluation_pdf_form
     ? el('button', { class: 'btn btn-block', type: 'button', onclick: (e) => downloadForm(e.target) }, t('up.downloadForm'))
-    : el('p', { class: 'small muted m0' }, t('up.noForm'));
+    : null;
   return el('section', { class: 'card', id: 'upload-card' },
     el('div', { class: 'card-head' }, el('h2', {}, t('up.title'))),
     el('p', { class: 'm0' }, t('up.lead')),

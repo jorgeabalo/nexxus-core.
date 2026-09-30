@@ -1,0 +1,915 @@
+{
+ "source": "Golden Age Fitness and Training — intake questionnaire (paper original, 1 page). English text verbatim; Spanish is a translation for the portal.",
+ "not_included": "Name, Telephone, Address, Email and Date are taken from the member record, not asked again.",
+ "sections": [
+  {
+   "id": "personal",
+   "title": {
+    "en": "Personal",
+    "es": "Datos personales"
+   },
+   "questions": [
+    {
+     "id": "marital_status",
+     "type": "single",
+     "label": {
+      "en": "Married / Single",
+      "es": "Casado(a) / Soltero(a)"
+     },
+     "options": [
+      {
+       "value": "married",
+       "label": {
+        "en": "Married",
+        "es": "Casado(a)"
+       }
+      },
+      {
+       "value": "single",
+       "label": {
+        "en": "Single",
+        "es": "Soltero(a)"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "history",
+   "title": {
+    "en": "Do you presently or previously had of the following:",
+    "es": "¿Tiene actualmente o tuvo antes alguno de los siguientes?"
+   },
+   "questions": [
+    {
+     "id": "cholesterol",
+     "type": "yesno",
+     "label": {
+      "en": "Cholesterol",
+      "es": "Colesterol"
+     }
+    },
+    {
+     "id": "diabetes",
+     "type": "yesno",
+     "label": {
+      "en": "Diabetes",
+      "es": "Diabetes"
+     }
+    },
+    {
+     "id": "insomnia",
+     "type": "yesno",
+     "label": {
+      "en": "Insomnia",
+      "es": "Insomnio"
+     }
+    },
+    {
+     "id": "arthritis",
+     "type": "yesno",
+     "label": {
+      "en": "Arthritis",
+      "es": "Artritis"
+     }
+    },
+    {
+     "id": "kidney_stones",
+     "type": "yesno",
+     "label": {
+      "en": "Kidney Stones",
+      "es": "Cálculos renales"
+     }
+    },
+    {
+     "id": "allergies",
+     "type": "yesno",
+     "label": {
+      "en": "Allergies",
+      "es": "Alergias"
+     }
+    },
+    {
+     "id": "hernias",
+     "type": "yesno",
+     "label": {
+      "en": "Hernias",
+      "es": "Hernias"
+     }
+    },
+    {
+     "id": "back_injury",
+     "type": "yesno",
+     "label": {
+      "en": "Back Injury",
+      "es": "Lesión de espalda"
+     }
+    },
+    {
+     "id": "pass_out",
+     "type": "yesno",
+     "label": {
+      "en": "Pass Out / Nearly",
+      "es": "Desmayo / casi desmayo"
+     }
+    },
+    {
+     "id": "smoke",
+     "type": "yesno",
+     "label": {
+      "en": "You smoke",
+      "es": "Fuma"
+     }
+    },
+    {
+     "id": "indigestion",
+     "type": "yesno",
+     "label": {
+      "en": "Indigestion",
+      "es": "Indigestión"
+     }
+    },
+    {
+     "id": "ulcers",
+     "type": "yesno",
+     "label": {
+      "en": "Ulcers",
+      "es": "Úlceras"
+     }
+    },
+    {
+     "id": "cramps",
+     "type": "yesno",
+     "label": {
+      "en": "Cramps",
+      "es": "Calambres"
+     }
+    },
+    {
+     "id": "thyroid",
+     "type": "yesno",
+     "label": {
+      "en": "Thyroid",
+      "es": "Tiroides"
+     }
+    },
+    {
+     "id": "cancer",
+     "type": "yesno",
+     "label": {
+      "en": "Cancer",
+      "es": "Cáncer"
+     }
+    },
+    {
+     "id": "tuberculosis",
+     "type": "yesno",
+     "label": {
+      "en": "Tuberculosis",
+      "es": "Tuberculosis"
+     }
+    },
+    {
+     "id": "hemorrhoids",
+     "type": "yesno",
+     "label": {
+      "en": "Hemorrhoids",
+      "es": "Hemorroides"
+     }
+    },
+    {
+     "id": "convulsions",
+     "type": "yesno",
+     "label": {
+      "en": "Convulsions",
+      "es": "Convulsiones"
+     }
+    },
+    {
+     "id": "constipation",
+     "type": "yesno",
+     "label": {
+      "en": "Constipation",
+      "es": "Estreñimiento"
+     }
+    },
+    {
+     "id": "drink_frequent",
+     "type": "yesno",
+     "label": {
+      "en": "Drink frequent",
+      "es": "Bebe (alcohol) con frecuencia"
+     }
+    },
+    {
+     "id": "frequent_colds",
+     "type": "yesno",
+     "label": {
+      "en": "Frequent Colds",
+      "es": "Resfriados frecuentes"
+     }
+    },
+    {
+     "id": "asthma",
+     "type": "yesno",
+     "label": {
+      "en": "Asthma",
+      "es": "Asma"
+     }
+    },
+    {
+     "id": "lupus",
+     "type": "yesno",
+     "label": {
+      "en": "Lupus",
+      "es": "Lupus"
+     }
+    },
+    {
+     "id": "hepatic_cirrhosis",
+     "type": "yesno",
+     "label": {
+      "en": "Hepatic cirrhosis",
+      "es": "Cirrosis hepática"
+     }
+    },
+    {
+     "id": "high_triglycerides",
+     "type": "yesno",
+     "label": {
+      "en": "High triglycerides",
+      "es": "Triglicéridos altos"
+     }
+    },
+    {
+     "id": "abdominal_swelling",
+     "type": "yesno",
+     "label": {
+      "en": "Frequent abdominal swelling",
+      "es": "Inflamación abdominal frecuente"
+     }
+    },
+    {
+     "id": "frequent_headache",
+     "type": "yesno",
+     "label": {
+      "en": "Frequent headache",
+      "es": "Dolor de cabeza frecuente"
+     }
+    },
+    {
+     "id": "blood_pressure",
+     "type": "yesno",
+     "label": {
+      "en": "High/Low Blood Pressure",
+      "es": "Presión arterial alta/baja"
+     }
+    },
+    {
+     "id": "heart_attacks",
+     "type": "yesno",
+     "label": {
+      "en": "Heart attacks",
+      "es": "Infartos"
+     }
+    },
+    {
+     "id": "drugs",
+     "type": "yesno",
+     "label": {
+      "en": "Do you use any type of Drugs",
+      "es": "¿Usa algún tipo de drogas?"
+     }
+    },
+    {
+     "id": "explain_yes",
+     "type": "text",
+     "label": {
+      "en": "Explain any yes, Answer:",
+      "es": "Explique cualquier respuesta “Sí”:"
+     },
+     "long": true
+    }
+   ]
+  },
+  {
+   "id": "meals",
+   "title": {
+    "en": "Describe your daily meals, amount and what time:",
+    "es": "Describa sus comidas diarias, cantidad y a qué hora:"
+   },
+   "questions": [
+    {
+     "id": "meal_breakfast",
+     "type": "text",
+     "label": {
+      "en": "Breakfast",
+      "es": "Desayuno"
+     }
+    },
+    {
+     "id": "meal_breakfast_time",
+     "type": "text",
+     "label": {
+      "en": "Breakfast — Time",
+      "es": "Desayuno — Hora"
+     }
+    },
+    {
+     "id": "meal_snack1",
+     "type": "text",
+     "label": {
+      "en": "Snack 1",
+      "es": "Merienda 1"
+     }
+    },
+    {
+     "id": "meal_snack1_time",
+     "type": "text",
+     "label": {
+      "en": "Snack 1 — Time",
+      "es": "Merienda 1 — Hora"
+     }
+    },
+    {
+     "id": "meal_lunch",
+     "type": "text",
+     "label": {
+      "en": "Lunch",
+      "es": "Almuerzo"
+     }
+    },
+    {
+     "id": "meal_lunch_time",
+     "type": "text",
+     "label": {
+      "en": "Lunch — Time",
+      "es": "Almuerzo — Hora"
+     }
+    },
+    {
+     "id": "meal_snack2",
+     "type": "text",
+     "label": {
+      "en": "Snack",
+      "es": "Merienda"
+     }
+    },
+    {
+     "id": "meal_snack2_time",
+     "type": "text",
+     "label": {
+      "en": "Snack — Time",
+      "es": "Merienda — Hora"
+     }
+    },
+    {
+     "id": "meal_dinner",
+     "type": "text",
+     "label": {
+      "en": "Dinner",
+      "es": "Cena"
+     }
+    },
+    {
+     "id": "meal_dinner_time",
+     "type": "text",
+     "label": {
+      "en": "Dinner — Time",
+      "es": "Cena — Hora"
+     }
+    },
+    {
+     "id": "junk_food",
+     "type": "text",
+     "label": {
+      "en": "Favorite junk food",
+      "es": "Comida chatarra favorita"
+     }
+    },
+    {
+     "id": "eat_vegetables",
+     "type": "yesno",
+     "label": {
+      "en": "Eat vegetables",
+      "es": "Come vegetales"
+     }
+    },
+    {
+     "id": "water_intake",
+     "type": "text",
+     "label": {
+      "en": "Quantity of daily water intake",
+      "es": "Cantidad de agua que toma al día"
+     }
+    },
+    {
+     "id": "eggs",
+     "type": "yesno",
+     "label": {
+      "en": "Eggs",
+      "es": "Huevos"
+     }
+    },
+    {
+     "id": "soda",
+     "type": "text",
+     "label": {
+      "en": "Do you drink soda and what amount",
+      "es": "¿Toma refrescos y en qué cantidad?"
+     }
+    },
+    {
+     "id": "salt",
+     "type": "yesno",
+     "label": {
+      "en": "Add salt on meals",
+      "es": "Agrega sal a las comidas"
+     }
+    },
+    {
+     "id": "food_allergy",
+     "type": "yesno",
+     "label": {
+      "en": "Food allergy",
+      "es": "Alergia a alimentos"
+     }
+    },
+    {
+     "id": "food_allergy_which",
+     "type": "text",
+     "label": {
+      "en": "Food allergy — which ones",
+      "es": "Alergia a alimentos — ¿cuáles?"
+     }
+    },
+    {
+     "id": "milk",
+     "type": "yesno",
+     "label": {
+      "en": "Do you drink Milk",
+      "es": "¿Toma leche?"
+     }
+    },
+    {
+     "id": "dieted_before",
+     "type": "yesno",
+     "label": {
+      "en": "Have you dieted before?",
+      "es": "¿Ha hecho dieta antes?"
+     }
+    },
+    {
+     "id": "dieted_which",
+     "type": "text",
+     "label": {
+      "en": "Have you dieted before? — Which one?",
+      "es": "¿Ha hecho dieta antes? — ¿Cuál?"
+     }
+    },
+    {
+     "id": "eat_speed",
+     "type": "single",
+     "label": {
+      "en": "Do you eat",
+      "es": "Usted come"
+     },
+     "options": [
+      {
+       "value": "fast",
+       "label": {
+        "en": "Fast",
+        "es": "Rápido"
+       }
+      },
+      {
+       "value": "slow",
+       "label": {
+        "en": "Slow",
+        "es": "Despacio"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "sleep_activity",
+   "title": {
+    "en": "Sleep, activity and work",
+    "es": "Sueño, actividad y trabajo"
+   },
+   "questions": [
+    {
+     "id": "sleep_time",
+     "type": "text",
+     "label": {
+      "en": "What time do you go to sleep",
+      "es": "¿A qué hora se acuesta?"
+     }
+    },
+    {
+     "id": "sleep_time_ampm",
+     "type": "single",
+     "label": {
+      "en": "What time do you go to sleep — am/pm",
+      "es": "¿A qué hora se acuesta? — a. m./p. m."
+     },
+     "options": [
+      {
+       "value": "am",
+       "label": {
+        "en": "am",
+        "es": "a. m."
+       }
+      },
+      {
+       "value": "pm",
+       "label": {
+        "en": "pm",
+        "es": "p. m."
+       }
+      }
+     ]
+    },
+    {
+     "id": "wake_time",
+     "type": "text",
+     "label": {
+      "en": "What time do you get up",
+      "es": "¿A qué hora se levanta?"
+     }
+    },
+    {
+     "id": "wake_time_ampm",
+     "type": "single",
+     "label": {
+      "en": "What time do you get up — am/pm",
+      "es": "¿A qué hora se levanta? — a. m./p. m."
+     },
+     "options": [
+      {
+       "value": "am",
+       "label": {
+        "en": "am",
+        "es": "a. m."
+       }
+      },
+      {
+       "value": "pm",
+       "label": {
+        "en": "pm",
+        "es": "p. m."
+       }
+      }
+     ]
+    },
+    {
+     "id": "difficulty_sleeping",
+     "type": "yesno",
+     "label": {
+      "en": "Do you have difficulty sleeping?",
+      "es": "¿Tiene dificultad para dormir?"
+     }
+    },
+    {
+     "id": "wake_tired",
+     "type": "yesno",
+     "label": {
+      "en": "Do you wake up tired?",
+      "es": "¿Se despierta cansado(a)?"
+     }
+    },
+    {
+     "id": "nap",
+     "type": "yesno",
+     "label": {
+      "en": "Do you take a nap?",
+      "es": "¿Toma siesta?"
+     }
+    },
+    {
+     "id": "nap_length",
+     "type": "text",
+     "label": {
+      "en": "How long time",
+      "es": "¿Cuánto tiempo?"
+     }
+    },
+    {
+     "id": "physical_activity",
+     "type": "yesno",
+     "label": {
+      "en": "Do you practice some physical activities",
+      "es": "¿Practica alguna actividad física?"
+     }
+    },
+    {
+     "id": "physical_activity_which",
+     "type": "text",
+     "label": {
+      "en": "Which one / how long Time",
+      "es": "¿Cuál? / ¿Cuánto tiempo?"
+     }
+    },
+    {
+     "id": "job",
+     "type": "text",
+     "label": {
+      "en": "What is your Job",
+      "es": "¿Cuál es su trabajo?"
+     }
+    },
+    {
+     "id": "activity_level",
+     "type": "single",
+     "label": {
+      "en": "Sedentary / Moderate / Very Active",
+      "es": "Sedentario / Moderado / Muy activo"
+     },
+     "options": [
+      {
+       "value": "sedentary",
+       "label": {
+        "en": "Sedentary",
+        "es": "Sedentario"
+       }
+      },
+      {
+       "value": "moderate",
+       "label": {
+        "en": "Moderate",
+        "es": "Moderado"
+       }
+      },
+      {
+       "value": "very_active",
+       "label": {
+        "en": "Very Active",
+        "es": "Muy activo"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "emotional",
+   "title": {
+    "en": "Mood and stress",
+    "es": "Estado de ánimo y estrés"
+   },
+   "questions": [
+    {
+     "id": "mood_swings",
+     "type": "yesno",
+     "label": {
+      "en": "Do you have mood swings?",
+      "es": "¿Tiene cambios de humor?"
+     }
+    },
+    {
+     "id": "depression",
+     "type": "yesno",
+     "label": {
+      "en": "Do you suffer from depression?",
+      "es": "¿Sufre de depresión?"
+     }
+    },
+    {
+     "id": "self_esteem",
+     "type": "text",
+     "label": {
+      "en": "How's your self-esteem?",
+      "es": "¿Cómo está su autoestima?"
+     }
+    },
+    {
+     "id": "cry_without_reason",
+     "type": "yesno",
+     "label": {
+      "en": "Do you cry without reason?",
+      "es": "¿Llora sin razón?"
+     }
+    },
+    {
+     "id": "stress_level",
+     "type": "single",
+     "label": {
+      "en": "Stress level",
+      "es": "Nivel de estrés"
+     },
+     "options": [
+      {
+       "value": "low",
+       "label": {
+        "en": "Low",
+        "es": "Bajo"
+       }
+      },
+      {
+       "value": "medium",
+       "label": {
+        "en": "Medium",
+        "es": "Medio"
+       }
+      },
+      {
+       "value": "high",
+       "label": {
+        "en": "High",
+        "es": "Alto"
+       }
+      }
+     ]
+    },
+    {
+     "id": "stress_effect",
+     "type": "text",
+     "label": {
+      "en": "How does it affect you?",
+      "es": "¿Cómo le afecta?"
+     },
+     "long": true
+    },
+    {
+     "id": "emotional_eating",
+     "type": "yesno",
+     "label": {
+      "en": "Do you eat when you get tense, nervous or by pleasure",
+      "es": "¿Come cuando está tenso(a), nervioso(a) o por placer?"
+     }
+    }
+   ]
+  },
+  {
+   "id": "weight_reason",
+   "title": {
+    "en": "What is the reason that you think you gained weight:",
+    "es": "¿Cuál cree que es la razón por la que subió de peso?"
+   },
+   "questions": [
+    {
+     "id": "weight_gain_reasons",
+     "type": "multi",
+     "label": {
+      "en": "What is the reason that you think you gained weight",
+      "es": "¿Por qué cree que subió de peso?"
+     },
+     "options": [
+      {
+       "value": "lack_of_exercise",
+       "label": {
+        "en": "Lack of exercise",
+        "es": "Falta de ejercicio"
+       }
+      },
+      {
+       "value": "stress",
+       "label": {
+        "en": "Stress",
+        "es": "Estrés"
+       }
+      },
+      {
+       "value": "genetic",
+       "label": {
+        "en": "Genetic",
+        "es": "Genética"
+       }
+      },
+      {
+       "value": "depressed",
+       "label": {
+        "en": "Depressed",
+        "es": "Depresión"
+       }
+      },
+      {
+       "value": "too_much_food",
+       "label": {
+        "en": "Too much food",
+        "es": "Demasiada comida"
+       }
+      },
+      {
+       "value": "anxiety",
+       "label": {
+        "en": "Anxiety",
+        "es": "Ansiedad"
+       }
+      }
+     ]
+    },
+    {
+     "id": "weight_gain_other",
+     "type": "text",
+     "label": {
+      "en": "Or another reason, to explain",
+      "es": "U otra razón, explique"
+     },
+     "long": true
+    }
+   ]
+  },
+  {
+   "id": "goals",
+   "title": {
+    "en": "What would you like?",
+    "es": "¿Qué le gustaría lograr?"
+   },
+   "questions": [
+    {
+     "id": "goals",
+     "type": "multi",
+     "label": {
+      "en": "What would you like?",
+      "es": "¿Qué le gustaría?"
+     },
+     "options": [
+      {
+       "value": "lose_weight",
+       "label": {
+        "en": "Lose Weight",
+        "es": "Bajar de peso"
+       }
+      },
+      {
+       "value": "gain_weight",
+       "label": {
+        "en": "Gain Weight",
+        "es": "Subir de peso"
+       }
+      },
+      {
+       "value": "muscle_tone",
+       "label": {
+        "en": "Improve Muscle Tone",
+        "es": "Mejorar el tono muscular"
+       }
+      },
+      {
+       "value": "sleep_better",
+       "label": {
+        "en": "Sleep better",
+        "es": "Dormir mejor"
+       }
+      },
+      {
+       "value": "energy",
+       "label": {
+        "en": "Increase your Energy",
+        "es": "Aumentar su energía"
+       }
+      },
+      {
+       "value": "anxiety",
+       "label": {
+        "en": "Control your Anxiety",
+        "es": "Controlar su ansiedad"
+       }
+      },
+      {
+       "value": "libido",
+       "label": {
+        "en": "Increase your Libido",
+        "es": "Aumentar su libido"
+       }
+      },
+      {
+       "value": "motivation",
+       "label": {
+        "en": "Motivational Support",
+        "es": "Apoyo motivacional"
+       }
+      },
+      {
+       "value": "self_esteem",
+       "label": {
+        "en": "Improve Self-Esteem",
+        "es": "Mejorar la autoestima"
+       }
+      },
+      {
+       "value": "healthier_life",
+       "label": {
+        "en": "Learn to have a healthier life",
+        "es": "Aprender a llevar una vida más saludable"
+       }
+      }
+     ]
+    },
+    {
+     "id": "comments",
+     "type": "text",
+     "label": {
+      "en": "Any important comment that you may to mention",
+      "es": "Algún comentario importante que desee mencionar"
+     },
+     "long": true
+    }
+   ]
+  }
+ ]
+}
