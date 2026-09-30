@@ -294,3 +294,10 @@ table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
   body.printing-qr .qr-print { position: fixed; inset: 0; padding-top: 40px; }
   body.printing-qr .qr-print input { display: none; }
 }
+
+/* Progress & evaluations / SMS */
+.stack-tight > * + * { margin-top: 2px; }
+.badge.gold { background: #F6EFD6; color: #7A5E0B; margin-left: 6px; }
+.check.full, .form-grid .full { grid-column: 1 / -1; }
+.btn-sm { min-height: 30px; padding: 4px 10px; font-size: 13px; }
+h3.m0 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-2); margin-top: 8px; }

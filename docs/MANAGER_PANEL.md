@@ -173,3 +173,60 @@ regenerar, socio cancelado, login QR, alias sin email, rate limit, permisos
 owner/manager/staff/otro tenant/socio, envío SMS+email, cabeceras) y E2E con
 Playwright del portal y de la tarjeta del Manager (sin violaciones de CSP).
 RLS del socio probado en SQL (solo sus filas; no escribe directo; no cancela citas ajenas).
+
+
+## Member Panel · Progreso, evaluaciones y SMS (migración `20260930120000_member_progress_onboarding`)
+
+### Mi progreso (`/m/#/progress`)
+* Tarjetas **Antes → Ahora → Cambio** con fechas y mini-gráfico para: **fuerza** (ejercicio, peso y
+  repeticiones), **movilidad y vida diaria** (levantarse de una silla, escaleras, caminar 1-5 y prueba de
+  silla 30 s), **resistencia** (minutos caminando/bicicleta/otra), **bienestar** (energía, sueño, cómo
+  se siente 1-5), **constancia** (asistencia real de `check_ins` y sesiones completadas) y **cuerpo**
+  (peso, cintura, brazo, muslo, estatura).
+* "Antes" = línea base (`is_baseline`) o, si no hay, el primer registro (se indica). Nunca se sobrescribe.
+* Cada dato muestra quién lo registró: *declarado por el socio* o *tomado por el staff (nombre)*;
+  lo decide un trigger en el servidor, no el navegador.
+* Mensajes de apoyo solo cuando los datos lo demuestran (mismo ejercicio y peso → más repeticiones,
+  más minutos, más facilidad, más energía, más visitas). Si las condiciones de la prueba cambiaron o no
+  hay mejora, se dice con respeto y se sugiere revisarlo con el entrenador. Bajar de peso no se
+  presenta como éxito; el texto habla de "cambios observados durante el programa".
+* Figura SVG masculina/femenina según `members.gender` (M/F). Si falta, figura neutra y el socio puede
+  indicarlo (`member_set_sex`). Nunca se infiere del nombre.
+* Unidades lb/in ↔ kg/cm (se guarda en lb/in; conversión 0.45359237 y 2.54).
+* "Registrar nueva medición" = actualización breve (`member_log_progress`), nunca línea base.
+
+### Evaluación (`/m/#/evaluation`)
+* Formulario por pasos con barra de progreso, borrador en servidor + copia local, "Guardar y seguir
+  después". "Enviar" usa `member_submit_evaluation(kind, payload, client_ref)`: idempotente; la
+  confirmación solo aparece si Supabase devolvió OK; si falla, el borrador se conserva y el reintento
+  usa la misma referencia.
+* Cada evaluación es un registro independiente (`member_evaluations`, inmutable al enviarse); la inicial
+  crea la línea base; la próxima queda a **90 días** (`members.next_evaluation_due`).
+* **Cuestionario original: pendiente** (ver `supabase/questionnaires/README.md`). Sin él, la evaluación
+  guarda medidas e indicadores y `onboarding_completed` sigue en `false`.
+* Socio existente (`joined_as = existing` o NULL): entra con su QR sin onboarding; queda pendiente.
+  Socio nuevo (`joined_as = new`): el inicio le presenta la evaluación inicial.
+* PDF de archivo generado al vuelo desde el registro guardado: `GET /api/member/evaluations/{id}/pdf`
+  (solo el propio socio) y `GET /api/manager/evaluations/{id}/pdf` (owner/manager del mismo gym).
+  No hay enlaces públicos ni archivos almacenados.
+
+### Invitaciones a evaluar
+* Manager → ficha → "Send evaluation invite" (SMS y/o email) con enlace seguro `…/m/q/<código>?next=evaluation`.
+* Automático cada 6 h si `EVALUATION_INVITES_AUTO=1` y `PUBLIC_BASE_URL` configurada: una sola invitación
+  por fecha de vencimiento (`evaluation_invitations`, índice único).
+
+### SMS: estados reales de entrega
+* `_send_sms` ya no dice "enviado" al recibir un SID: guarda en `sms_messages` (sin cuerpo ni enlace;
+  teléfono enmascarado) el estado **Aceptado/En cola → Enviado → Entregado / Fallido** y el código de error.
+* Twilio avisa por `POST /webhooks/twilio/sms-status` (StatusCallback por mensaje, firma
+  `X-Twilio-Signature` validada contra `PUBLIC_BASE_URL`). "Check SMS delivery" consulta a Twilio a demanda.
+* "SMS diagnostics" (owner/manager) muestra datos reales de Twilio: tipo de cuenta, si el número puede
+  enviar SMS y los últimos mensajes con su código de error (p. ej. 30034 = número sin registro A2P 10DLC).
+* El GET de `/m/q/<código>` ya no inicia sesión ni marca "activado": solo muestra el botón **Entrar**, que
+  hace `POST /api/member/qr-login`. Así las vistas previas/escáneres de SMS no consumen ni activan el acceso.
+* Números validados en E.164 (NANP estricto para EE. UU.).
+
+### Configuración
+* Railway: `PUBLIC_BASE_URL=https://nexxus-core-production.up.railway.app` (obligatoria para enlaces y
+  callbacks), `EVALUATION_INVITES_AUTO=1` (opcional).
+* `requirements.txt`: `reportlab` (PDF).

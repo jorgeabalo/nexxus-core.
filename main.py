@@ -140,12 +140,15 @@ if MANAGER_DIR.is_dir():
 MEMBER_DIR = Path(__file__).parent / "member"
 
 try:
-    from services.member_portal import MemberPortal, PortalError
+    from services.member_portal import MemberPortal, PortalError, public_base_url
     member_portal = MemberPortal()
 except Exception as e:
     logger.error(f"MemberPortal no disponible: {e}")
     member_portal = None
     PortalError = Exception  # type: ignore
+
+    def public_base_url(fallback=None):  # type: ignore
+        raise RuntimeError("portal_not_configured")
 
 import time as _time
 from collections import defaultdict, deque
@@ -194,21 +197,57 @@ def _portal_error(e: Exception) -> JSONResponse:
     return JSONResponse({"error": "server_error"}, status_code=500)
 
 
+def _evaluation_invite_loop():
+    """Revisa cada 6 h las evaluaciones vencidas (90 días) y envía la invitación.
+    Solo si EVALUATION_INVITES_AUTO=1 y PUBLIC_BASE_URL está configurada."""
+    import threading
+
+    def loop():
+        while True:
+            try:
+                res = member_portal.run_due_invitations()
+                print(f"EVAL_INVITES {res}", flush=True)
+            except Exception as e:
+                logger.error(f"EVAL_INVITES_ERROR {type(e).__name__}")
+            _time.sleep(6 * 3600)
+
+    threading.Thread(target=loop, name="eval-invites", daemon=True).start()
+
+
+@app.on_event("startup")
+async def _start_background_jobs():
+    if member_portal and os.getenv("EVALUATION_INVITES_AUTO") == "1":
+        _evaluation_invite_loop()
+
+
 @app.get("/m/q/{token}")
-async def member_qr_login(token: str, request: Request):
-    """Enlace/QR personal: valida y redirige al portal con un token de un solo uso."""
+async def member_qr_page(token: str):
+    """Enlace/QR personal. El GET NO inicia sesión ni cambia nada: solo sirve el
+    portal, que muestra un botón "Entrar". Así los escáneres y las vistas
+    previas de SMS/email (que solo hacen GET) no consumen ni activan el acceso."""
+    if not MEMBER_DIR.is_dir():
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return FileResponse(MEMBER_DIR / "index.html", media_type="text/html")
+
+
+@app.post("/api/member/qr-login")
+async def member_qr_login(request: Request):
+    """El socio pulsó "Entrar": valida la firma del enlace y devuelve un token de
+    un solo uso para canjear en el navegador (verifyOtp)."""
     if _rate_limited("q:" + _client_ip(request)):
-        return RedirectResponse("/m/#error=rate_limited", status_code=303)
+        return JSONResponse({"error": "rate_limited"}, status_code=429)
     if not member_portal:
-        return RedirectResponse("/m/#error=portal_not_configured", status_code=303)
+        return JSONResponse({"error": "portal_not_configured"}, status_code=503)
     try:
-        hashed = await run_in_threadpool(member_portal.login_token_for, token)
-        return RedirectResponse(f"/m/#login={hashed}", status_code=303)
+        body = await request.json()
+    except Exception:
+        body = {}
+    token = (body or {}).get("token") if isinstance(body, dict) else None
+    try:
+        hashed = await run_in_threadpool(member_portal.login_token_for, str(token or ""))
+        return {"token_hash": hashed}
     except Exception as e:
-        code = getattr(e, "code", "server_error")
-        if code == "server_error":
-            logger.error(f"PORTAL_QR_ERROR {type(e).__name__}")
-        return RedirectResponse(f"/m/#error={code}", status_code=303)
+        return _portal_error(e)
 
 
 @app.post("/api/manager/members/{member_id}/portal-access")
@@ -247,7 +286,119 @@ async def manager_portal_link(member_id: str, request: Request):
             "activated_at": member.get("portal_activated_at"),
             "invited_at": member.get("portal_invited_at"),
             "last_used_at": member.get("portal_last_used_at"),
+            "last_sms": await run_in_threadpool(member_portal.last_sms, member["id"]),
         }
+    except Exception as e:
+        return _portal_error(e)
+
+
+@app.post("/api/manager/members/{member_id}/evaluation-invite")
+async def manager_evaluation_invite(member_id: str, request: Request):
+    """Owner/manager: envía al socio el enlace seguro para completar su evaluación."""
+    if not member_portal:
+        return JSONResponse({"error": "portal_not_configured"}, status_code=503)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    try:
+        user, member = await run_in_threadpool(member_portal.staff_member, _bearer(request), member_id)
+        return await run_in_threadpool(member_portal.send_evaluation_invite, member, _base_url(request),
+                                       bool(body.get("sms")), bool(body.get("email")), user.get("id"), False)
+    except Exception as e:
+        return _portal_error(e)
+
+
+@app.post("/api/manager/members/{member_id}/sms-refresh")
+async def manager_sms_refresh(member_id: str, request: Request):
+    """Consulta a Twilio el estado real del último SMS enviado a este socio."""
+    if not member_portal:
+        return JSONResponse({"error": "portal_not_configured"}, status_code=503)
+    try:
+        _, member = await run_in_threadpool(member_portal.staff_member, _bearer(request), member_id)
+        rows = await run_in_threadpool(member_portal.db.select, "sms_messages", {
+            "member_id": f"eq.{member['id']}", "message_sid": "not.is.null", "order": "created_at.desc",
+            "limit": "1", "select": "message_sid"})
+        if rows:
+            await run_in_threadpool(member_portal.refresh_sms, rows[0]["message_sid"])
+        return {"last_sms": await run_in_threadpool(member_portal.last_sms, member["id"])}
+    except Exception as e:
+        return _portal_error(e)
+
+
+@app.get("/api/manager/sms-diagnostics")
+async def manager_sms_diagnostics(request: Request):
+    """Diagnóstico real de Twilio (tipo de cuenta, capacidad SMS del número, errores recientes)."""
+    if not member_portal:
+        return JSONResponse({"error": "portal_not_configured"}, status_code=503)
+    try:
+        user = await run_in_threadpool(member_portal.db.user_from_jwt, _bearer(request))
+        if not user:
+            raise PortalError("unauthorized", 401)
+        rows = await run_in_threadpool(member_portal.db.select, "tenant_users", {
+            "user_id": f"eq.{user['id']}", "active": "eq.true", "role": "in.(owner,manager)",
+            "select": "tenant_id", "limit": "1"})
+        if not rows:
+            raise PortalError("forbidden", 403)
+        return await run_in_threadpool(member_portal.sms_diagnostics, rows[0]["tenant_id"])
+    except Exception as e:
+        return _portal_error(e)
+
+
+@app.post("/webhooks/twilio/sms-status")
+async def twilio_sms_status(request: Request):
+    """Callback de estado de Twilio. Solo se acepta con firma válida (X-Twilio-Signature)."""
+    form = dict(await request.form())
+    token = os.getenv("TWILIO_AUTH_TOKEN")
+    try:
+        url = f"{public_base_url(_base_url(request))}/webhooks/twilio/sms-status"
+    except Exception:
+        return Response(status_code=503)
+    from twilio.request_validator import RequestValidator
+    if not token or not RequestValidator(token).validate(url, form, request.headers.get("X-Twilio-Signature", "")):
+        logger.warning("SMS_STATUS_REJECTED firma inválida")
+        return Response(status_code=403)
+    sid, status = form.get("MessageSid") or form.get("SmsSid"), form.get("MessageStatus") or form.get("SmsStatus")
+    code = form.get("ErrorCode")
+    print(f"SMS_STATUS sid=…{(sid or '')[-6:]} status={status} error={code}", flush=True)
+    if member_portal and sid and status:
+        try:
+            await run_in_threadpool(member_portal.update_sms_status, sid, status,
+                                    int(code) if code and str(code).isdigit() else None, form.get("ErrorMessage"))
+        except Exception as e:
+            logger.error(f"SMS_STATUS_ERROR {type(e).__name__}")
+    return Response(status_code=204)
+
+
+def _pdf_response(pdf: bytes, bundle) -> Response:
+    ev = bundle["evaluation"]
+    fname = f"evaluacion-{ev['kind']}-{str(ev.get('submitted_at') or '')[:10]}.pdf"
+    return Response(pdf, media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="{fname}"', "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff"})
+
+
+@app.get("/api/member/evaluations/{evaluation_id}/pdf")
+async def member_evaluation_pdf(evaluation_id: str, request: Request, lang: str = "es"):
+    if not member_portal:
+        return JSONResponse({"error": "portal_not_configured"}, status_code=503)
+    try:
+        from services.evaluation_pdf import build_evaluation_pdf
+        bundle = await run_in_threadpool(member_portal.evaluation_for_member, _bearer(request), evaluation_id)
+        return _pdf_response(await run_in_threadpool(build_evaluation_pdf, bundle, lang), bundle)
+    except Exception as e:
+        return _portal_error(e)
+
+
+@app.get("/api/manager/evaluations/{evaluation_id}/pdf")
+async def manager_evaluation_pdf(evaluation_id: str, request: Request, lang: str = "en"):
+    if not member_portal:
+        return JSONResponse({"error": "portal_not_configured"}, status_code=503)
+    try:
+        from services.evaluation_pdf import build_evaluation_pdf
+        bundle = await run_in_threadpool(member_portal.evaluation_for_staff, _bearer(request), evaluation_id)
+        return _pdf_response(await run_in_threadpool(build_evaluation_pdf, bundle, lang), bundle)
     except Exception as e:
         return _portal_error(e)
 

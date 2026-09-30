@@ -8,120 +8,26 @@
 //   * Todo dato llega por RPC/consultas con el JWT del socio: RLS y las
 //     funciones member_* solo devuelven/modifican SUS filas.
 //   * Sesión guardada con una clave propia para no mezclarse con /manager.
-import { I18N } from './i18n.js';
+import {
+  S, el, clear, store, t, has, fmtDate, fmtClock, fmtDateTime, money, badge, toast, openModal, errText, icon,
+  card, empty, authFetch,
+} from './util.js';
+import { viewProgress, topInsights, figureSvg, bodyMetrics } from './progress.js';
+import { viewEvaluation, evaluationCard } from './evaluation.js';
+import { welcomeCard } from './welcome.js';
 
 const app = document.getElementById('app');
-const S = { sb: null, session: null, data: null, lang: 'es', route: 'home', notice: null };
-
-// ---------------------------------------------------------------------------
-// utilidades
-// ---------------------------------------------------------------------------
-function el(tag, attrs = {}, ...children) {
-  const n = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs || {})) {
-    if (v === null || v === undefined || v === false) continue;
-    if (k === 'class') n.className = v;
-    else if (k.startsWith('on') && typeof v === 'function') n.addEventListener(k.slice(2), v);
-    else if (k === 'text') n.textContent = v;
-    else n.setAttribute(k, v === true ? '' : v);
-  }
-  for (const c of children.flat(Infinity)) {
-    if (c === null || c === undefined || c === false) continue;
-    n.appendChild(c instanceof Node ? c : document.createTextNode(String(c)));
-  }
-  return n;
-}
-const clear = (n) => { while (n.firstChild) n.removeChild(n.firstChild); return n; };
-const store = {
-  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
-  set(k, v) { try { localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } },
-};
-function t(key, vars = {}) {
-  const s = (I18N[S.lang] && I18N[S.lang][key]) ?? I18N.es[key] ?? key;
-  return s.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? '');
-}
-const locale = () => (S.lang === 'es' ? 'es-US' : 'en-US');
-const tz = () => S.data?.tenant?.timezone || 'America/Chicago';
-const currency = () => S.data?.tenant?.branding?.currency || 'USD';
-
-function fmtDate(iso, opts = { weekday: 'short', month: 'short', day: 'numeric' }) {
-  if (!iso) return '—';
-  const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
-  return new Intl.DateTimeFormat(locale(), { ...opts, timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, d)));
-}
-function fmtClock(tm) {
-  if (!tm) return '';
-  const [h, mi] = String(tm).split(':').map(Number);
-  return new Intl.DateTimeFormat(locale(), { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' }).format(new Date(Date.UTC(2000, 0, 1, h, mi)));
-}
-function fmtDateTime(iso) {
-  if (!iso) return '—';
-  return new Intl.DateTimeFormat(locale(), { timeZone: tz(), weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(iso));
-}
-function money(v) {
-  const n = Number(v || 0);
-  return new Intl.NumberFormat(locale(), { style: 'currency', currency: currency(), maximumFractionDigits: n % 1 ? 2 : 0 }).format(n);
-}
-const TONE = { active: 'ok', paid: 'ok', confirmed: 'ok', completed: 'ok', scheduled: 'warn', pending: 'warn', overdue: 'bad', past_due: 'bad', cancelled: 'muted', no_show: 'bad', inactive: 'muted', paused: 'warn' };
-function badge(status) {
-  const k = String(status || '').toLowerCase();
-  return el('span', { class: `badge ${TONE[k] || ''}` }, t(`status.${k}`) === `status.${k}` ? k.replace(/_/g, ' ') : t(`status.${k}`));
-}
-function toast(msg, kind = '') {
-  const n = el('div', { class: `toast ${kind}` }, msg);
-  document.getElementById('toast-root').appendChild(n);
-  setTimeout(() => n.remove(), 3500);
-}
-function openModal(title, body, actions = []) {
-  const root = document.getElementById('modal-root');
-  clear(root);
-  const close = () => { clear(root); document.removeEventListener('keydown', onKey); };
-  const onKey = (e) => { if (e.key === 'Escape') close(); };
-  document.addEventListener('keydown', onKey);
-  const dialog = el('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
-    el('div', { class: 'modal-head' }, el('h2', {}, title),
-      el('button', { class: 'icon-btn', type: 'button', 'aria-label': t('close'), onclick: close }, '✕')),
-    body,
-    el('div', { class: 'modal-foot' }, el('button', { class: 'btn', type: 'button', onclick: close }, t('cancel')), ...actions.map(a => a(close))));
-  const backdrop = el('div', { class: 'modal-backdrop', onclick: (e) => { if (e.target === backdrop) close(); } }, dialog);
-  root.appendChild(backdrop);
-  return close;
-}
-function errText(e) {
-  const m = String(e?.message || e || '');
-  const map = [
-    [/membership not active/i, 'err.membership'], [/unknown service/i, 'err.service'],
-    [/must be in the future/i, 'err.future'], [/too far/i, 'err.far'], [/too many pending/i, 'err.pending'],
-    [/cannot be cancelled/i, 'err.cancel'], [/invalid email/i, 'err.email'], [/not a member/i, 'err.notMember'],
-    [/JWT|expired|401/i, 'err.session'],
-  ];
-  for (const [re, key] of map) if (re.test(m)) return t(key);
-  return t('err.generic');
-}
-
-// Íconos de la barra inferior
-const PATHS = {
-  home: 'M12 3 2 12h3v8h6v-5h2v5h6v-8h3L12 3z',
-  appts: 'M7 2v2H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2H7zm-2 7h14v10H5V9z',
-  pay: 'M3 5h18a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm1 4v8h16V9H4zm0-2h16V7H4z',
-  visits: 'M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z',
-  me: 'M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm0 2c-3 0-8 1.5-8 4.5V21h16v-2.5c0-3-5-4.5-8-4.5z',
-};
-function icon(name) {
-  const ns = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('width', 22); svg.setAttribute('height', 22);
-  svg.setAttribute('fill', 'currentColor'); svg.setAttribute('aria-hidden', 'true');
-  const p = document.createElementNS(ns, 'path'); p.setAttribute('d', PATHS[name]); svg.appendChild(p);
-  return svg;
-}
 
 // ---------------------------------------------------------------------------
 // arranque
 // ---------------------------------------------------------------------------
 async function boot() {
   S.lang = store.get('aita-member-lang') === 'en' ? 'en' : 'es';  // español por defecto
+  S.units = store.get('aita-member-units') === 'metric' ? 'metric' : 'imperial';
   document.documentElement.lang = S.lang;
+  const qs = new URLSearchParams(location.search);
+  if (qs.get('next') === 'evaluation') S.next = 'evaluation';
+  const qrMatch = location.pathname.match(/^\/m\/q\/([^/?#]+)/);
 
   const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
   const loginToken = hash.get('login');
@@ -144,8 +50,15 @@ async function boot() {
     if (event === 'SIGNED_OUT') { S.data = null; renderLogin(); }
   });
 
+  if (qrMatch) {
+    // Enlace / QR personal: el GET no inicia sesión (así las vistas previas de
+    // SMS/email no lo consumen). El socio pulsa "Entrar" y ahí se valida.
+    const existing = (await S.sb.auth.getSession()).data.session;
+    return renderQrEntry(decodeURIComponent(qrMatch[1]), Boolean(existing));
+  }
+
   if (loginToken) {
-    // Enlace / QR personal: canjear el token de un solo uso.
+    // Token de un solo uso (compatibilidad con enlaces anteriores).
     let { data, error } = await S.sb.auth.verifyOtp({ token_hash: loginToken, type: 'magiclink' });
     if (error) ({ data, error } = await S.sb.auth.verifyOtp({ token_hash: loginToken, type: 'email' }));
     if (error || !data?.session) S.notice = { kind: 'bad', text: t('err.linkUsed') };
@@ -159,6 +72,39 @@ async function boot() {
   await loadAndRender();
 }
 
+async function redeem(tokenHash) {
+  let { data, error } = await S.sb.auth.verifyOtp({ token_hash: tokenHash, type: 'magiclink' });
+  if (error) ({ data, error } = await S.sb.auth.verifyOtp({ token_hash: tokenHash, type: 'email' }));
+  return !error && data?.session;
+}
+
+function renderQrEntry(token, hasSession) {
+  const err = el('p', { class: 'form-error', role: 'alert' });
+  const btn = el('button', { class: 'btn btn-primary btn-block btn-lg', type: 'button', onclick: async () => {
+    err.textContent = ''; btn.disabled = true; btn.textContent = t('qr.entering');
+    try {
+      const r = await fetch('/api/member/qr-login', { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.token_hash) throw new Error(d.error || 'login');
+      if (!(await redeem(d.token_hash))) throw new Error('login_unavailable');
+      history.replaceState(null, '', '/m/' + (S.next === 'evaluation' ? '#/evaluation' : ''));
+      await loadAndRender();
+    } catch (e) {
+      btn.disabled = false; btn.textContent = t('qr.enter');
+      const code = String(e.message || '');
+      err.textContent = has(`link.${code}`) ? t(`link.${code}`) : t('err.linkInvalid');
+    }
+  } }, t('qr.enter'));
+  clear(app).appendChild(el('div', { class: 'login-wrap' }, el('div', { class: 'login' },
+    el('div', { class: 'brand' }, t('portal').toUpperCase()),
+    el('h1', {}, S.next === 'evaluation' ? t('qr.titleEval') : t('qr.title')),
+    el('p', { class: 'lead' }, t('qr.lead')), btn, err,
+    hasSession ? el('a', { class: 'link-btn center-block', href: '/m/' }, t('qr.already')) : null,
+    el('p', { class: 'muted small center' }, t('qr.private')),
+    el('div', { class: 'lang-row' }, langToggle('link-btn')))));
+}
+
+let seenMarked = false;
 async function loadAndRender() {
   try {
     const { data, error } = await S.sb.rpc('member_portal');
@@ -173,9 +119,10 @@ async function loadAndRender() {
     return renderFatal(errText(e), true);
   }
   applyBranding();
-  window.removeEventListener('hashchange', route);
-  window.addEventListener('hashchange', route);
+    window.addEventListener('hashchange', () => { route(); window.scrollTo(0, 0); });
+  if (S.next === 'evaluation' && !location.hash) { S.next = null; location.hash = '#/evaluation'; return; }
   route();
+  if (!seenMarked) { seenMarked = true; S.sb.rpc('member_mark_seen').then(() => {}, () => {}); }
 }
 
 function applyBranding() {
@@ -189,7 +136,7 @@ const brandName = () => S.data?.tenant?.branding?.display_name || S.data?.tenant
 
 function setLang(l) {
   S.lang = l; store.set('aita-member-lang', l); document.documentElement.lang = l;
-  if (S.data) { applyBranding(); route(); } else renderLogin();
+  if (S.data) { applyBranding(); route(); } else if (location.pathname.startsWith('/m/q/')) boot(); else renderLogin();
 }
 const langToggle = (cls) => el('button', { class: cls, type: 'button', onclick: () => setLang(S.lang === 'es' ? 'en' : 'es') }, S.lang === 'es' ? 'English' : 'Español');
 
@@ -212,7 +159,7 @@ function renderLogin() {
     const v = email.value.trim().toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) { err.textContent = t('err.email'); return; }
     btn.disabled = true;
-    const { error } = await S.sb.auth.signInWithOtp({ email: v, options: { shouldCreateUser: false, emailRedirectTo: `${location.origin}/m/` } });
+    const { error } = await S.sb.auth.signInWithOtp({ email: v, options: { shouldCreateUser: false, emailRedirectTo: `${location.origin}/m/${S.next === 'evaluation' ? '?next=evaluation' : ''}` } });
     btn.disabled = false;
     // Misma respuesta exista o no el email (no revelar quién es socio).
     if (error && /rate|security purposes|too many/i.test(error.message)) { err.textContent = t('err.rate'); return; }
@@ -236,6 +183,7 @@ function renderLogin() {
 // ---------------------------------------------------------------------------
 const ROUTES = [
   { key: 'home', icon: 'home', view: viewHome },
+  { key: 'progress', icon: 'progress', view: (main) => viewProgress(main, rerender) },
   { key: 'appts', icon: 'appts', view: viewAppointments },
   { key: 'pay', icon: 'pay', view: viewPayments },
   { key: 'visits', icon: 'visits', view: viewVisits },
@@ -244,7 +192,8 @@ const ROUTES = [
 
 function route() {
   const key = (location.hash.match(/^#\/(\w+)/) || [])[1] || 'home';
-  const r = ROUTES.find(x => x.key === key) || ROUTES[0];
+  const r = key === 'evaluation' ? { key: 'evaluation', view: (main) => viewEvaluation(main, rerender) }
+    : (ROUTES.find(x => x.key === key) || ROUTES[0]);
   S.route = r.key;
   const m = S.data.member;
   const main = el('main', { class: 'stack' });
@@ -260,7 +209,18 @@ function route() {
     el('nav', { class: 'nav', 'aria-label': t('portal') }, ROUTES.map(x =>
       el('a', { href: `#/${x.key}`, class: x.key === r.key ? 'active' : '', 'aria-current': x.key === r.key ? 'page' : null }, icon(x.icon), t(`nav.${x.key}`)))));
   r.view(main);
-  window.scrollTo(0, 0);
+}
+
+// Recarga los datos (tras guardar algo) y vuelve a pintar la vista actual.
+async function rerender(reload = false, after = null) {
+  const y = window.scrollY;
+  if (reload) {
+    const { data, error } = await S.sb.rpc('member_portal');
+    if (error) { toast(errText(error), 'error'); return; }
+    S.data = data;
+  }
+  route();
+  if (after) after(); else window.scrollTo(0, reload ? 0 : y);
 }
 
 async function refresh() {
@@ -270,8 +230,6 @@ async function refresh() {
   route();
 }
 
-const card = (title, body, extra = null) => el('section', { class: 'card' }, el('div', { class: 'card-head' }, el('h2', {}, title), extra), body);
-const empty = (text) => el('div', { class: 'empty' }, text);
 const upcoming = () => S.data.appointments
   .filter(a => ['scheduled', 'confirmed'].includes(a.status) && `${a.date}T${a.start_time}` >= `${S.data.today}T00:00`)
   .sort((a, b) => `${a.date}${a.start_time}`.localeCompare(`${b.date}${b.start_time}`));
@@ -284,6 +242,10 @@ function viewHome(main) {
   const m = S.data.member;
   const next = upcoming()[0];
   const overdue = S.data.payments.filter(p => p.status === 'overdue');
+
+  main.appendChild(welcomeCard());
+  main.appendChild(evaluationCard());
+  main.appendChild(progressPreview());
 
   main.appendChild(card(t('home.membership'), el('div', {},
     el('div', { class: 'row' }, el('div', { class: 'main' }, el('span', { class: 'strong' }, m.membership_type || t('home.membership')),
@@ -313,12 +275,24 @@ function viewHome(main) {
   }
 }
 
+function progressPreview() {
+  const ins = topInsights(2);
+  const m = bodyMetrics();
+  const any = (S.data.measurements || []).length || (S.data.progress || []).length;
+  return el('section', { class: 'card progress-preview' },
+    el('div', { class: 'card-head' }, el('h2', {}, t('prog.title')), el('a', { class: 'link-btn', href: '#/progress' }, t('prog.open'))),
+    el('div', { class: 'pp' },
+      el('div', { class: 'pp-fig' }, figureSvg(S.data.member.sex, {}, { compact: true })),
+      el('div', { class: 'pp-text' },
+        ins.length ? el('ul', { class: 'insights' }, ins.map(x => el('li', {}, x)))
+          : el('p', { class: 'm0' }, any ? t('prog.previewKeep') : t('prog.previewStart')),
+        m.weight ? el('p', { class: 'small muted m0' }, t('prog.lastRecord', { d: fmtDate(m.weight.cur.date, { month: 'short', day: 'numeric' }) })) : null,
+        el('a', { class: 'btn btn-sm mt8', href: '#/progress' }, any ? t('prog.open') : t('prog.startQuick')))));
+}
+
 async function loadQr(box) {
   try {
-    const get = async () => fetch('/api/member/qr', {
-      headers: { Authorization: `Bearer ${(await S.sb.auth.getSession()).data.session?.access_token || ''}` }, cache: 'no-store' });
-    let r = await get();
-    if (r.status === 401 && !(await S.sb.auth.refreshSession()).error) r = await get();
+    const r = await authFetch('/api/member/qr');
     const d = await r.json().catch(() => ({}));
     if (!r.ok || !d.link) throw new Error(d.error || 'qr');
     const qr = window.qrcode(0, 'M');

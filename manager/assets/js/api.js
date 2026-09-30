@@ -145,6 +145,40 @@ export const api = {
     return backend('POST', `/api/manager/members/${encodeURIComponent(memberId)}/portal-access`, { sms, email, regenerate });
   },
 
+  async evaluationInvite(memberId, { sms = false, email = false } = {}) {
+    return backend('POST', `/api/manager/members/${encodeURIComponent(memberId)}/evaluation-invite`, { sms, email });
+  },
+  async smsRefresh(memberId) { return backend('POST', `/api/manager/members/${encodeURIComponent(memberId)}/sms-refresh`, {}); },
+  async smsDiagnostics() { return backend('GET', '/api/manager/sms-diagnostics'); },
+  async evaluationPdf(evaluationId) {
+    const token = (await sb.auth.getSession()).data.session?.access_token;
+    const res = await fetch(`/api/manager/evaluations/${encodeURIComponent(evaluationId)}/pdf?lang=en`, { headers: { Authorization: `Bearer ${token || ''}` }, cache: 'no-store' });
+    if (!res.ok) { const e = new Error(`HTTP ${res.status}`); throw e; }
+    return res.blob();
+  },
+
+  // ----- progress & evaluations (RLS: staff del mismo gym) -----
+  async memberProgress(tenantId, id) {
+    const [meas, prog, evals, qs, mem] = await Promise.all([
+      sb.from('measurements').select('*').eq('tenant_id', tenantId).eq('member_id', id).order('measurement_date').order('created_at'),
+      sb.from('progress_entries').select('*').eq('tenant_id', tenantId).eq('member_id', id).order('entry_date').order('created_at'),
+      sb.from('member_evaluations').select('id, kind, status, submitted_at, updated_at, questionnaire_id, questionnaire_version, answers, next_due_date, current_step')
+        .eq('tenant_id', tenantId).eq('member_id', id).order('started_at'),
+      sb.from('questionnaires').select('id, version, title, definition, active').eq('tenant_id', tenantId),
+      sb.from('members').select('gender, joined_as, next_evaluation_due, onboarding_completed').eq('tenant_id', tenantId).eq('id', id).maybeSingle(),
+    ]);
+    return { measurements: must(meas) || [], progress: must(prog) || [], evaluations: must(evals) || [], questionnaires: must(qs) || [], member: must(mem) || {} };
+  },
+  async recordMeasurement(tenantId, memberId, values) {
+    return must(await sb.from('measurements').insert({ ...values, tenant_id: tenantId, member_id: memberId }).select('id').single());
+  },
+  async recordProgress(tenantId, memberId, rows) {
+    return must(await sb.from('progress_entries').insert(rows.map(r => ({ ...r, tenant_id: tenantId, member_id: memberId, metric_key: '-' }))).select('id'));
+  },
+  async updateMember(tenantId, id, values) {
+    return must(await sb.from('members').update(values).eq('tenant_id', tenantId).eq('id', id));
+  },
+
   // ----- payments -----
   async payments(tenantId, status = 'all') {
     let q = sb.from('payment_overview').select('*').eq('tenant_id', tenantId);
