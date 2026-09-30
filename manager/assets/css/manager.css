@@ -301,3 +301,4 @@ table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
 .check.full, .form-grid .full { grid-column: 1 / -1; }
 .btn-sm { min-height: 30px; padding: 4px 10px; font-size: 13px; }
 h3.m0 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-2); margin-top: 8px; }
+.doc-view img { display: block; max-width: 100%; height: auto; border: 1px solid var(--border, #E3E8EF); border-radius: 8px; }

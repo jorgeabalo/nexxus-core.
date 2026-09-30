@@ -13,3 +13,16 @@ Cubren: evaluación sin cuestionario (no marca onboarding completo), borrador, e
 (`client_ref`), línea base única e inmutable, reevaluación separada, normalización del ejercicio,
 autoría (socio/staff) decidida por el servidor, aislamiento entre socios y entre gimnasios,
 validación de respuestas contra una definición **de prueba** y bloqueo de versiones ya usadas.
+
+Documentos subidos (cuestionario en papel/PDF):
+
+```bash
+psql -d t2 -f tests/sql/bootstrap_local.sql
+psql -d t2 -f supabase/migrations/20260930120000_member_progress_onboarding.sql
+psql -d t2 -f supabase/migrations/20260930130000_member_home.sql
+psql -d t2 -f supabase/migrations/20261001120000_evaluation_documents.sql
+psql -d t2 -f tests/sql/test_evaluation_documents.sql   # "ALL DOCUMENT SQL TESTS PASSED"
+```
+Cubren: solo owner/manager y el propio socio ven documentos (staff raso y otros gimnasios no),
+sin escritura directa de usuarios, confirmación que no acepta respuestas inventadas para lo
+ilegible/en blanco, idempotencia, inmutabilidad y retención del original, y auditoría.

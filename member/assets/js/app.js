@@ -14,6 +14,7 @@ import {
 } from './util.js';
 import { viewProgress, topInsights, figureSvg, bodyMetrics } from './progress.js';
 import { viewEvaluation, evaluationCard } from './evaluation.js';
+import { viewReview } from './upload.js';
 import { welcomeCard } from './welcome.js';
 
 const app = document.getElementById('app');
@@ -192,7 +193,9 @@ const ROUTES = [
 
 function route() {
   const key = (location.hash.match(/^#\/(\w+)/) || [])[1] || 'home';
+  const docId = (location.hash.match(/^#\/review\/([0-9a-f-]{36})$/i) || [])[1];
   const r = key === 'evaluation' ? { key: 'evaluation', view: (main) => viewEvaluation(main, rerender) }
+    : (key === 'review' && docId) ? { key: 'review', view: (main) => viewReview(main, rerender, docId) }
     : (ROUTES.find(x => x.key === key) || ROUTES[0]);
   S.route = r.key;
   const m = S.data.member;

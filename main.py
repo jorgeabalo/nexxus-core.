@@ -3,6 +3,7 @@ from fastapi.responses import Response, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import logging
 import os
+import re
 from pathlib import Path
 
 # Importar servicios de Twilio
@@ -93,7 +94,7 @@ def _manager_csp() -> str:
         "script-src 'self'; "
         "style-src 'self' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
-        "img-src 'self' data:; "
+        "img-src 'self' data: blob:; "
         f"connect-src 'self' {supa} {ws}; "
         "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
     )
@@ -399,6 +400,96 @@ async def manager_evaluation_pdf(evaluation_id: str, request: Request, lang: str
         from services.evaluation_pdf import build_evaluation_pdf
         bundle = await run_in_threadpool(member_portal.evaluation_for_staff, _bearer(request), evaluation_id)
         return _pdf_response(await run_in_threadpool(build_evaluation_pdf, bundle, lang), bundle)
+    except Exception as e:
+        return _portal_error(e)
+
+
+# ---------------- Cuestionario subido (PDF rellenable, escaneo o fotos) ----------------
+evaluation_docs = None
+if member_portal:
+    try:
+        from services.evaluation_documents import EvaluationDocuments, MAX_FILE, MAX_FILES
+        evaluation_docs = EvaluationDocuments(member_portal)
+    except Exception as e:
+        logger.error(f"EvaluationDocuments no disponible: {type(e).__name__}")
+
+
+def _file_response(data: bytes, mime: str, name: str, download: bool) -> Response:
+    disp = "attachment" if download else "inline"
+    ascii_name = re.sub(r"[^\w.\-]+", "_", name)[:80] or "documento"
+    return Response(data, media_type=mime, headers={
+        "Content-Disposition": f'{disp}; filename="{ascii_name}"', "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; sandbox"})
+
+
+@app.get("/api/member/evaluation-form.pdf")
+async def member_evaluation_form(request: Request, lang: str = "es"):
+    """PDF rellenable del cuestionario original cargado por el gimnasio (409 si no hay)."""
+    if not evaluation_docs:
+        return JSONResponse({"error": "portal_not_configured"}, status_code=503)
+    try:
+        pdf = await run_in_threadpool(evaluation_docs.fillable_form, _bearer(request), lang)
+        return _file_response(pdf, "application/pdf", "cuestionario.pdf", True)
+    except Exception as e:
+        return _portal_error(e)
+
+
+@app.post("/api/member/evaluation-documents")
+async def member_upload_document(request: Request):
+    if not evaluation_docs:
+        return JSONResponse({"error": "portal_not_configured"}, status_code=503)
+    try:
+        if int(request.headers.get("content-length") or 0) > MAX_FILE * MAX_FILES + 1_000_000:
+            raise PortalError("file_too_large", 413)
+        form = await request.form()
+        files = []
+        for f in form.getlist("files")[:MAX_FILES + 1]:
+            if hasattr(f, "read"):
+                data = await f.read(MAX_FILE + 1)
+                files.append((getattr(f, "filename", "") or "", data))
+        return await run_in_threadpool(evaluation_docs.upload, _bearer(request), files)
+    except Exception as e:
+        return _portal_error(e)
+
+
+@app.get("/api/member/evaluation-documents/{doc_id}")
+async def member_get_document(doc_id: str, request: Request):
+    if not evaluation_docs:
+        return JSONResponse({"error": "portal_not_configured"}, status_code=503)
+    try:
+        return await run_in_threadpool(evaluation_docs.get_for_member, _bearer(request), doc_id)
+    except Exception as e:
+        return _portal_error(e)
+
+
+@app.post("/api/member/evaluation-documents/{doc_id}/retry")
+async def member_retry_document(doc_id: str, request: Request):
+    if not evaluation_docs:
+        return JSONResponse({"error": "portal_not_configured"}, status_code=503)
+    try:
+        return await run_in_threadpool(evaluation_docs.retry, _bearer(request), doc_id)
+    except Exception as e:
+        return _portal_error(e)
+
+
+@app.get("/api/member/evaluation-documents/{doc_id}/files/{n}")
+async def member_document_file(doc_id: str, n: int, request: Request, download: int = 0):
+    if not evaluation_docs:
+        return JSONResponse({"error": "portal_not_configured"}, status_code=503)
+    try:
+        data, mime, name = await run_in_threadpool(evaluation_docs.file_for_member, _bearer(request), doc_id, n)
+        return _file_response(data, mime, name, bool(download))
+    except Exception as e:
+        return _portal_error(e)
+
+
+@app.get("/api/manager/evaluation-documents/{doc_id}/files/{n}")
+async def manager_document_file(doc_id: str, n: int, request: Request, download: int = 0):
+    if not evaluation_docs:
+        return JSONResponse({"error": "portal_not_configured"}, status_code=503)
+    try:
+        data, mime, name = await run_in_threadpool(evaluation_docs.file_for_staff, _bearer(request), doc_id, n)
+        return _file_response(data, mime, name, bool(download))
     except Exception as e:
         return _portal_error(e)
 

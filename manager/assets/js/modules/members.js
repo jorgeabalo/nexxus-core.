@@ -329,12 +329,24 @@ function progressCard(ctx, m) {
       table([
         { label: 'Type', render: e => e.kind === 'initial' ? 'Initial' : 'Quarterly' },
         { label: 'Submitted', render: e => fmtDateTime(e.submitted_at) },
-        { label: 'Questionnaire', render: e => e.questionnaire_version ? `v${e.questionnaire_version}` : 'not included' },
+        { label: 'Questionnaire', render: e => e.questionnaire_version ? `v${e.questionnaire_version}${(e.answers || {}).source === 'document' ? ' · uploaded' : ''}` : ((e.answers || {}).source === 'document' ? 'uploaded document' : 'not included') },
         { label: 'Next due', render: e => e.next_due_date ? fmtDate(e.next_due_date) : null },
         { label: '', render: e => el('span', { class: 'btn-row' },
             el('button', { class: 'btn btn-sm', type: 'button', onclick: () => viewEvaluation(e, qById[e.questionnaire_id]) }, 'View'),
+            e.kind !== 'initial' && submitted.some(x => x.kind === 'initial') ? el('button', { class: 'btn btn-sm', type: 'button', onclick: () => compareModal(submitted.find(x => x.kind === 'initial'), e, qById) }, 'Compare') : null,
             el('button', { class: 'btn btn-sm', type: 'button', onclick: (ev) => downloadPdf(e, ev.target) }, 'PDF')) },
       ], submitted, { emptyText: 'No evaluations submitted yet' }),
+      el('h3', { class: 'm0' }, 'Uploaded questionnaires (originals)'),
+      table([
+        { label: 'Uploaded', render: r => fmtDateTime(r.created_at) },
+        { label: 'Type', render: r => r.kind === 'initial' ? 'Initial' : 'Quarterly' },
+        { label: 'Status', render: r => el('span', { class: `badge ${r.status === 'confirmed' ? 'ok' : r.status === 'failed' ? 'bad' : 'warn'}` }, DOC_STATUS[r.status] || r.status) },
+        { label: 'Read by', render: r => DOC_METHOD[(r.extraction || {}).method] || '—' },
+        { label: 'Review', render: r => r.status === 'confirmed' ? `${countCorrected(r, d.evaluations)} corrected by member` : '—' },
+        { label: 'Original', render: r => el('span', { class: 'btn-row' }, (r.files || []).map(f =>
+            el('button', { class: 'btn btn-sm', type: 'button', onclick: (ev) => openDocFile(r, f, ev.target) }, (r.files.length > 1 ? `Page ${f.n}` : 'Open')))) },
+      ], d.documents, { emptyText: 'No documents uploaded' }),
+      el('p', { class: 'muted small m0' }, 'Originals are kept unmodified in private storage. Every view is recorded in the access log.'),
       el('h3', { class: 'm0' }, 'Body measurements (history, lb / in)'),
       table([
         { label: 'Date', render: r => fmtDate(r.measurement_date) },
@@ -354,6 +366,62 @@ function progressCard(ctx, m) {
   }
   load();
   return card('Progress & evaluations', holder);
+}
+
+const DOC_STATUS = { uploaded: 'Uploaded', extracting: 'Reading', needs_review: 'Waiting for member review', failed: 'Not read automatically', confirmed: 'Confirmed by member' };
+const DOC_METHOD = { pdf_form: 'Fillable PDF fields', ai_vision: 'Automatic reading (AI)', manual: 'Typed by member', failed: 'Typed by member' };
+const ST = { answered: null, blank: 'Left blank', illegible: 'Illegible', uncertain: 'Unsure', pending: 'Not read' };
+function countCorrected(doc, evals) {
+  const ev = evals.find(e => e.id === doc.evaluation_id);
+  return ((ev?.answers || {}).items || []).filter(i => i.corrected).length;
+}
+async function openDocFile(doc, f, btnEl) {
+  btnEl.disabled = true;
+  try {
+    const blob = await api.documentFile(doc.id, f.n);
+    const url = URL.createObjectURL(blob);
+    if ((f.mime || '').startsWith('image/') && f.mime !== 'image/heic') {
+      openModal({ title: `Original · ${f.name || `page ${f.n}`}`, body: el('div', { class: 'doc-view' }, el('img', { src: url, alt: `Original page ${f.n}` })), actions: [] });
+      setTimeout(() => URL.revokeObjectURL(url), 120000);
+    } else {
+      const a = el('a', { href: url, download: f.name || `document-${f.n}` });
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    }
+  } catch (err) { toast(portalMsg(err), 'error'); }
+  btnEl.disabled = false;
+}
+const norm = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+function answerMap(e, q) {
+  const out = new Map();
+  const a = e.answers || {};
+  const st = {};
+  for (const it of a.items || []) if (it.ref) st[it.ref] = it.status;
+  if (q) for (const sec of q.definition.sections || []) for (const qu of sec.questions || []) {
+    const v = (a.q || {})[qu.id];
+    const opt = (x) => L((qu.options || []).find(o => o.value === x)?.label) || x;
+    const txt = v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length) ? null
+      : Array.isArray(v) ? v.map(opt).join(', ') : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : opt(v);
+    out.set(`q:${qu.id}`, { label: L(qu.label), text: txt || ST[st[qu.id]] || 'No answer', changedKey: txt || st[qu.id] || 'none' });
+  }
+  for (const it of a.items || []) {
+    if (it.ref && q) continue;
+    const k = it.ref ? `q:${it.ref}` : `t:${norm(it.question)}`;
+    if (!out.has(k)) out.set(k, { label: it.question, text: it.status === 'answered' ? it.answer : ST[it.status], changedKey: it.status === 'answered' ? it.answer : it.status });
+  }
+  return out;
+}
+function compareModal(initial, e, qById) {
+  const A = answerMap(initial, qById[initial.questionnaire_id]), B = answerMap(e, qById[e.questionnaire_id]);
+  const keys = [...A.keys(), ...[...B.keys()].filter(k => !A.has(k))];
+  const rows = keys.map(k => ({ label: (A.get(k) || B.get(k)).label, a: A.get(k)?.text ?? 'Not asked', b: B.get(k)?.text ?? 'Not asked',
+    changed: (A.get(k)?.changedKey ?? null) !== (B.get(k)?.changedKey ?? null) }));
+  openModal({ title: `Initial (${fmtDate(String(initial.submitted_at).slice(0, 10))}) vs ${fmtDate(String(e.submitted_at).slice(0, 10))}`,
+    body: el('div', { class: 'stack' },
+      el('p', { class: 'muted small m0' }, `${rows.filter(r => r.changed).length} of ${rows.length} answers differ. Shown as reported on each date.`),
+      table([{ label: 'Question', render: r => el('span', {}, r.label, r.changed ? el('span', { class: 'badge gold' }, ' changed') : null) },
+             { label: 'Initial', key: 'a' }, { label: 'This evaluation', key: 'b' }], rows, { emptyText: 'No answers to compare' })),
+    actions: [] });
 }
 
 async function downloadPdf(e, btnEl) {
@@ -379,9 +447,13 @@ function viewEvaluation(e, q) {
     el('ul', {}, (sec.questions || []).map(qu => {
       const v = (a.q || {})[qu.id];
       const opt = (x) => L((qu.options || []).find(o => o.value === x)?.label) || x;
-      const txt = v === undefined || v === null || v === '' ? 'No answer' : Array.isArray(v) ? v.map(opt).join(', ') : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : opt(v);
+      const st = ((a.items || []).find(i => i.ref === qu.id) || {}).status;
+      const txt = v === undefined || v === null || v === '' ? (ST[st] || 'No answer') : Array.isArray(v) ? v.map(opt).join(', ') : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : opt(v);
       return el('li', {}, `${L(qu.label)}: ${txt}`);
-    })))) : [el('p', { class: 'muted' }, 'This evaluation does not include the questionnaire (not loaded yet).')];
+    })))) : ((a.items || []).length ? [] : [el('p', { class: 'muted' }, 'This evaluation does not include the questionnaire (not loaded yet).')]);
+  const free = (a.items || []).filter(i => !i.ref || !q);
+  if (free.length) sections.push(el('div', {}, el('h3', {}, 'Uploaded questionnaire (as printed, reviewed by member)'),
+    el('ul', {}, free.map(i => el('li', {}, `${i.question}: ${i.status === 'answered' ? i.answer : ST[i.status]}${i.corrected ? ' (corrected by member)' : ''}`)))));
   openModal({ title: `${e.kind === 'initial' ? 'Initial' : 'Quarterly'} evaluation · ${fmtDate(String(e.submitted_at).slice(0, 10))}`,
     body: el('div', { class: 'stack' }, el('ul', {}, items.length ? items : el('li', {}, 'No measurements or indicators')), ...sections), actions: [] });
 }

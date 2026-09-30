@@ -34,6 +34,9 @@ T = {
         "chair_rise": "Levantarse de una silla (1-5)", "stairs": "Subir escaleras (1-5)", "walking": "Caminar (1-5)",
         "chair_stand_30s": "Prueba de silla 30 s (repeticiones)", "energy": "Energía (1-5)", "sleep": "Sueño (1-5)",
         "overall": "Cómo se siente (1-5)", "reps": "rep.", "yes": "Sí", "no": "No",
+        "doc": "Respuestas del cuestionario subido (revisadas y confirmadas por el socio)",
+        "doc_note": "El documento original se conserva sin modificar en el archivo privado del gimnasio.",
+        "blank": "En blanco", "illegible": "Ilegible", "corrected": "corregida por el socio",
     },
     "en": {
         "initial": "Initial evaluation", "reevaluation": "Quarterly re-evaluation", "member": "Member",
@@ -52,6 +55,9 @@ T = {
         "chair_rise": "Rising from a chair (1-5)", "stairs": "Climbing stairs (1-5)", "walking": "Walking (1-5)",
         "chair_stand_30s": "30-s chair stand (reps)", "energy": "Energy (1-5)", "sleep": "Sleep (1-5)",
         "overall": "How you feel (1-5)", "reps": "reps", "yes": "Yes", "no": "No",
+        "doc": "Answers from the uploaded questionnaire (reviewed and confirmed by the member)",
+        "doc_note": "The original document is kept unmodified in the gym's private archive.",
+        "blank": "Left blank", "illegible": "Illegible", "corrected": "corrected by member",
     },
 }
 
@@ -133,6 +139,7 @@ def build_evaluation_pdf(bundle: Dict[str, Any], lang: str = "es") -> bytes:
     # Respuestas del cuestionario
     if q:
         answers = (ev.get("answers") or {}).get("q") or {}
+        doc_status = {i.get("ref"): i.get("status") for i in ((ev.get("answers") or {}).get("items") or []) if i.get("ref")}
         for sec in (q.get("definition") or {}).get("sections", []):
             story.append(P(_label(sec.get("title"), lang) or t["q"], h2))
             rows = []
@@ -140,7 +147,7 @@ def build_evaluation_pdf(bundle: Dict[str, Any], lang: str = "es") -> bytes:
                 a = answers.get(qu["id"])
                 opts = {o.get("value"): _label(o.get("label"), lang) or o.get("value") for o in qu.get("options", [])}
                 if a is None or a == "" or a == []:
-                    txt = t["no_answer"]
+                    txt = t["illegible"] if doc_status.get(qu["id"]) == "illegible" else t["no_answer"]
                 elif isinstance(a, list):
                     txt = ", ".join(opts.get(x, str(x)) for x in a)
                 elif isinstance(a, bool):
@@ -150,6 +157,20 @@ def build_evaluation_pdf(bundle: Dict[str, Any], lang: str = "es") -> bytes:
                 rows.append([P(_label(qu.get("label"), lang)), P(txt)])
             if rows:
                 story.append(_table(rows, [3.6 * inch, 3.2 * inch], header=False))
+
+    # Transcripción del documento subido (preguntas tal como estaban impresas)
+    items = [i for i in ((ev.get("answers") or {}).get("items") or []) if not i.get("ref")]
+    if items:
+        story.append(P(t["doc"], h2))
+        rows = []
+        for it in items:
+            st = it.get("status")
+            txt = it.get("answer") if st == "answered" else t["illegible"] if st == "illegible" else t["blank"]
+            if it.get("corrected"):
+                txt = f"{txt} ({t['corrected']})"
+            rows.append([P(it.get("question") or ""), P(txt or t["no_answer"])])
+        story.append(_table(rows, [3.6 * inch, 3.2 * inch], header=False))
+        story.append(P(t["doc_note"], small))
 
     story.append(Spacer(1, 16))
     story.append(P(t["footer"].format(d=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"), id=str(ev["id"])[:8]), small))

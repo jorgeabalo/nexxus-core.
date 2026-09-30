@@ -9,6 +9,7 @@ import {
   S, el, clear, t, fmtDay, fmtDateTime, card, toast, errText, store, uuid4, authFetch, metric, toLb, toIn,
   showWeight, showLength, showHeight, num,
 } from './util.js';
+import { uploadCard, pendingDocsCard, loadDocs, originalButtons, compareCard } from './upload.js';
 
 const L = (obj) => (obj && typeof obj === 'object') ? (obj[S.lang] || obj.es || obj.en || '') : (obj || '');
 
@@ -45,25 +46,45 @@ export function evaluationCard() {
     el('div', { class: 'card-head' }, el('h2', {}, title), st.initial ? el('span', { class: 'badge ok' }, t('ev.saved')) : el('span', { class: 'badge warn' }, t('ev.pending'))),
     el('p', { class: 'm0' }, text),
     qMissing && !st.initial ? el('p', { class: 'small muted' }, t('ev.qMissingShort')) : null,
-    el('a', { class: `btn ${cls ? 'btn-primary' : ''} btn-block mt8`, href }, cta));
+    el('a', { class: `btn ${cls ? 'btn-primary' : ''} btn-block mt8`, href }, cta),
+    st.dueNow ? el('a', { class: 'link-btn center-block', href }, t('up.homeLink')) : null);
 }
 
 // ---------- vista #/evaluation ----------
 export function viewEvaluation(main, rerender) {
   const st = evalState();
-  if (st.dueNow) main.appendChild(formCard(st, rerender));
-  else main.appendChild(card(t('ev.nextTitle'), el('p', { class: 'm0' }, t('ev.nextText', { d: fmtDay(st.due) }))));
-  main.appendChild(historyCard(st));
+  const pendingSlot = el('div', { class: 'stack' });
+  main.appendChild(pendingSlot);
+  if (st.dueNow) {
+    // Dos caminos: llenarlo en línea o subir el cuestionario (papel/PDF).
+    main.appendChild(formCard(st, rerender));
+    main.appendChild(el('div', { class: 'choice small muted' }, t('up.or')));
+    main.appendChild(uploadCard({ qAvailable: Boolean(st.questionnaire) }));
+  } else main.appendChild(card(t('ev.nextTitle'), el('p', { class: 'm0' }, t('ev.nextText', { d: fmtDay(st.due) }))));
+  const cmp = compareCard(st.submitted);
+  if (cmp) main.appendChild(cmp);
+  const hist = historyCard(st, []);
+  main.appendChild(hist);
+  loadDocs().then(docs => {
+    const p = pendingDocsCard(docs);
+    if (p) pendingSlot.appendChild(p);
+    hist.replaceWith(historyCard(st, docs));
+  }, () => {});
 }
 
-function historyCard(st) {
+function historyCard(st, docs) {
   if (!st.submitted.length) return card(t('ev.history'), el('p', { class: 'muted m0' }, t('ev.historyEmpty')));
-  return card(t('ev.history'), el('div', {}, [...st.submitted].reverse().map(e => el('div', { class: 'eval-item' },
-    el('div', { class: 'row' },
-      el('div', { class: 'main' }, el('span', { class: 'strong' }, t(`ev.kind.${e.kind}`)),
-        el('span', { class: 'muted small' }, `${fmtDateTime(e.submitted_at)} · ${e.questionnaire_version ? t('ev.qVersion', { v: e.questionnaire_version }) : t('ev.qNotIncluded')}`)),
-      el('button', { class: 'btn btn-sm', type: 'button', onclick: (ev) => downloadPdf(e, ev.target) }, t('ev.pdf'))),
-    el('details', {}, el('summary', {}, t('ev.viewAnswers')), answersView(e))))));
+  return card(t('ev.history'), el('div', {}, [...st.submitted].reverse().map(e => {
+    const doc = (docs || []).find(d => d.evaluation_id === e.id);
+    const fromDoc = (e.answers || {}).source === 'document';
+    return el('div', { class: 'eval-item' },
+      el('div', { class: 'row' },
+        el('div', { class: 'main' }, el('span', { class: 'strong' }, t(`ev.kind.${e.kind}`)),
+          el('span', { class: 'muted small' }, `${fmtDateTime(e.submitted_at)} · ${e.questionnaire_version ? t('ev.qVersion', { v: e.questionnaire_version }) : (fromDoc ? t('up.fromDoc') : t('ev.qNotIncluded'))}`)),
+        el('button', { class: 'btn btn-sm', type: 'button', onclick: (ev) => downloadPdf(e, ev.target) }, t('ev.pdf'))),
+      doc ? originalButtons(doc) : null,
+      el('details', {}, el('summary', {}, t('ev.viewAnswers')), answersView(e)));
+  })));
 }
 
 function answersView(e) {
@@ -75,9 +96,16 @@ function answersView(e) {
   if (bodyRows.length) out.append(el('h3', {}, t('ev.stepBody')), el('ul', {}, bodyRows.map(([k, lab, f]) => el('li', {}, `${lab}: ${f(b[k])}`))));
   if ((a.progress || []).length) out.append(el('h3', {}, t('ev.indicators')), el('ul', {}, a.progress.map(p => el('li', {}, progressLine(p)))));
   const def = e.definition;
+  const docStatus = {};
+  for (const it of a.items || []) if (it.ref) docStatus[it.ref] = it.status;
   if (def) for (const sec of def.sections || []) {
     out.append(el('h3', {}, L(sec.title)));
-    out.append(el('ul', {}, (sec.questions || []).map(q => el('li', {}, `${L(q.label)}: ${answerText(q, (a.q || {})[q.id])}`))));
+    out.append(el('ul', {}, (sec.questions || []).map(q => el('li', {}, `${L(q.label)}: ${docStatus[q.id] === 'illegible' && (a.q || {})[q.id] === undefined ? t('up.state.illegible') : answerText(q, (a.q || {})[q.id])}`))));
+  }
+  const free = (a.items || []).filter(it => !it.ref || !def);
+  if (free.length) {
+    out.append(el('h3', {}, t('up.docAnswers')));
+    out.append(el('ul', {}, free.map(it => el('li', {}, `${it.question}: ${it.status === 'answered' ? it.answer : t(`up.state.${it.status}`)}${it.corrected ? ` (${t('up.corrected')})` : ''}`))));
   }
   if (!out.childNodes.length) out.append(el('p', { class: 'muted m0' }, t('ev.noData')));
   return out;

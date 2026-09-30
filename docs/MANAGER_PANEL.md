@@ -230,3 +230,19 @@ RLS del socio probado en SQL (solo sus filas; no escribe directo; no cancela cit
 * Railway: `PUBLIC_BASE_URL=https://nexxus-core-production.up.railway.app` (obligatoria para enlaces y
   callbacks), `EVALUATION_INVITES_AUTO=1` (opcional).
 * `requirements.txt`: `reportlab` (PDF).
+
+## Cuestionario subido (papel, PDF o fotos)
+
+- El socio puede llenar la evaluación en línea **o** descargar el PDF rellenable (solo existe si el
+  gimnasio cargó su cuestionario original; nunca se inventan preguntas) y subirlo, o subir fotos/escaneos.
+- El original se guarda **sin modificar** en el bucket privado `evaluation-documents` de Supabase Storage
+  (`tenant/socio/documento/n.ext`), sin políticas públicas: solo el backend lo lee y lo entrega al propio
+  socio o a owner/manager. Cada acceso queda en `document_access_log` (visible solo para owner).
+- Extracción: PDF rellenable → campos del formulario (sin IA). Fotos/escaneos → modelo configurable
+  (`EVALUATION_EXTRACTION_MODEL` o `ANTHROPIC_MODEL`). `EVALUATION_AI_EXTRACTION=0` la desactiva
+  (el socio transcribe mirando su original). **Antes de usar la IA con datos reales de salud hace falta
+  un acuerdo BAA/de tratamiento con Anthropic**.
+- Nada se guarda como dato confirmado hasta que el socio revisa y confirma (`member_confirm_document`).
+  En blanco queda "en blanco" (nunca "No"); ilegible queda "ilegible". Lo extraído y lo confirmado se
+  guardan por separado para auditar correcciones.
+- La evaluación confirmada se compara con la inicial en el portal y en el Manager (botón *Compare*).
