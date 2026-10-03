@@ -1,497 +1,353 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Golden Age Fitness & Training - Houston TX</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Golden Age Fitness & Training - Houston TX</title>
+<meta name="description" content="Golden Age Fitness & Training: bienestar y fuerza para adultos mayores en Houston, TX. Llámanos 24/7 al (346) 245-7940.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --black: #0a0a0a;
+  --ink: #141414;
+  --yellow: #ffd60a;
+  --gold: #d4af37;
+  --gold-metal: linear-gradient(120deg, #8a6d1f 0%, #f7e7a1 30%, #d4af37 50%, #fff3c4 70%, #a8841f 100%);
+  --white: #ffffff;
+  --muted: #9a9a9a;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { font-family: 'Archivo', system-ui, sans-serif; background: var(--black); color: var(--white); overflow-x: hidden; }
+a { color: inherit; text-decoration: none; }
+.wrap { max-width: 1320px; margin: 0 auto; padding: 0 24px; }
+.gold-text { background: var(--gold-metal); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shine 6s linear infinite; }
+@keyframes shine { to { background-position: 200% center; } }
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            color: #333;
-            line-height: 1.6;
-        }
+/* LOGO giratorio */
+.logo { position: relative; display: inline-grid; place-items: center; }
+.logo svg.ring { animation: spin 14s linear infinite; }
+.logo .mono { position: absolute; font-weight: 900; letter-spacing: -0.04em; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-        /* HEADER/NAV */
-        header {
-            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-            color: white;
-            padding: 20px 0;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-        }
+/* HEADER */
+header { position: fixed; inset: 0 0 auto 0; z-index: 50; transition: background .4s, backdrop-filter .4s; }
+header.scrolled { background: rgba(10,10,10,.82); backdrop-filter: blur(12px); }
+header .wrap { display: flex; align-items: center; justify-content: space-between; height: 84px; }
+.brand { display: flex; align-items: center; gap: 12px; font-weight: 700; letter-spacing: .02em; }
+.brand .logo .mono { font-size: 15px; }
+header nav { display: flex; gap: 32px; font-weight: 500; }
+header nav a { position: relative; }
+header nav a::after { content: ''; position: absolute; left: 0; bottom: -4px; width: 0; height: 2px; background: var(--yellow); transition: width .3s; }
+header nav a:hover::after { width: 100%; }
+.pill { display: inline-flex; align-items: center; gap: 10px; background: var(--yellow); color: var(--black); font-weight: 700; padding: 12px 22px; border-radius: 999px; transition: transform .25s, box-shadow .25s; }
+.pill:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(255,214,10,.35); }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: #1db954; box-shadow: 0 0 0 0 rgba(29,185,84,.7); animation: pulse 1.8s infinite; }
+@keyframes pulse { 70% { box-shadow: 0 0 0 10px rgba(29,185,84,0); } 100% { box-shadow: 0 0 0 0 rgba(29,185,84,0); } }
 
-        nav {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+/* HERO */
+.hero { position: relative; min-height: 100vh; display: flex; align-items: flex-end; overflow: hidden; }
+.hero video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.1); }
+.hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10,10,10,.35) 0%, rgba(10,10,10,.55) 55%, var(--black) 100%); }
+.hero .wrap { position: relative; z-index: 2; width: 100%; padding-bottom: 72px; }
+.hero h1 { font-size: clamp(48px, 10.5vw, 168px); line-height: .9; font-weight: 900; letter-spacing: -0.045em; text-transform: uppercase; }
+.hero h1 .line { display: block; overflow: hidden; }
+.hero h1 .line span { display: inline-block; transform: translateY(110%); animation: rise 1.1s cubic-bezier(.2,.8,.2,1) forwards; }
+.hero h1 .line:nth-child(2) span { animation-delay: .15s; }
+.hero h1 .line:nth-child(3) span { animation-delay: .3s; }
+@keyframes rise { to { transform: translateY(0); } }
+.hero-bottom { margin-top: 40px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 28px; opacity: 0; animation: fade 1s .8s forwards; }
+.hero-bottom p { max-width: 460px; font-size: 19px; line-height: 1.5; color: #e6e6e6; }
+@keyframes fade { to { opacity: 1; } }
+.cta-members { display: inline-flex; align-items: center; gap: 18px; background: var(--yellow); color: var(--black); font-weight: 900; font-size: clamp(20px, 2.4vw, 30px); text-transform: uppercase; letter-spacing: -0.02em; padding: 26px 40px; border-radius: 999px; transition: transform .3s, box-shadow .3s, background .3s; }
+.cta-members .arrow { display: inline-grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; background: var(--black); color: var(--yellow); transition: transform .3s; }
+.cta-members:hover { transform: scale(1.04); box-shadow: 0 20px 60px rgba(255,214,10,.45); }
+.cta-members:hover .arrow { transform: rotate(-45deg); }
+.hero-badge { position: absolute; z-index: 3; right: 5vw; top: 18vh; }
+.hero-badge .logo .mono { font-size: 54px; }
 
-        .logo {
-            font-size: 24px;
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
+/* MARQUEE */
+.marquee { overflow: hidden; white-space: nowrap; padding: 22px 0; font-weight: 900; font-size: clamp(28px, 4.5vw, 64px); text-transform: uppercase; letter-spacing: -0.03em; }
+.marquee .track { display: inline-flex; animation: scroll 28s linear infinite; }
+.marquee.rev .track { animation-direction: reverse; }
+.marquee span { padding: 0 28px; }
+.marquee .star { color: var(--black); }
+.m-yellow { background: var(--yellow); color: var(--black); transform: rotate(-2deg) scale(1.04); margin-top: 40px; }
+.m-gold { background: var(--gold); color: var(--black); transform: rotate(1.5deg) scale(1.04); margin-top: -14px; }
+@keyframes scroll { to { transform: translateX(-50%); } }
 
-        nav ul {
-            display: flex;
-            list-style: none;
-            gap: 30px;
-        }
+/* SECCIONES */
+section { position: relative; }
+.eyebrow { display: inline-flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: var(--yellow); margin-bottom: 28px; }
+.eyebrow::before { content: ''; width: 34px; height: 2px; background: currentColor; }
+.statement { background: var(--white); color: var(--black); padding: 160px 0; }
+.statement .eyebrow { color: var(--black); }
+.statement p { font-size: clamp(32px, 5.2vw, 78px); line-height: 1.05; font-weight: 900; letter-spacing: -0.035em; }
+.statement .w { color: #d8d8d8; transition: color .4s; }
+.statement .w.on { color: var(--black); }
+.statement .w.hl.on { color: var(--gold); }
 
-        nav a {
-            color: white;
-            text-decoration: none;
-            transition: color 0.3s;
-        }
+.servicios { padding: 150px 0; }
+.servicios h2, .horario h2 { font-size: clamp(44px, 7vw, 110px); font-weight: 900; letter-spacing: -0.045em; line-height: .92; text-transform: uppercase; margin-bottom: 70px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 2px; background: #262626; border: 2px solid #262626; }
+.card { background: var(--black); padding: 48px 36px 56px; min-height: 340px; display: flex; flex-direction: column; justify-content: space-between; transition: background .45s, color .45s; }
+.card .num { font-weight: 900; font-size: 18px; color: var(--gold); }
+.card h3 { font-size: 34px; font-weight: 900; letter-spacing: -0.03em; line-height: 1; margin: 90px 0 16px; transition: transform .45s; }
+.card p { color: var(--muted); line-height: 1.55; transition: color .45s; }
+.card:hover { background: var(--yellow); color: var(--black); }
+.card:hover .num { color: var(--black); }
+.card:hover p { color: #333; }
+.card:hover h3 { transform: translateX(10px); }
 
-        nav a:hover {
-            color: #3498db;
-        }
+.videos { padding: 40px 0 150px; }
+.vgrid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 18px; }
+.vbox { position: relative; overflow: hidden; border-radius: 22px; background: var(--ink); }
+.vbox video { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 1.2s cubic-bezier(.2,.8,.2,1); }
+.vbox:hover video { transform: scale(1.06); }
+.vbox .tag { position: absolute; left: 18px; bottom: 18px; background: rgba(10,10,10,.75); backdrop-filter: blur(6px); padding: 8px 16px; border-radius: 999px; font-weight: 700; font-size: 14px; }
+.v1 { grid-column: span 7; aspect-ratio: 16/10; }
+.v2 { grid-column: span 5; aspect-ratio: 4/5; }
+.v3 { grid-column: span 4; aspect-ratio: 4/5; }
+.v4 { grid-column: span 8; aspect-ratio: 16/10; }
 
-        .btn-acceso {
-            background: #e74c3c;
-            color: white;
-            padding: 10px 20px;
-            border-radius: 5px;
-            text-decoration: none;
-            transition: background 0.3s;
-            font-weight: bold;
-        }
+.claudia { background: var(--yellow); color: var(--black); padding: 150px 0; overflow: hidden; }
+.claudia .eyebrow { color: var(--black); }
+.claudia .live { display: inline-flex; align-items: center; gap: 10px; background: var(--black); color: var(--white); padding: 10px 18px; border-radius: 999px; font-weight: 700; margin-bottom: 36px; }
+.claudia h2 { font-size: clamp(30px, 4vw, 56px); font-weight: 900; letter-spacing: -0.03em; line-height: 1.05; max-width: 900px; }
+.phone-big { display: block; margin-top: 50px; font-size: clamp(54px, 12vw, 200px); font-weight: 900; letter-spacing: -0.055em; line-height: .9; transition: letter-spacing .4s; }
+.phone-big:hover { letter-spacing: -0.035em; }
+.claudia .h247 { position: absolute; right: -2vw; top: 40px; font-size: clamp(120px, 22vw, 360px); font-weight: 900; letter-spacing: -0.06em; color: rgba(10,10,10,.07); pointer-events: none; }
 
-        .btn-acceso:hover {
-            background: #c0392b;
-        }
+.horario { padding: 150px 0; }
+.hgrid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 60px; align-items: start; }
+.hrow { display: flex; justify-content: space-between; align-items: baseline; gap: 20px; padding: 30px 0; border-bottom: 2px solid #262626; font-size: clamp(22px, 2.6vw, 38px); font-weight: 900; letter-spacing: -0.02em; transition: padding .35s, color .35s; }
+.hrow:first-child { border-top: 2px solid #262626; }
+.hrow:hover { padding-left: 16px; color: var(--yellow); }
+.hrow .t { color: var(--gold); }
+.visit { background: var(--ink); border-radius: 24px; padding: 42px; }
+.visit h3 { font-size: 28px; font-weight: 900; margin-bottom: 16px; }
+.visit p { color: #cfcfcf; line-height: 1.6; margin-bottom: 26px; font-size: 18px; }
 
-        /* HERO */
-        .hero {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 80px 20px;
-            text-align: center;
-        }
+footer { border-top: 2px solid #262626; padding: 90px 0 40px; }
+.fbig { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; margin-bottom: 70px; }
+.fbig .logo .mono { font-size: 30px; }
+.fbig h2 { font-size: clamp(40px, 7vw, 108px); font-weight: 900; letter-spacing: -0.045em; line-height: .9; text-transform: uppercase; }
+.fcols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 40px; color: #cfcfcf; line-height: 1.7; }
+.fcols h4 { color: var(--white); font-size: 14px; letter-spacing: .16em; text-transform: uppercase; margin-bottom: 12px; }
+.fcols a:hover { color: var(--yellow); }
+.fbottom { margin-top: 70px; padding-top: 26px; border-top: 1px solid #262626; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; color: #7a7a7a; font-size: 14px; }
+.manager-link { color: var(--gold); font-weight: 700; }
+.manager-link:hover { color: var(--yellow); }
 
-        .hero h1 {
-            font-size: 48px;
-            margin-bottom: 20px;
-        }
+/* Animaciones al hacer scroll */
+.reveal { opacity: 0; transform: translateY(60px); transition: opacity 1s cubic-bezier(.2,.8,.2,1), transform 1s cubic-bezier(.2,.8,.2,1); }
+.reveal.in { opacity: 1; transform: none; }
+.cards .reveal:nth-child(2), .vgrid .reveal:nth-child(2) { transition-delay: .12s; }
+.cards .reveal:nth-child(3), .vgrid .reveal:nth-child(3) { transition-delay: .24s; }
+.vgrid .reveal:nth-child(4) { transition-delay: .36s; }
 
-        .hero p {
-            font-size: 20px;
-            margin-bottom: 40px;
-            opacity: 0.9;
-        }
-
-        .hero-buttons {
-            display: flex;
-            gap: 20px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-
-        .btn-primary {
-            background: white;
-            color: #667eea;
-            padding: 15px 40px;
-            border-radius: 8px;
-            text-decoration: none;
-            font-weight: bold;
-            font-size: 16px;
-            transition: transform 0.3s, box-shadow 0.3s;
-            cursor: pointer;
-            border: none;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-        }
-
-        .btn-secondary {
-            background: #e74c3c;
-            color: white;
-            padding: 15px 40px;
-            border-radius: 8px;
-            text-decoration: none;
-            font-weight: bold;
-            font-size: 16px;
-            transition: transform 0.3s, box-shadow 0.3s;
-            cursor: pointer;
-            border: none;
-        }
-
-        .btn-secondary:hover {
-            background: #c0392b;
-            transform: translateY(-3px);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-        }
-
-        /* MAIN CONTENT */
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 60px 20px;
-        }
-
-        .section {
-            margin-bottom: 80px;
-        }
-
-        .section h2 {
-            font-size: 36px;
-            color: #2c3e50;
-            margin-bottom: 40px;
-            text-align: center;
-            border-bottom: 3px solid #3498db;
-            padding-bottom: 20px;
-        }
-
-        .servicios-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 30px;
-            margin-bottom: 40px;
-        }
-
-        .servicio-card {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
-            text-align: center;
-            transition: transform 0.3s;
-        }
-
-        .servicio-card:hover {
-            transform: translateY(-10px);
-        }
-
-        .servicio-card .icon {
-            font-size: 48px;
-            margin-bottom: 15px;
-        }
-
-        .servicio-card h3 {
-            color: #2c3e50;
-            margin-bottom: 10px;
-        }
-
-        .servicio-card p {
-            color: #7f8c8d;
-            font-size: 14px;
-        }
-
-        /* INFO SECTION */
-        .info-section {
-            background: #f8f9fa;
-            padding: 40px;
-            border-radius: 10px;
-            margin-bottom: 40px;
-        }
-
-        .info-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 30px;
-        }
-
-        .info-box {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            border-left: 4px solid #3498db;
-        }
-
-        .info-box h3 {
-            color: #2c3e50;
-            margin-bottom: 10px;
-        }
-
-        .info-box p {
-            color: #7f8c8d;
-        }
-
-        .info-box a {
-            color: #3498db;
-            text-decoration: none;
-            font-weight: bold;
-        }
-
-        .info-box a:hover {
-            text-decoration: underline;
-        }
-
-        /* CONTACT */
-        .contact-section {
-            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-            color: white;
-            padding: 60px 20px;
-            text-align: center;
-            border-radius: 10px;
-        }
-
-        .contact-section h2 {
-            color: white;
-            border-bottom-color: #3498db;
-        }
-
-        .contact-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 30px;
-            margin-top: 40px;
-        }
-
-        .contact-box {
-            background: rgba(255,255,255,0.1);
-            padding: 20px;
-            border-radius: 8px;
-        }
-
-        .contact-box h3 {
-            margin-bottom: 10px;
-        }
-
-        .contact-box p {
-            opacity: 0.9;
-        }
-
-        .contact-box a {
-            color: #3498db;
-            text-decoration: none;
-            font-weight: bold;
-        }
-
-        /* ACCESO PANELES */
-        .acceso-section {
-            background: white;
-            padding: 60px 20px;
-            text-align: center;
-        }
-
-        .acceso-buttons {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 30px;
-            margin-top: 40px;
-        }
-
-        .acceso-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 40px;
-            border-radius: 10px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            transition: transform 0.3s;
-        }
-
-        .acceso-card:hover {
-            transform: translateY(-10px);
-        }
-
-        .acceso-card h3 {
-            font-size: 28px;
-            margin-bottom: 20px;
-        }
-
-        .acceso-card p {
-            margin-bottom: 30px;
-            font-size: 14px;
-            opacity: 0.9;
-        }
-
-        .acceso-card .btn-acceso {
-            display: inline-block;
-            text-decoration: none;
-            background: white;
-            color: #667eea;
-            border: none;
-            padding: 12px 30px;
-            border-radius: 5px;
-            font-weight: bold;
-            cursor: pointer;
-            font-size: 16px;
-            transition: transform 0.2s;
-        }
-
-        .acceso-card .btn-acceso:hover {
-            transform: scale(1.05);
-        }
-
-        /* FOOTER */
-        footer {
-            background: #2c3e50;
-            color: white;
-            text-align: center;
-            padding: 30px 20px;
-            margin-top: 60px;
-        }
-
-        @media (max-width: 768px) {
-            .hero h1 {
-                font-size: 32px;
-            }
-
-            nav ul {
-                gap: 15px;
-            }
-
-            .hero-buttons {
-                flex-direction: column;
-            }
-
-            .btn-primary, .btn-secondary {
-                width: 100%;
-            }
-        }
-    </style>
+@media (max-width: 860px) {
+  header nav { display: none; }
+  .pill .ptxt { display: none; }
+  .hero-badge { top: 104px; right: 18px; }
+  .hero-badge .logo svg { width: 120px; height: 120px; }
+  .hero-badge .logo .mono { font-size: 34px; }
+  .cta-members { width: 100%; justify-content: space-between; padding: 22px 26px; }
+  .vgrid { grid-template-columns: 1fr; }
+  .v1, .v2, .v3, .v4 { grid-column: auto; aspect-ratio: 4/3; }
+  .hgrid { grid-template-columns: 1fr; }
+  .statement, .servicios, .claudia, .horario { padding: 100px 0; }
+  .card h3 { margin-top: 50px; }
+  .card { min-height: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .reveal, .hero h1 .line span, .hero-bottom { opacity: 1; transform: none; }
+}
+</style>
 </head>
 <body>
 
-<!-- HEADER -->
-<header>
+<!-- Logo reutilizable: anillo de texto que gira + monograma GA -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="goldGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8a6d1f"/><stop offset=".35" stop-color="#f7e7a1"/>
+      <stop offset=".55" stop-color="#d4af37"/><stop offset=".8" stop-color="#fff3c4"/><stop offset="1" stop-color="#a8841f"/>
+    </linearGradient>
+    <path id="ringPath" d="M100,100 m-76,0 a76,76 0 1,1 152,0 a76,76 0 1,1 -152,0"/>
+    <symbol id="ring" viewBox="0 0 200 200">
+      <circle cx="100" cy="100" r="96" fill="none" stroke="url(#goldGrad)" stroke-width="3"/>
+      <circle cx="100" cy="100" r="56" fill="none" stroke="url(#goldGrad)" stroke-width="2"/>
+      <text font-family="Archivo, sans-serif" font-weight="900" font-size="15" fill="url(#goldGrad)">
+        <textPath href="#ringPath" textLength="474" lengthAdjust="spacing">GOLDEN AGE • FITNESS &amp; TRAINING • HOUSTON •</textPath>
+      </text>
+    </symbol>
+  </defs>
+</svg>
+
+<header id="top">
+  <div class="wrap">
+    <a href="#" class="brand" aria-label="Golden Age Fitness & Training">
+      <span class="logo"><svg class="ring" width="54" height="54"><use href="#ring"/></svg><span class="mono gold-text">GA</span></span>
+      <span>GOLDEN AGE</span>
+    </a>
     <nav>
-        <div class="logo">🏋️ Golden Age Fitness & Training</div>
-        <ul>
-            <li><a href="#servicios">Servicios</a></li>
-            <li><a href="#info">Información</a></li>
-            <li><a href="#acceso">Acceso Miembros</a></li>
-        </ul>
+      <a href="#servicios">Servicios</a>
+      <a href="#galeria">Así entrenamos</a>
+      <a href="#horario">Horario</a>
     </nav>
+    <a class="pill" href="tel:+13462457940"><span class="dot"></span><span class="ptxt">24/7</span> (346) 245-7940</a>
+  </div>
 </header>
 
-<!-- HERO SECTION -->
 <section class="hero">
-    <h1>Golden Age Fitness & Training</h1>
-    <p>Tu centro de bienestar especializado en adultos mayores en Houston</p>
-    <div class="hero-buttons">
-        <a class="btn-primary" href="/m">Panel de Miembro</a>
-        <a class="btn-secondary" href="/manager">Panel de Gerente</a>
+  <video autoplay muted loop playsinline preload="auto" aria-hidden="true"
+         src="https://videos.pexels.com/video-files/6023230/6023230-hd_1280_720_25fps.mp4"></video>
+  <div class="hero-badge">
+    <span class="logo"><svg class="ring" width="190" height="190"><use href="#ring"/></svg><span class="mono gold-text">GA</span></span>
+  </div>
+  <div class="wrap">
+    <h1>
+      <span class="line"><span>Nunca es</span></span>
+      <span class="line"><span class="gold-text">tarde</span></span>
+      <span class="line"><span>para moverte.</span></span>
+    </h1>
+    <div class="hero-bottom">
+      <p>Fuerza, equilibrio y bienestar para adultos mayores en Houston. A tu ritmo, con gente que te conoce por tu nombre.</p>
+      <a class="cta-members" href="/m">Área de Miembros <span class="arrow">→</span></a>
     </div>
+  </div>
 </section>
 
-<!-- SERVICIOS -->
-<section class="section" id="servicios">
-    <div class="container">
-        <h2>Nuestros Servicios</h2>
-        <div class="servicios-grid">
-            <div class="servicio-card">
-                <div class="icon">⚙️</div>
-                <h3>Equipos de Pesas</h3>
-                <p>Equipamiento moderno y seguro para entrenamiento de fuerza</p>
-            </div>
-            <div class="servicio-card">
-                <div class="icon">🚴</div>
-                <h3>Cardio - Bicicletas</h3>
-                <p>Máquinas de cardio de bajo impacto para tu bienestar</p>
-            </div>
-            <div class="servicio-card">
-                <div class="icon">🏃</div>
-                <h3>Cardio - Treadmill</h3>
-                <p>Entrenamiento cardiovascular con control seguro</p>
-            </div>
-            <div class="servicio-card">
-                <div class="icon">💆</div>
-                <h3>Masajes Terapéuticos</h3>
-                <p>Recuperación muscular y relajación profesional</p>
-            </div>
-            <div class="servicio-card">
-                <div class="icon">🔴</div>
-                <h3>Lámpara Roja (Infrarroja)</h3>
-                <p>Terapia de infrarrojos para recuperación y bienestar</p>
-            </div>
-            <div class="servicio-card">
-                <div class="icon">🧲</div>
-                <h3>Magnetoterapia</h3>
-                <p>Bienestar integral mediante campos magnéticos</p>
-            </div>
-            <div class="servicio-card">
-                <div class="icon">👨‍🏫</div>
-                <h3>Entrenamiento Personal</h3>
-                <p>Instructores certificados dedicados a ti</p>
-            </div>
-            <div class="servicio-card">
-                <div class="icon">⭐</div>
-                <h3>Enfoque Especial</h3>
-                <p>Programas diseñados para adultos mayores y longevidad</p>
-            </div>
-        </div>
-    </div>
+<div class="marquee m-yellow"><div class="track">
+  <span>Fuerza</span><span class="star">✦</span><span>Equilibrio</span><span class="star">✦</span><span>Movilidad</span><span class="star">✦</span><span>Energía</span><span class="star">✦</span><span>Bienestar</span><span class="star">✦</span>
+  <span>Fuerza</span><span class="star">✦</span><span>Equilibrio</span><span class="star">✦</span><span>Movilidad</span><span class="star">✦</span><span>Energía</span><span class="star">✦</span><span>Bienestar</span><span class="star">✦</span>
+</div></div>
+<div class="marquee m-gold rev"><div class="track">
+  <span>Golden Age</span><span class="star">●</span><span>Fitness &amp; Training</span><span class="star">●</span><span>Houston TX</span><span class="star">●</span>
+  <span>Golden Age</span><span class="star">●</span><span>Fitness &amp; Training</span><span class="star">●</span><span>Houston TX</span><span class="star">●</span>
+</div></div>
+
+<section class="statement">
+  <div class="wrap">
+    <div class="eyebrow reveal">Nuestra filosofía</div>
+    <p id="statement">La edad es solo un número. Aquí cada sesión suma años de vida a tus años: más fuerza, más confianza y más libertad para hacer lo que amas.</p>
+  </div>
 </section>
 
-<!-- INFORMACIÓN -->
-<section class="section" id="info">
-    <div class="container">
-        <h2>Información de Contacto</h2>
-        <div class="info-section">
-            <div class="info-grid">
-                <div class="info-box">
-                    <h3>📍 Ubicación</h3>
-                    <p>1914 Gessner Rd, Suite D<br>Houston, TX 77080</p>
-                </div>
-                <div class="info-box">
-                    <h3>📞 Teléfono Principal</h3>
-                    <p><a href="tel:+12813524784">(281) 352-4784</a></p>
-                </div>
-                <div class="info-box">
-                    <h3>🤖 Claudia - Recepcionista IA</h3>
-                    <p><a href="tel:+13462457940">(346) 245-7940</a></p>
-                </div>
-                <div class="info-box">
-                    <h3>🌐 Sitio Web</h3>
-                    <p><a href="https://goldenagefitnesstrainingtx.com" target="_blank">goldenagefitnesstrainingtx.com</a></p>
-                </div>
-                <div class="info-box">
-                    <h3>⏰ Horarios</h3>
-                    <p>Lunes-Viernes: 6:00 AM - 9:00 PM<br>Sábados: 8:00 AM - 2:00 PM</p>
-                </div>
-                <div class="info-box">
-                    <h3>💰 Tarifa por Sesión</h3>
-                    <p><strong>$60.00</strong></p>
-                </div>
-            </div>
-        </div>
+<section class="servicios" id="servicios">
+  <div class="wrap">
+    <div class="eyebrow reveal">Servicios</div>
+    <h2 class="reveal">Todo lo que tu cuerpo <span class="gold-text">necesita.</span></h2>
+    <div class="cards">
+      <div class="card reveal"><span class="num">01</span><div><h3>Entrenamiento</h3><p>Programas pensados para ganar fuerza y moverte con seguridad.</p></div></div>
+      <div class="card reveal"><span class="num">02</span><div><h3>Recuperación</h3><p>Terapias para que tu cuerpo descanse, se recupere y rinda mejor.</p></div></div>
+      <div class="card reveal"><span class="num">03</span><div><h3>Acompañamiento</h3><p>Un equipo que sigue tu progreso y te acompaña en cada paso.</p></div></div>
     </div>
+  </div>
 </section>
 
-<!-- ACCESO A PANELES -->
-<section class="section acceso-section" id="acceso">
-    <div class="container">
-        <h2>Acceso a Paneles</h2>
-        <p style="font-size: 18px; color: #7f8c8d; margin-bottom: 30px;">Selecciona tu perfil para acceder al sistema</p>
-        <div class="acceso-buttons">
-            <div class="acceso-card">
-                <h3>👤 Panel de Miembro</h3>
-                <p>Tu progreso, evaluaciones y citas. Entra con tu QR o enlace personal, o con tu email.</p>
-                <a class="btn-acceso" href="/m">Entrar como Miembro</a>
-            </div>
-            <div class="acceso-card" style="background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);">
-                <h3>⚙️ Panel de Gerente</h3>
-                <p>Gestiona miembros, evaluaciones, llamadas de Claudia y SMS</p>
-                <a class="btn-acceso" href="/manager">Entrar como Gerente</a>
-            </div>
-        </div>
+<section class="videos" id="galeria">
+  <div class="wrap">
+    <div class="eyebrow reveal">Así entrenamos</div>
+    <div class="vgrid">
+      <div class="vbox v1 reveal"><video muted loop playsinline preload="none" data-src="https://videos.pexels.com/video-files/3196293/3196293-hd_1280_720_25fps.mp4"></video><span class="tag">En grupo</span></div>
+      <div class="vbox v2 reveal"><video muted loop playsinline preload="none" data-src="https://videos.pexels.com/video-files/6815561/6815561-hd_1280_720_25fps.mp4"></video><span class="tag">En pareja</span></div>
+      <div class="vbox v3 reveal"><video muted loop playsinline preload="none" data-src="https://videos.pexels.com/video-files/7500736/7500736-hd_1280_720_25fps.mp4"></video><span class="tag">A tu ritmo</span></div>
+      <div class="vbox v4 reveal"><video muted loop playsinline preload="none" data-src="https://videos.pexels.com/video-files/6023215/6023215-hd_1280_720_25fps.mp4"></video><span class="tag">Con energía</span></div>
     </div>
+  </div>
 </section>
 
-<!-- FOOTER -->
+<section class="claudia" id="contacto">
+  <div class="h247" aria-hidden="true">24/7</div>
+  <div class="wrap">
+    <div class="live reveal"><span class="dot"></span> Atendiendo ahora · 24/7</div>
+    <h2 class="reveal">Llama cuando quieras. Claudia, nuestra recepcionista, te atiende las 24 horas, los 7 días de la semana.</h2>
+    <a class="phone-big reveal" href="tel:+13462457940">(346) 245-7940</a>
+  </div>
+</section>
+
+<section class="horario" id="horario">
+  <div class="wrap">
+    <div class="eyebrow reveal">Horario</div>
+    <h2 class="reveal">Te <span class="gold-text">esperamos.</span></h2>
+    <div class="hgrid">
+      <div class="reveal">
+        <div class="hrow"><span>Lunes – Viernes</span><span class="t">6:00 AM – 9:00 PM</span></div>
+        <div class="hrow"><span>Sábado</span><span class="t">8:00 AM – 2:00 PM</span></div>
+      </div>
+      <div class="visit reveal">
+        <h3>Visítanos</h3>
+        <p>1914 Gessner Rd, Suite D<br>Houston, TX 77080</p>
+        <a class="pill" href="https://maps.google.com/?q=1914+Gessner+Rd+Suite+D+Houston+TX+77080" target="_blank" rel="noopener">Cómo llegar →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
 <footer>
-    <p>&copy; 2026 Golden Age Fitness & Training. Todos los derechos reservados.</p>
-    <p>Especializado en bienestar para adultos mayores | Houston, Texas</p>
+  <div class="wrap">
+    <div class="fbig reveal">
+      <span class="logo"><svg class="ring" width="120" height="120"><use href="#ring"/></svg><span class="mono gold-text">GA</span></span>
+      <h2>Golden Age<br><span class="gold-text">Fitness &amp; Training</span></h2>
+    </div>
+    <div class="fcols">
+      <div><h4>Dirección</h4>1914 Gessner Rd, Suite D<br>Houston, TX 77080</div>
+      <div><h4>Teléfono 24/7</h4><a href="tel:+13462457940">(346) 245-7940</a></div>
+      <div><h4>Horario</h4>Lun – Vie: 6:00 AM – 9:00 PM<br>Sábado: 8:00 AM – 2:00 PM</div>
+    </div>
+    <div class="fbottom">
+      <span>© 2026 Golden Age Fitness &amp; Training · Houston, Texas</span>
+      <a class="manager-link" href="/manager">Acceso gerentes →</a>
+    </div>
+  </div>
 </footer>
 
+<script>
+// Cabecera con fondo al hacer scroll
+const header = document.getElementById('top');
+addEventListener('scroll', () => header.classList.toggle('scrolled', scrollY > 40), { passive: true });
 
+// Aparición de elementos al entrar en pantalla
+const io = new IntersectionObserver(entries => entries.forEach(e => {
+  if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+}), { threshold: 0.15 });
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+// Vídeos de la galería: se cargan y reproducen solo cuando se ven
+const vio = new IntersectionObserver(entries => entries.forEach(e => {
+  const v = e.target;
+  if (e.isIntersecting) {
+    if (!v.src) v.src = v.dataset.src;
+    v.play().catch(() => {});
+  } else if (v.src) v.pause();
+}), { threshold: 0.25 });
+document.querySelectorAll('video[data-src]').forEach(v => vio.observe(v));
+
+// Frase que se ilumina palabra a palabra al hacer scroll
+const st = document.getElementById('statement');
+const destacar = ['número.', 'vida', 'fuerza,', 'confianza', 'libertad'];
+st.innerHTML = st.textContent.split(' ').map(w =>
+  `<span class="w${destacar.includes(w) ? ' hl' : ''}">${w}</span>`).join(' ');
+const words = st.querySelectorAll('.w');
+function lightWords() {
+  const r = st.getBoundingClientRect();
+  const p = Math.min(1, Math.max(0, (innerHeight * 0.85 - r.top) / (r.height + innerHeight * 0.35)));
+  const n = Math.round(p * words.length);
+  words.forEach((w, i) => w.classList.toggle('on', i < n));
+}
+addEventListener('scroll', lightWords, { passive: true });
+lightWords();
+
+// Parallax suave del vídeo principal
+const heroVid = document.querySelector('.hero video');
+addEventListener('scroll', () => {
+  if (scrollY < innerHeight) heroVid.style.transform = `scale(1.1) translateY(${scrollY * 0.25}px)`;
+}, { passive: true });
+</script>
 </body>
 </html>
