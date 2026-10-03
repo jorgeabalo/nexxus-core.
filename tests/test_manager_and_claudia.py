@@ -298,7 +298,8 @@ def test_manager_shell_contains_no_business_data(client):
 def test_existing_endpoints_still_respond(client, monkeypatch):
     recep = make_recepcionista("Hola, ¿en qué te ayudo?")
     use(monkeypatch, CallLogger(client=FakeSupabase()), recep)
-    assert client.get("/").json() == {"status": "ok"}
+    root = client.get("/")
+    assert root.status_code == 200 and root.headers["content-type"].startswith("text/html")
     assert client.post("/api/iniciar", json={"sesion_id": "web1"}).status_code == 200
     r = client.post("/api/mensaje", json={"sesion_id": "web1", "mensaje": "hola"})
     assert r.status_code == 200 and r.json()["respuesta"] == "Hola, ¿en qué te ayudo?"

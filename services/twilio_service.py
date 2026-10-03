@@ -159,12 +159,15 @@ class TwiMLResponseBuilder:
         action="{callback_url}"
         method="POST"
         language="es-US"
+        speechModel="phone_call"
+        enhanced="true"
         speechTimeout="auto"
-        numDigits="1"
+        bargeIn="true"
+        actionOnEmptyResult="true"
     >
-        <Say voice="Polly.Conchita" language="es-ES">{safe_greeting}</Say>
+        <Say voice="Polly.Lupe-Neural" language="es-US">{safe_greeting}</Say>
     </Gather>
-    <Say voice="Polly.Conchita" language="es-ES">No escuché tu respuesta. Por favor llama de nuevo.</Say>
+    <Say voice="Polly.Lupe-Neural" language="es-US">No escuché tu respuesta. Por favor llama de nuevo.</Say>
     <Hangup/>
 </Response>"""
         return xml
@@ -178,7 +181,7 @@ class TwiMLResponseBuilder:
 
         xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="Polly.Conchita" language="es-ES">{safe_message}</Say>
+    <Say voice="Polly.Lupe-Neural" language="es-US">{safe_message}</Say>
     <Hangup/>
 </Response>"""
         return xml
@@ -280,7 +283,8 @@ class TwilioWebhookHandler:
                 )
 
         # 5. Generar respuesta TwiML
-        greeting = f"Hola, soy {agent} de {tenant}. ¿En qué puedo ayudarte?"
+        display_name = tenant_info.get("display_name") or tenant.replace("_", " ").title()
+        greeting = f"Hola, soy {agent} de {display_name}. ¿En qué puedo ayudarte?"
 
         try:
             twiml = self.twiml_builder.gather_response(
