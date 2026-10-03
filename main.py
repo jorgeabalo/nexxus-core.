@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
-from fastapi.responses import PlainTextResponse, Response
+from fastapi.responses import PlainTextResponse, Response, FileResponse
 import uuid
+from pathlib import Path
 import logging
 
 # Importar servicios de Twilio
@@ -29,7 +30,7 @@ except Exception as e:
 
 @app.get("/")
 async def root():
-    return {"status": "ok"}
+    return FileResponse(Path(__file__).parent / "index.html", media_type="text/html")
 
 @app.post("/api/iniciar")
 async def iniciar(request: Request):
