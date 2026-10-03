@@ -44,6 +44,9 @@ header nav a::after { content: ''; position: absolute; left: 0; bottom: -4px; wi
 header nav a:hover::after { width: 100%; }
 .pill { display: inline-flex; align-items: center; gap: 10px; background: var(--yellow); color: var(--black); font-weight: 700; padding: 12px 22px; border-radius: 999px; transition: transform .25s, box-shadow .25s; }
 .pill:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(255,214,10,.35); }
+.hright { display: flex; align-items: center; gap: 12px; }
+.lang { font: inherit; font-weight: 900; font-size: 14px; letter-spacing: .08em; color: var(--gold); background: transparent; border: 2px solid var(--gold); border-radius: 999px; padding: 10px 16px; cursor: pointer; transition: background .25s, color .25s, transform .25s; }
+.lang:hover { background: var(--gold); color: var(--black); transform: rotate(-4deg); }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: #1db954; box-shadow: 0 0 0 0 rgba(29,185,84,.7); animation: pulse 1.8s infinite; }
 @keyframes pulse { 70% { box-shadow: 0 0 0 10px rgba(29,185,84,0); } 100% { box-shadow: 0 0 0 0 rgba(29,185,84,0); } }
 
@@ -195,11 +198,14 @@ footer { border-top: 2px solid #262626; padding: 90px 0 40px; }
       <span>GOLDEN AGE</span>
     </a>
     <nav>
-      <a href="#servicios">Servicios</a>
-      <a href="#galeria">Así entrenamos</a>
-      <a href="#horario">Horario</a>
+      <a href="#servicios" data-i18n="nav.serv">Servicios</a>
+      <a href="#galeria" data-i18n="nav.gal">Así entrenamos</a>
+      <a href="#horario" data-i18n="nav.hor">Horario</a>
     </nav>
+    <div class="hright">
+    <button class="lang" id="langBtn" type="button" aria-label="Change language to English">EN</button>
     <a class="pill" href="tel:+13462457940"><span class="dot"></span><span class="ptxt">24/7</span> (346) 245-7940</a>
+    </div>
   </div>
 </header>
 
@@ -211,20 +217,20 @@ footer { border-top: 2px solid #262626; padding: 90px 0 40px; }
   </div>
   <div class="wrap">
     <h1>
-      <span class="line"><span>Nunca es</span></span>
-      <span class="line"><span class="gold-text">tarde</span></span>
-      <span class="line"><span>para moverte.</span></span>
+      <span class="line"><span data-i18n="hero.l1">Nunca es</span></span>
+      <span class="line"><span class="gold-text" data-i18n="hero.l2">tarde</span></span>
+      <span class="line"><span data-i18n="hero.l3">para moverte.</span></span>
     </h1>
     <div class="hero-bottom">
-      <p>Fuerza, equilibrio y bienestar para adultos mayores en Houston. A tu ritmo, con gente que te conoce por tu nombre.</p>
-      <a class="cta-members" href="/m">Área de Miembros <span class="arrow">→</span></a>
+      <p data-i18n="hero.p">Fuerza, equilibrio y bienestar para adultos mayores en Houston. A tu ritmo, con gente que te conoce por tu nombre.</p>
+      <a class="cta-members" href="/m"><span data-i18n="hero.cta">Área de Miembros</span> <span class="arrow">→</span></a>
     </div>
   </div>
 </section>
 
 <div class="marquee m-yellow"><div class="track">
-  <span>Fuerza</span><span class="star">✦</span><span>Equilibrio</span><span class="star">✦</span><span>Movilidad</span><span class="star">✦</span><span>Energía</span><span class="star">✦</span><span>Bienestar</span><span class="star">✦</span>
-  <span>Fuerza</span><span class="star">✦</span><span>Equilibrio</span><span class="star">✦</span><span>Movilidad</span><span class="star">✦</span><span>Energía</span><span class="star">✦</span><span>Bienestar</span><span class="star">✦</span>
+  <span data-i18n="mq.1">Fuerza</span><span class="star">✦</span><span data-i18n="mq.2">Equilibrio</span><span class="star">✦</span><span data-i18n="mq.3">Movilidad</span><span class="star">✦</span><span data-i18n="mq.4">Energía</span><span class="star">✦</span><span data-i18n="mq.5">Bienestar</span><span class="star">✦</span>
+  <span data-i18n="mq.1">Fuerza</span><span class="star">✦</span><span data-i18n="mq.2">Equilibrio</span><span class="star">✦</span><span data-i18n="mq.3">Movilidad</span><span class="star">✦</span><span data-i18n="mq.4">Energía</span><span class="star">✦</span><span data-i18n="mq.5">Bienestar</span><span class="star">✦</span>
 </div></div>
 <div class="marquee m-gold rev"><div class="track">
   <span>Golden Age</span><span class="star">●</span><span>Fitness &amp; Training</span><span class="star">●</span><span>Houston TX</span><span class="star">●</span>
@@ -233,31 +239,31 @@ footer { border-top: 2px solid #262626; padding: 90px 0 40px; }
 
 <section class="statement">
   <div class="wrap">
-    <div class="eyebrow reveal">Nuestra filosofía</div>
-    <p id="statement">La edad es solo un número. Aquí cada sesión suma años de vida a tus años: más fuerza, más confianza y más libertad para hacer lo que amas.</p>
+    <div class="eyebrow reveal" data-i18n="st.eye">Nuestra filosofía</div>
+    <p id="statement" data-i18n="st.p">La edad es solo un número. Aquí cada sesión suma años de vida a tus años: más fuerza, más confianza y más libertad para hacer lo que amas.</p>
   </div>
 </section>
 
 <section class="servicios" id="servicios">
   <div class="wrap">
-    <div class="eyebrow reveal">Servicios</div>
-    <h2 class="reveal">Todo lo que tu cuerpo <span class="gold-text">necesita.</span></h2>
+    <div class="eyebrow reveal" data-i18n="sv.eye">Servicios</div>
+    <h2 class="reveal" data-i18n="sv.h">Todo lo que tu cuerpo <span class="gold-text">necesita.</span></h2>
     <div class="cards">
-      <div class="card reveal"><span class="num">01</span><div><h3>Entrenamiento</h3><p>Programas pensados para ganar fuerza y moverte con seguridad.</p></div></div>
-      <div class="card reveal"><span class="num">02</span><div><h3>Recuperación</h3><p>Terapias para que tu cuerpo descanse, se recupere y rinda mejor.</p></div></div>
-      <div class="card reveal"><span class="num">03</span><div><h3>Acompañamiento</h3><p>Un equipo que sigue tu progreso y te acompaña en cada paso.</p></div></div>
+      <div class="card reveal"><span class="num">01</span><div><h3 data-i18n="c1.h">Entrenamiento</h3><p data-i18n="c1.p">Programas pensados para ganar fuerza y moverte con seguridad.</p></div></div>
+      <div class="card reveal"><span class="num">02</span><div><h3 data-i18n="c2.h">Recuperación</h3><p data-i18n="c2.p">Terapias para que tu cuerpo descanse, se recupere y rinda mejor.</p></div></div>
+      <div class="card reveal"><span class="num">03</span><div><h3 data-i18n="c3.h">Acompañamiento</h3><p data-i18n="c3.p">Un equipo que sigue tu progreso y te acompaña en cada paso.</p></div></div>
     </div>
   </div>
 </section>
 
 <section class="videos" id="galeria">
   <div class="wrap">
-    <div class="eyebrow reveal">Así entrenamos</div>
+    <div class="eyebrow reveal" data-i18n="nav.gal">Así entrenamos</div>
     <div class="vgrid">
-      <div class="vbox v1 reveal"><video muted loop playsinline preload="none" data-src="https://videos.pexels.com/video-files/3196293/3196293-hd_1280_720_25fps.mp4"></video><span class="tag">En grupo</span></div>
-      <div class="vbox v2 reveal"><video muted loop playsinline preload="none" data-src="https://videos.pexels.com/video-files/6815561/6815561-hd_1280_720_25fps.mp4"></video><span class="tag">En pareja</span></div>
-      <div class="vbox v3 reveal"><video muted loop playsinline preload="none" data-src="https://videos.pexels.com/video-files/7500736/7500736-hd_1280_720_25fps.mp4"></video><span class="tag">A tu ritmo</span></div>
-      <div class="vbox v4 reveal"><video muted loop playsinline preload="none" data-src="https://videos.pexels.com/video-files/6023215/6023215-hd_1280_720_25fps.mp4"></video><span class="tag">Con energía</span></div>
+      <div class="vbox v1 reveal"><video muted loop playsinline preload="none" data-src="https://videos.pexels.com/video-files/3196293/3196293-hd_1280_720_25fps.mp4"></video><span class="tag" data-i18n="t1">En grupo</span></div>
+      <div class="vbox v2 reveal"><video muted loop playsinline preload="none" data-src="https://videos.pexels.com/video-files/6815561/6815561-hd_1280_720_25fps.mp4"></video><span class="tag" data-i18n="t2">En pareja</span></div>
+      <div class="vbox v3 reveal"><video muted loop playsinline preload="none" data-src="https://videos.pexels.com/video-files/7500736/7500736-hd_1280_720_25fps.mp4"></video><span class="tag" data-i18n="t3">A tu ritmo</span></div>
+      <div class="vbox v4 reveal"><video muted loop playsinline preload="none" data-src="https://videos.pexels.com/video-files/6023215/6023215-hd_1280_720_25fps.mp4"></video><span class="tag" data-i18n="t4">Con energía</span></div>
     </div>
   </div>
 </section>
@@ -265,25 +271,25 @@ footer { border-top: 2px solid #262626; padding: 90px 0 40px; }
 <section class="claudia" id="contacto">
   <div class="h247" aria-hidden="true">24/7</div>
   <div class="wrap">
-    <div class="live reveal"><span class="dot"></span> Atendiendo ahora · 24/7</div>
-    <h2 class="reveal">Llama cuando quieras. Claudia, nuestra recepcionista, te atiende las 24 horas, los 7 días de la semana.</h2>
+    <div class="live reveal"><span class="dot"></span> <span data-i18n="cl.live">Atendiendo ahora · 24/7</span></div>
+    <h2 class="reveal" data-i18n="cl.h">Llama cuando quieras. Claudia, nuestra recepcionista, te atiende las 24 horas, los 7 días de la semana.</h2>
     <a class="phone-big reveal" href="tel:+13462457940">(346) 245-7940</a>
   </div>
 </section>
 
 <section class="horario" id="horario">
   <div class="wrap">
-    <div class="eyebrow reveal">Horario</div>
-    <h2 class="reveal">Te <span class="gold-text">esperamos.</span></h2>
+    <div class="eyebrow reveal" data-i18n="nav.hor">Horario</div>
+    <h2 class="reveal" data-i18n="ho.h">Te <span class="gold-text">esperamos.</span></h2>
     <div class="hgrid">
       <div class="reveal">
-        <div class="hrow"><span>Lunes – Viernes</span><span class="t">6:00 AM – 9:00 PM</span></div>
-        <div class="hrow"><span>Sábado</span><span class="t">8:00 AM – 2:00 PM</span></div>
+        <div class="hrow"><span data-i18n="ho.wk">Lunes – Viernes</span><span class="t">6:00 AM – 9:00 PM</span></div>
+        <div class="hrow"><span data-i18n="ho.sat">Sábado</span><span class="t">8:00 AM – 2:00 PM</span></div>
       </div>
       <div class="visit reveal">
-        <h3>Visítanos</h3>
+        <h3 data-i18n="vi.h">Visítanos</h3>
         <p>1914 Gessner Rd, Suite D<br>Houston, TX 77080</p>
-        <a class="pill" href="https://maps.google.com/?q=1914+Gessner+Rd+Suite+D+Houston+TX+77080" target="_blank" rel="noopener">Cómo llegar →</a>
+        <a class="pill" href="https://maps.google.com/?q=1914+Gessner+Rd+Suite+D+Houston+TX+77080" target="_blank" rel="noopener" data-i18n="vi.go">Cómo llegar →</a>
       </div>
     </div>
   </div>
@@ -296,13 +302,13 @@ footer { border-top: 2px solid #262626; padding: 90px 0 40px; }
       <h2>Golden Age<br><span class="gold-text">Fitness &amp; Training</span></h2>
     </div>
     <div class="fcols">
-      <div><h4>Dirección</h4>1914 Gessner Rd, Suite D<br>Houston, TX 77080</div>
-      <div><h4>Teléfono 24/7</h4><a href="tel:+13462457940">(346) 245-7940</a></div>
-      <div><h4>Horario</h4>Lun – Vie: 6:00 AM – 9:00 PM<br>Sábado: 8:00 AM – 2:00 PM</div>
+      <div><h4 data-i18n="f.addr">Dirección</h4>1914 Gessner Rd, Suite D<br>Houston, TX 77080</div>
+      <div><h4 data-i18n="f.tel">Teléfono 24/7</h4><a href="tel:+13462457940">(346) 245-7940</a></div>
+      <div><h4 data-i18n="nav.hor">Horario</h4><span data-i18n="f.hours">Lun – Vie: 6:00 AM – 9:00 PM<br>Sábado: 8:00 AM – 2:00 PM</span></div>
     </div>
     <div class="fbottom">
       <span>© 2026 Golden Age Fitness &amp; Training · Houston, Texas</span>
-      <a class="manager-link" href="/manager">Acceso gerentes →</a>
+      <a class="manager-link" href="/manager" data-i18n="f.mgr">Acceso gerentes →</a>
     </div>
   </div>
 </footer>
@@ -330,10 +336,16 @@ document.querySelectorAll('video[data-src]').forEach(v => vio.observe(v));
 
 // Frase que se ilumina palabra a palabra al hacer scroll
 const st = document.getElementById('statement');
-const destacar = ['número.', 'vida', 'fuerza,', 'confianza', 'libertad'];
-st.innerHTML = st.textContent.split(' ').map(w =>
-  `<span class="w${destacar.includes(w) ? ' hl' : ''}">${w}</span>`).join(' ');
-const words = st.querySelectorAll('.w');
+const DESTACAR = {
+  es: ['número.', 'vida', 'fuerza,', 'confianza', 'libertad'],
+  en: ['number.', 'life', 'strength,', 'confidence', 'freedom']
+};
+let words = [];
+function splitStatement(lang) {
+  st.innerHTML = st.textContent.split(' ').map(w =>
+    `<span class="w${DESTACAR[lang].includes(w) ? ' hl' : ''}">${w}</span>`).join(' ');
+  words = st.querySelectorAll('.w');
+}
 function lightWords() {
   const r = st.getBoundingClientRect();
   const p = Math.min(1, Math.max(0, (innerHeight * 0.85 - r.top) / (r.height + innerHeight * 0.35)));
@@ -341,7 +353,54 @@ function lightWords() {
   words.forEach((w, i) => w.classList.toggle('on', i < n));
 }
 addEventListener('scroll', lightWords, { passive: true });
-lightWords();
+
+// Idioma: el español sale del propio HTML; aquí solo va el inglés
+const EN = {
+  'nav.serv': 'Services', 'nav.gal': 'How we train', 'nav.hor': 'Hours',
+  'hero.l1': "It's never", 'hero.l2': 'too late', 'hero.l3': 'to move.',
+  'hero.p': 'Strength, balance and wellness for older adults in Houston. At your own pace, with people who know you by name.',
+  'hero.cta': 'Members Area',
+  'mq.1': 'Strength', 'mq.2': 'Balance', 'mq.3': 'Mobility', 'mq.4': 'Energy', 'mq.5': 'Wellness',
+  'st.eye': 'Our philosophy',
+  'st.p': 'Age is just a number. Here every session adds life to your years: more strength, more confidence and more freedom to do what you love.',
+  'sv.eye': 'Services', 'sv.h': 'Everything your body <span class="gold-text">needs.</span>',
+  'c1.h': 'Training', 'c1.p': 'Programs designed to build strength and help you move safely.',
+  'c2.h': 'Recovery', 'c2.p': 'Therapies that help your body rest, recover and perform better.',
+  'c3.h': 'Support', 'c3.p': 'A team that tracks your progress and is with you every step of the way.',
+  't1': 'In groups', 't2': 'As a couple', 't3': 'At your pace', 't4': 'With energy',
+  'cl.live': 'Answering now · 24/7',
+  'cl.h': 'Call anytime. Claudia, our receptionist, answers 24 hours a day, 7 days a week.',
+  'ho.h': 'See you <span class="gold-text">soon.</span>', 'ho.wk': 'Monday – Friday', 'ho.sat': 'Saturday',
+  'vi.h': 'Visit us', 'vi.go': 'Get directions →',
+  'f.addr': 'Address', 'f.tel': 'Phone 24/7',
+  'f.hours': 'Mon – Fri: 6:00 AM – 9:00 PM<br>Saturday: 8:00 AM – 2:00 PM',
+  'f.mgr': 'Manager access →'
+};
+const i18nEls = document.querySelectorAll('[data-i18n]');
+const ES = {};
+i18nEls.forEach(el => { ES[el.dataset.i18n] ??= el.innerHTML; });
+const META = {
+  es: { title: document.title, desc: document.querySelector('meta[name=description]').content },
+  en: { title: 'Golden Age Fitness & Training - Houston TX',
+        desc: 'Golden Age Fitness & Training: strength and wellness for older adults in Houston, TX. Call us 24/7 at (346) 245-7940.' }
+};
+const langBtn = document.getElementById('langBtn');
+function setLang(lang) {
+  const dict = lang === 'en' ? EN : ES;
+  i18nEls.forEach(el => { el.innerHTML = dict[el.dataset.i18n]; });
+  splitStatement(lang);
+  lightWords();
+  document.documentElement.lang = lang;
+  document.title = META[lang].title;
+  document.querySelector('meta[name=description]').content = META[lang].desc;
+  langBtn.textContent = lang === 'en' ? 'ES' : 'EN';
+  langBtn.setAttribute('aria-label', lang === 'en' ? 'Cambiar idioma a español' : 'Change language to English');
+  try { localStorage.setItem('ga-lang', lang); } catch (e) {}
+}
+langBtn.addEventListener('click', () => setLang(document.documentElement.lang === 'en' ? 'es' : 'en'));
+let saved = null;
+try { saved = localStorage.getItem('ga-lang'); } catch (e) {}
+setLang(saved === 'en' ? 'en' : 'es');
 
 // Parallax suave del vídeo principal
 const heroVid = document.querySelector('.hero video');
