@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0B1F3A">
+  <title>Portal del socio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/m/assets/css/member.css">
+</head>
+<body>
+  <!--
+    AITA/Nexxus — Portal del socio.
+    Esta página NO contiene datos. El socio entra con su QR/enlace personal o
+    con un enlace mágico por email, y solo puede ver sus propios datos (RLS).
+  -->
+  <div id="app" aria-live="polite">
+    <div class="boot"><div class="spinner" aria-hidden="true"></div></div>
+  </div>
+  <div id="modal-root"></div>
+  <div id="toast-root" role="status" aria-live="polite"></div>
+
+  <script src="/m/assets/vendor/supabase.js"></script>
+  <script src="/m/assets/vendor/qrcode.js"></script>
+  <script type="module" src="/m/assets/js/app.js"></script>
+</body>
+</html>

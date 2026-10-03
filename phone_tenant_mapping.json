@@ -2,6 +2,7 @@
   "+13462457940": {
     "tenant": "golden_age",
     "agent": "Claudia",
-    "config_file": "golden_age_config.json"
+    "config_file": "golden_age_config.json",
+    "display_name": "Golden Age Gym"
   }
 }

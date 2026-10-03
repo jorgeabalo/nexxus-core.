@@ -1,0 +1,15 @@
+{
+  "_nota": "PLANTILLA DE FORMATO. No es el cuestionario de Golden Age: sustituir por las preguntas originales.",
+  "sections": [
+    {
+      "id": "seccion_1",
+      "title": { "es": "<título de la sección tal como está en el original>", "en": "<English>" },
+      "questions": [
+        { "id": "p1", "type": "single", "required": true,
+          "label": { "es": "<pregunta original>", "en": "<English>" },
+          "options": [ { "value": "a", "label": { "es": "<opción original>", "en": "<English>" } } ] },
+        { "id": "p2", "type": "text", "required": false, "label": { "es": "<pregunta original>", "en": "<English>" } }
+      ]
+    }
+  ]
+}
