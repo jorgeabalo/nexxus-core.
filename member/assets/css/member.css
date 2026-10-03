@@ -293,3 +293,5 @@ table.cmp th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em
 table.cmp tr.changed td { background: #FBF6E6; }
 label.btn { text-align: center; }
 .link-btn.left { text-align: left; padding-left: 0; justify-self: start; }
+a.chip-btn { text-decoration: none; display: inline-flex; align-items: center; }
+.lang-row { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px 12px; }

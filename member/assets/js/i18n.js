@@ -1,7 +1,7 @@
 // Textos del portal del socio. Español por defecto; inglés opcional.
 export const I18N = {
   es: {
-    portal: 'Portal del socio', close: 'Cerrar', cancel: 'Cancelar', retry: 'Reintentar', signout: 'Salir',
+    portal: 'Portal del socio', close: 'Cerrar', cancel: 'Cancelar', retry: 'Reintentar', signout: 'Salir', 'site.back': '← Volver a la web', 'site.chip': '← Web',
     hello: 'Hola, {name}',
     'nav.home': 'Inicio', 'nav.appts': 'Citas', 'nav.pay': 'Pagos', 'nav.visits': 'Visitas', 'nav.me.old': 'Mis datos',
 
@@ -353,7 +353,7 @@ export const I18N = {
     'cmp.none': 'No hay respuestas para comparar.', 'cmp.note': 'Muestra lo que respondiste en cada fecha. Las medidas se comparan en Mi progreso.',
   },
   en: {
-    portal: 'Member portal', close: 'Close', cancel: 'Cancel', retry: 'Retry', signout: 'Sign out',
+    portal: 'Member portal', close: 'Close', cancel: 'Cancel', retry: 'Retry', signout: 'Sign out', 'site.back': '← Back to website', 'site.chip': '← Website',
     hello: 'Hi, {name}',
     'nav.home': 'Home', 'nav.appts': 'Bookings', 'nav.pay': 'Payments', 'nav.visits': 'Visits', 'nav.me.old': 'My info',
 

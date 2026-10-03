@@ -103,7 +103,7 @@ function renderQrEntry(token, hasSession) {
     el('p', { class: 'lead' }, t('qr.lead')), btn, err,
     hasSession ? el('a', { class: 'link-btn center-block', href: '/m/' }, t('qr.already')) : null,
     el('p', { class: 'muted small center' }, t('qr.private')),
-    el('div', { class: 'lang-row' }, langToggle('link-btn')))));
+    el('div', { class: 'lang-row' }, el('a', { class: 'link-btn', href: '/' }, t('site.back')), langToggle('link-btn')))));
 }
 
 // ---------- protección en dispositivos compartidos ----------
@@ -195,7 +195,7 @@ function renderLogin() {
     S.notice ? el('p', { class: `notice ${S.notice.kind}` }, S.notice.text) : null,
     form,
     el('p', { class: 'muted small center', text: t('login.qrHint') }),
-    el('div', { class: 'lang-row' }, langToggle('link-btn')))));
+    el('div', { class: 'lang-row' }, el('a', { class: 'link-btn', href: '/' }, t('site.back')), langToggle('link-btn')))));
   S.notice = null;
 }
 
@@ -224,7 +224,7 @@ function route() {
     el('header', { class: 'top' },
       el('div', { class: 'top-row' },
         el('div', { class: 'brand' }, brandName()),
-        el('div', { class: 'top-actions' }, langToggle('chip-btn'),
+        el('div', { class: 'top-actions' }, el('a', { class: 'chip-btn', href: '/', title: t('site.back') }, t('site.chip')), langToggle('chip-btn'),
           el('button', { class: 'chip-btn', type: 'button', onclick: () => S.sb.auth.signOut() }, t('signout')))),
       el('div', { class: 'hello' }, el('h1', {}, t('hello', { name: m.first_name || '' })),
         el('p', {}, [m.membership_type, m.member_code ? `ID ${m.member_code}` : null].filter(Boolean).join(' · ') || t('portal')))),

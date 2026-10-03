@@ -76,7 +76,8 @@ function authCard(subtitle, ...content) {
         el('div', { class: 'wordmark' }, 'MANAGER'),
         el('div', { class: 'rule' }),
         el('p', {}, subtitle)),
-      ...content));
+      ...content,
+      el('div', { class: 'auth-foot' }, el('a', { href: '/' }, '← Back to website'))));
 }
 
 function renderLogin(message = '') {
@@ -231,7 +232,8 @@ function renderShell() {
     el('button', { class: 'menu-btn', type: 'button', 'aria-label': 'Open menu', 'aria-controls': 'sidebar', onclick: toggleNav }, icon('menu')),
     el('div', { class: 'titles' }, el('div', { class: 't-brand' }, displayName), el('div', { class: 't-sub' }, subtitle)),
     el('div', { class: 'date' }, fmtLongToday()),
-    tenantSelect);
+    tenantSelect,
+    el('a', { class: 'btn btn-sm site-link', href: '/', title: 'Back to website' }, '← Website'));
 
   const shell = el('div', { class: 'shell' }, sidebar, el('div', { class: 'scrim', onclick: closeNav }),
     el('div', { class: 'main' }, topbar, content));
