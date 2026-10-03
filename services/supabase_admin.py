@@ -91,6 +91,11 @@ class SupabaseAdmin:
     def update(self, table: str, filters: Dict[str, str], values: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
         return self._request("PATCH", table, params=filters, json=values, prefer="return=representation")
 
+    def delete(self, table: str, filters: Dict[str, str]) -> Optional[List[Dict[str, Any]]]:
+        if not filters:
+            raise ValueError("delete sin filtros")  # nunca borrar una tabla entera
+        return self._request("DELETE", table, params=filters, prefer="return=representation")
+
     # -- Supabase Storage (bucket privado; solo el servidor) ---------------
     def _storage(self, method: str, path: str, *, content: Optional[bytes] = None,
                  content_type: Optional[str] = None) -> httpx.Response:

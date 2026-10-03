@@ -145,6 +145,16 @@ export const api = {
     return backend('POST', `/api/manager/members/${encodeURIComponent(memberId)}/portal-access`, { sms, email, regenerate });
   },
 
+  // ----- equipo (backend: valida owner/manager con el JWT) -----
+  async team(tenantId) { return backend('GET', `/api/manager/team?tenant_id=${encodeURIComponent(tenantId)}`); },
+  async teamInvite(tenantId, email, role) { return backend('POST', '/api/manager/team/invite', { tenant_id: tenantId, email, role }); },
+  async teamRevoke(tenantId, userId) {
+    return backend('POST', `/api/manager/team/${encodeURIComponent(userId)}/revoke`, { tenant_id: tenantId });
+  },
+  async teamCancelInvite(tenantId, inviteId) {
+    return backend('POST', `/api/manager/team/invites/${encodeURIComponent(inviteId)}/cancel`, { tenant_id: tenantId });
+  },
+
   async evaluationInvite(memberId, { sms = false, email = false } = {}) {
     return backend('POST', `/api/manager/members/${encodeURIComponent(memberId)}/evaluation-invite`, { sms, email });
   },

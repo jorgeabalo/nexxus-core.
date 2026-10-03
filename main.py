@@ -328,6 +328,53 @@ async def manager_sms_refresh(member_id: str, request: Request):
         return _portal_error(e)
 
 
+# ---------------------------------------------------------------------------
+# Equipo del Manager Panel: invitar gerentes / quitar acceso
+# ---------------------------------------------------------------------------
+def _team():
+    if not member_portal:
+        raise PortalError("portal_not_configured", 503)
+    from services.team import TeamService
+    return TeamService(member_portal.db)
+
+
+@app.get("/api/manager/team")
+async def manager_team(request: Request, tenant_id: str = ""):
+    try:
+        return await run_in_threadpool(_team().list, _bearer(request), tenant_id)
+    except Exception as e:
+        return _portal_error(e)
+
+
+@app.post("/api/manager/team/invite")
+async def manager_team_invite(request: Request):
+    try:
+        body = await request.json()
+        return await run_in_threadpool(_team().invite, _bearer(request), str(body.get("tenant_id") or ""),
+                                       str(body.get("email") or ""), str(body.get("role") or "manager"),
+                                       public_base_url(_base_url(request)))
+    except Exception as e:
+        return _portal_error(e)
+
+
+@app.post("/api/manager/team/{user_id}/revoke")
+async def manager_team_revoke(request: Request, user_id: str):
+    try:
+        body = await request.json()
+        return await run_in_threadpool(_team().revoke, _bearer(request), str(body.get("tenant_id") or ""), user_id)
+    except Exception as e:
+        return _portal_error(e)
+
+
+@app.post("/api/manager/team/invites/{invite_id}/cancel")
+async def manager_team_cancel_invite(request: Request, invite_id: str):
+    try:
+        body = await request.json()
+        return await run_in_threadpool(_team().cancel_invite, _bearer(request), str(body.get("tenant_id") or ""), invite_id)
+    except Exception as e:
+        return _portal_error(e)
+
+
 @app.get("/api/manager/sms-diagnostics")
 async def manager_sms_diagnostics(request: Request):
     """Diagnóstico real de Twilio (tipo de cuenta, capacidad SMS del número, errores recientes)."""

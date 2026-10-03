@@ -11,6 +11,7 @@ import * as members from './modules/members.js';
 import * as schedule from './modules/schedule.js';
 import * as claudia from './modules/claudia.js';
 import * as payments from './modules/payments.js';
+import * as team from './modules/team.js';
 import * as comingSoon from './modules/coming-soon.js';
 
 // Catálogo de módulos del Manager Panel (igual para todos los tenants).
@@ -21,13 +22,14 @@ export const MODULES = [
   { key: 'schedule', label: 'Schedule', icon: 'schedule', view: schedule },
   { key: 'claudia', label: 'Claudia', icon: 'claudia', view: claudia },
   { key: 'payments', label: 'Payments', icon: 'payments', view: payments },
+  { key: 'team', label: 'Team', icon: 'user', view: team },
   { key: 'accounting', label: 'Accounting', icon: 'accounting', view: comingSoon },
   { key: 'marketing', label: 'Marketing', icon: 'marketing', view: comingSoon },
   { key: 'inventory', label: 'Inventory', icon: 'inventory', view: comingSoon },
   { key: 'agents', label: 'Agents', icon: 'agents', view: comingSoon },
   { key: 'settings', label: 'Settings', icon: 'settings', view: comingSoon },
 ];
-const PHASE_1 = new Set(['dashboard', 'members', 'schedule', 'claudia', 'payments']);
+const PHASE_1 = new Set(['dashboard', 'members', 'schedule', 'claudia', 'payments', 'team']);
 
 const app = document.getElementById('app');
 const state = { sb: null, session: null, memberships: [], ctx: null };
@@ -206,6 +208,7 @@ function renderShell() {
 
   const nav = el('nav', { class: 'sb-nav', 'aria-label': 'Main' });
   MODULES.forEach((mod, i) => {
+    if (mod.key === 'team' && !['owner', 'manager'].includes(role)) return;  // staff no gestiona el equipo
     if (i === PHASE_1.size) nav.appendChild(el('div', { class: 'sb-sep', role: 'separator' }));
     const enabled = isEnabled(mod.key);
     nav.appendChild(el('a', { class: 'sb-link', href: `#/${mod.key}`, dataset: { key: mod.key }, onclick: closeNav },
