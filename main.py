@@ -515,6 +515,12 @@ if MEMBER_DIR.is_dir():
         return FileResponse(MEMBER_DIR / "index.html", media_type="text/html")
 
 
+MEDIA_DIR = Path(__file__).parent / "media"
+if MEDIA_DIR.is_dir():
+    # Vídeos e imágenes de la landing (/)
+    app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
+
+
 @app.get("/")
 async def root():
     return FileResponse(Path(__file__).parent / "index.html", media_type="text/html")
