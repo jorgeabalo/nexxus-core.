@@ -14,6 +14,10 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
+# Domus is independent of Golden Age, Twilio and business sessions.
+from domus.alexa import router as domus_router
+app.include_router(domus_router)
+
 # Inicializar el manejador de Twilio
 try:
     twilio_handler = TwilioWebhookHandler()
