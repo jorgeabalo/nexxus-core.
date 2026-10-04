@@ -103,9 +103,36 @@ no restringe un servicio externo: no conectes un endpoint con herramientas
 que puedan escribir o ejecutar acciones sin implementar esos permisos.
 No se reenvían IDs personales Alexa ni historiales de Claudia.
 
-Tiempo de conexión/respuesta Jarvis: 3 segundos, máximo de despacho 3,5;
+Tiempo de conexión/respuesta Jarvis: 3 segundos, máximo de despacho 5;
 respuesta hablada limitada a 2000 caracteres, sin SSML generado por modelos.
 Errores no exponen URL, token ni excepción al usuario.
+
+## Inteligencia local de Nexxus
+
+Con `DOMUS_AI_ENABLED=true`, cuando DOMUS_JARVIS_URL y DOMUS_JARVIS_TOKEN están
+vacíos, el adaptador llama a Anthropic usando la credencial existente de Nexxus.
+No requiere un nuevo endpoint público ni un token de servicio. Si hay una
+configuración externa parcial, no hace fallback a Anthropic. El servicio externo
+completo mantiene prioridad. Deshabilitar DOMUS_AI_ENABLED revierte este modo.
+
+El modelo se selecciona con DOMUS_AI_MODEL, ANTHROPIC_MODEL, MODELO_CLAUDE o el
+mismo valor por defecto del backend existente, claude-haiku-4-5-20251001. El cliente
+asíncrono usa https://api.anthropic.com, timeout de 4 segundos y cero reintentos;
+la ruta limita el despacho a 5 segundos. Máximo 180 tokens y 1000 caracteres.
+Las consultas consumen la cuenta Anthropic existente.
+
+Solo se envía la consulta actual y las instrucciones del asistente al proveedor.
+No se transmiten IDs de Alexa, casa o solicitud, ni se reutilizan conversaciones,
+herramientas, bases de datos o clientes de Golden Age/Claudia. No hay memoria
+entre turnos en esta primera conexión. El sistema informa al modelo de que no
+puede acceder a agenda, inventario, sensores o internet, ni ejecutar acciones.
+Las órdenes domésticas siguen pasando por los adaptadores y permanecen sin ejecutar.
+
+La skill existente conserva su invocación configurada en Amazon. Después de
+abrirla, prueba «consulta a Nexxus cómo puedo organizar mi día». «Qué tengo
+pendiente» debe aclarar que la agenda todavía no está conectada. Ante errores
+de proveedor se devuelve una frase breve sin detalles privados. No se registran
+las consultas ni los errores del proveedor.
 
 ## Seguridad y evolución
 
