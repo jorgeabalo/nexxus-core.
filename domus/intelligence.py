@@ -31,7 +31,7 @@ class NexxusIntelligence:
             async with AsyncAnthropic(api_key=key, base_url='https://api.anthropic.com',
                                       timeout=4.0, max_retries=0) as client:
                 result = await client.messages.create(
-                    model=model, max_tokens=180, system=SYSTEM,
+                    model=model, max_tokens=180, system=(SYSTEM.replace('el asistente personal de Jorge', 'el asistente doméstico del usuario') if getattr(command, 'panel', False) else SYSTEM),
                     messages=[{'role': 'user', 'content': command.text}],
                 )
             answer = ' '.join(block.text for block in result.content
