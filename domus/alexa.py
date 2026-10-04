@@ -116,7 +116,7 @@ async def alexa(request: Request):
                 break
     command = Command(home_id=home_id, text=text.strip(), request_id=req['requestId'])
     try:
-        answer = await asyncio.wait_for(service.dispatch(name, command, device), timeout=3.5)
+        answer = await asyncio.wait_for(service.dispatch(name, command, device), timeout=5.0)
     except Exception:
         answer = 'Domus no pudo completar la consulta. Inténtalo de nuevo.'
     return speech(answer)

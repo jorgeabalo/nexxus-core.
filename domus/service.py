@@ -23,6 +23,9 @@ class JarvisAdapter:
         url = os.getenv('DOMUS_JARVIS_URL', '')
         token = os.getenv('DOMUS_JARVIS_TOKEN', '')
         if not url or not token:
+            if not url and not token:
+                from .intelligence import NexxusIntelligence
+                return await NexxusIntelligence().execute(command)
             return 'Nexxus todavía no está conectado. La integración de voz de Domus está lista.'
         parsed = urlparse(url)
         if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password:
