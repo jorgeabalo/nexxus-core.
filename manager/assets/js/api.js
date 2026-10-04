@@ -200,6 +200,24 @@ export const api = {
     return must(await sb.from('members').update(values).eq('tenant_id', tenantId).eq('id', id));
   },
 
+  // ----- plan de entrenamiento (RLS: staff del mismo gym) -----
+  async trainingPlan(tenantId, memberId) {
+    const plan = must(await sb.from('training_plans').select('id, title, notes, updated_at')
+      .eq('tenant_id', tenantId).eq('member_id', memberId).eq('active', true).maybeSingle());
+    if (!plan) return null;
+    const since = new Date(Date.now() - 120 * 86400000).toISOString().slice(0, 10);
+    const [items, logs] = await Promise.all([
+      sb.from('training_plan_items').select('day_of_week, position, exercise_key, name, sets, reps, duration_min, weight_lb, notes')
+        .eq('tenant_id', tenantId).eq('plan_id', plan.id).order('day_of_week').order('position'),
+      sb.from('training_logs').select('log_date, exercise_key, name, sets, reps, duration_min, weight_lb')
+        .eq('tenant_id', tenantId).eq('member_id', memberId).gte('log_date', since).order('log_date'),
+    ]);
+    return { ...plan, items: must(items) || [], logs: (must(logs) || []).map(l => ({ ...l, date: l.log_date })) };
+  },
+  async saveTrainingPlan(tenantId, memberId, { title, notes, items }) {
+    return must(await sb.rpc('manager_save_training_plan', { p_tenant: tenantId, p_member: memberId, p_title: title || '', p_notes: notes || null, p_items: items }));
+  },
+
   // ----- payments -----
   async payments(tenantId, status = 'all') {
     let q = sb.from('payment_overview').select('*').eq('tenant_id', tenantId);

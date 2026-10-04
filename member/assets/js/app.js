@@ -16,6 +16,7 @@ import { viewProgress, topInsights, figureSvg, bodyMetrics } from './progress.js
 import { viewEvaluation, evaluationCard } from './evaluation.js';
 import { viewReview } from './upload.js';
 import { welcomeCard } from './welcome.js';
+import { viewTraining } from './training.js';
 
 const app = document.getElementById('app');
 
@@ -147,10 +148,8 @@ async function loadAndRender() {
 }
 
 function applyBranding() {
-  const b = S.data?.tenant?.branding || {};
-  const root = document.documentElement.style;
-  if (/^#[0-9a-f]{6}$/i.test(b.color_primary || '')) root.setProperty('--brand-primary', b.color_primary);
-  if (/^#[0-9a-f]{6}$/i.test(b.color_accent || '')) root.setProperty('--brand-accent', b.color_accent);
+  // Los colores salen del tema negro + dorado de member.css. No se aplican los
+  // de branding: color_primary es el azul del panel claro antiguo y taparía el dorado.
   document.title = `${t('portal')} · ${brandName()}`;
 }
 const brandName = () => S.data?.tenant?.branding?.display_name || S.data?.tenant?.name || '';
@@ -205,6 +204,7 @@ function renderLogin() {
 const ROUTES = [
   { key: 'home', icon: 'home', view: viewHome },
   { key: 'progress', icon: 'progress', view: (main) => viewProgress(main, rerender) },
+  { key: 'train', icon: 'train', view: viewTraining },
   { key: 'appts', icon: 'appts', view: viewAppointments },
   { key: 'pay', icon: 'pay', view: viewPayments },
   { key: 'visits', icon: 'visits', view: viewVisits },
