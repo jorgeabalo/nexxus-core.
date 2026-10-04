@@ -17,6 +17,8 @@ app = FastAPI()
 # Domus is independent of Golden Age, Twilio and business sessions.
 from domus.alexa import router as domus_router
 app.include_router(domus_router)
+from domus.onboarding import router as domus_onboarding_router
+app.include_router(domus_onboarding_router)
 
 # Inicializar el manejador de Twilio
 try:
