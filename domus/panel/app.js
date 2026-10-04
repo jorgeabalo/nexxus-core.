@@ -157,13 +157,13 @@ $('ask-nexxus').onsubmit=async e=>{
     if(/(qué|que) hora (es|tenemos)|hora (actual|local)|^(nexxus[, ]*)?(la )?hora[?. ]*$|fecha (de hoy|actual)|^(qué|que) (día|dia) es (hoy)?/i.test(question)) { updateClock(); answer='En tu hogar son las '+$('local-time').textContent+'. '+$('local-date').textContent+'.'; }
     else if(!$('question-consent').checked) answer='Para una respuesta inteligente, autoriza el envío de esta pregunta a Anthropic. La hora de tu hogar se consulta sin enviar datos.';
     else {
-      const session=data(await client.auth.getSession()).session;
+      const session=data(await client.auth.refreshSession()).session;
       if(!session?.access_token)throw Error('session');
       const response=await fetch('/api/domus/panel/ask',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token},body:JSON.stringify({home_id:home.id,text:question,consent:true}),signal:AbortSignal.timeout(12000)});
-      if(!response.ok)throw Error('answer'); answer=(await response.json()).answer;
+      if(!response.ok){const failure=await response.json().catch(()=>({}));const error=Error('answer');error.code=failure.detail;throw error;} answer=(await response.json()).answer;
     }
     if(generation===homeGeneration){$('nexxus-answer').textContent=answer;$('nexxus-state').textContent='Aquí, contigo.';}
-  } catch(_) {if(generation===homeGeneration){$('nexxus-answer').textContent='No pude responder. Revisa tu sesión y vuelve a intentarlo.';$('nexxus-state').textContent='Conexión no disponible.';}}
+  } catch(error) {if(generation===homeGeneration){$('nexxus-answer').textContent=error.code === 'invalid_session' || error.code === 'authentication_required' ? 'Tu sesión necesita una nueva entrada. Sal del panel y vuelve a iniciar sesión.' : 'No pude responder. Revisa tu sesión y vuelve a intentarlo.';$('nexxus-state').textContent='Conexión no disponible.';}}
   finally{asking=false;$('dashboard-avatar').classList.remove('is-thinking');$('ask-nexxus').querySelector('button').disabled=false;}
 };
 setInterval(updateClock,1000);
