@@ -33,4 +33,4 @@ pypdf==6.19.0
 pillow-heif==1.8.0
 
 # AITA Domus: signature verification for Alexa HTTPS requests.
--r requirements-domus.txt
+ask-sdk-webservice-support==1.3.3
