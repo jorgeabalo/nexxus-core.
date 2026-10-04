@@ -93,3 +93,16 @@ $('complete').onclick=()=>action(async()=>{data(await client.rpc('domus_complete
     client.auth.onAuthStateChange((event,session)=>{if(event==='SIGNED_OUT'){user=null;home=null;$('login').hidden=false;$('workspace').hidden=true;}else if(session)user=session.user;});
   } catch(e) {notice('El registro de hogares aún no está disponible. Contacta con el administrador.');$('signin').querySelector('button').disabled=true;}
 })();
+
+// Decorative motion is independent of assistant/device activity.
+const motionButton = $('motion-toggle');
+function setMotion(paused) {
+  document.body.classList.toggle('motion-paused', paused);
+  motionButton.setAttribute('aria-pressed', String(paused));
+  motionButton.textContent = paused ? 'Activar movimiento' : 'Pausar movimiento';
+}
+try { setMotion(localStorage.getItem('domus-motion-paused') === 'true' || window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (_) { setMotion(window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+motionButton.onclick = () => {
+  const paused = !document.body.classList.contains('motion-paused'); setMotion(paused);
+  try { localStorage.setItem('domus-motion-paused', String(paused)); } catch (_) {}
+};
