@@ -56,4 +56,19 @@ assert.equal((await asUser(c,'select * from public.domus_consents')).length,2);c
 await db.exec('begin;set local role anon');
 try{await db.query(create,['Anon','10000000-0000-0000-0000-000000000004']);assert.fail('anon access');}catch(e){assert.equal(e.code,'42501');checks++;}finally{await db.exec('rollback');}
 assert.equal((await db.query('select value from public.business_sentinel')).rows[0].value,'Golden Age unchanged');checks++;
+await db.exec(await readFile(new URL('../../supabase/migrations/20261005120000_domus_utilities.sql',import.meta.url),'utf8'));
+await asUser(a,"insert into public.domus_utilities(home_id,kind,provider,country_code,currency) values($1,'electricity','Demo','US','USD')",[h1]);
+assert.equal((await asUser(a,'select connection_status from public.domus_utilities'))[0].connection_status,'pending');checks++;
+assert.equal((await asUser(b,'select * from public.domus_utilities')).length,0);checks++;
+await asUser(b,"insert into public.domus_utilities(home_id,kind,provider,country_code,currency) values($1,'water','Intruder','US','USD')",[h1],'42501');
+await asUser(c,"insert into public.domus_utilities(home_id,kind,provider,country_code,currency) values($1,'gas','Guest','US','USD')",[h1],'42501');
+await asUser(a,"update public.domus_utilities set connection_status='connected'",[],'42501');
+await asUser(a,"update public.domus_utilities set provider='Updated' where home_id=$1",[h1]);
+assert.equal((await asUser(a,'select provider from public.domus_utilities'))[0].provider,'Updated');checks++;
+await db.exec(await readFile(new URL('../../supabase/migrations/20261005130000_domus_appliances.sql',import.meta.url),'utf8'));
+for(const kind of ['washer','dryer','dishwasher']){
+ await asUser(a,'insert into public.domus_devices(home_id,name,kind) values($1,$2,$3)',[h1,kind,kind]);
+ assert.equal((await asUser(a,'select connection_status from public.domus_devices where home_id=$1 and kind=$2',[h1,kind]))[0].connection_status,'pending');checks++;
+ await asUser(b,'insert into public.domus_devices(home_id,name,kind) values($1,$2,$3)',[h1,kind,kind],'42501');
+}
 await db.close();console.log(`${checks} Domus SQL security checks passed`);
