@@ -375,6 +375,11 @@ async def manager_team_cancel_invite(request: Request, invite_id: str):
         return _portal_error(e)
 
 
+# Contabilidad básica (/api/manager/accounting/*): owner/manager, staff solo consulta y registra.
+from services.accounting_routes import build_router as _accounting_router
+app.include_router(_accounting_router(lambda: member_portal.db if member_portal else None))
+
+
 @app.get("/api/manager/sms-diagnostics")
 async def manager_sms_diagnostics(request: Request):
     """Diagnóstico real de Twilio (tipo de cuenta, capacidad SMS del número, errores recientes)."""

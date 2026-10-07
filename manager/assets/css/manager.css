@@ -303,3 +303,43 @@ table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
 h3.m0 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-2); margin-top: 8px; }
 .doc-view img { display: block; max-width: 100%; height: auto; border: 1px solid var(--border, #E3E8EF); border-radius: 8px; }
 .topbar .site-link { margin-left: 12px; }
+
+/* ---------- Contabilidad ---------- */
+.acc-range { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; padding: 14px 20px; }
+.acc-date { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.acc-date .input { min-height: 40px; width: 170px; }
+.acc-range .btn-row { margin-left: auto; }
+.kpis.acc-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.kpi.negative .value { color: var(--bad); }
+.acc-type { font-weight: 600; }
+.acc-type.income, .acc-amt.income { color: var(--ok); }
+.acc-type.expense { color: var(--text-2); }
+.acc-amt { font-weight: 600; }
+.strike { text-decoration: line-through; }
+.acc-late { color: var(--bad); font-weight: 700; }
+.acc-chart { width: 100%; height: auto; display: block; }
+.acc-chart .axis { stroke: var(--border); stroke-width: 1; }
+.acc-chart .lbl { fill: var(--text-3); font-size: 12px; font-family: var(--font); }
+.acc-chart .bar.income, .acc-catbar .bar.income, .acc-legend .dot.income { fill: var(--brand-accent); background: var(--brand-accent); }
+.acc-chart .bar.expense, .acc-catbar .bar.expense, .acc-legend .dot.expense { fill: var(--brand-primary); background: var(--brand-primary); }
+.acc-legend { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); margin-top: 8px; }
+.acc-legend .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.acc-legend .dot.expense { margin-left: 10px; }
+.acc-cats { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.acc-catrow { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; margin-bottom: 4px; }
+.acc-catbar { width: 100%; height: 8px; display: block; }
+.acc-catbar .track { fill: var(--muted-bg); }
+.cat-list { list-style: none; margin: 6px 0 12px; padding: 0; }
+.cat-list li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.cat-list li > span:first-child { flex: 1; }
+@media (max-width: 1280px) { .kpis.acc-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 720px) {
+  .kpis.acc-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpis.acc-kpis .kpi.accent { grid-column: 1 / -1; }
+  .acc-range { padding: 12px 14px; }
+  .acc-date { flex: 1 1 140px; }
+  .acc-date .input { width: 100%; }
+  .acc-range .btn-row { margin-left: 0; }
+  .page-head .btn-row { width: 100%; }
+  .page-head .btn-row .btn { flex: 1 1 auto; }
+}

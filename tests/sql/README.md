@@ -26,3 +26,16 @@ psql -d t2 -f tests/sql/test_evaluation_documents.sql   # "ALL DOCUMENT SQL TEST
 Cubren: solo owner/manager y el propio socio ven documentos (staff raso y otros gimnasios no),
 sin escritura directa de usuarios, confirmación que no acepta respuestas inventadas para lo
 ilegible/en blanco, idempotencia, inmutabilidad y retención del original, y auditoría.
+
+Contabilidad básica:
+
+```bash
+psql -d t3 -f tests/sql/bootstrap_local.sql
+psql -d t3 -f tests/sql/accounting_setup.sql            # tenants que existían antes de la migración
+psql -d t3 -f supabase/migrations/20261006120000_accounting_basic.sql
+psql -d t3 -f supabase/migrations/20261006120000_accounting_basic.sql   # segunda vez: idempotente
+psql -d t3 -f tests/sql/test_accounting.sql             # "ALL ACCOUNTING SQL TESTS PASSED"
+```
+Cubren: categorías iniciales (idempotentes, también para tenants nuevos), cantidades/estados/tipos
+inválidos, categoría de otro tipo u otro tenant, pago de socio enlazado una sola vez, RLS por rol
+(manager edita; staff consulta y registra a su nombre; nadie borra), socio y otro gimnasio sin acceso, anon bloqueado.

@@ -246,3 +246,36 @@ RLS del socio probado en SQL (solo sus filas; no escribe directo; no cancela cit
   En blanco queda "en blanco" (nunca "No"); ilegible queda "ilegible". Lo extraído y lo confirmado se
   guardan por separado para auditar correcciones.
 - La evaluación confirmada se compara con la inicial en el portal y en el Manager (botón *Compare*).
+
+# Contabilidad básica (`/manager#/accounting`)
+
+Ingresos, gastos, cuentas por cobrar / por pagar, recibos y reporte para el CPA.
+Migración: `20261006120000_accounting_basic.sql` (idempotente; no borra ni renombra nada).
+
+* **Tablas:** `accounting_categories`, `accounting_transactions`, `accounting_obligations`
+  (todas con `tenant_id`, checks de cantidad/estado/tipo e índices por tenant, fecha, tipo y estado).
+  Nada se borra: cancelar = `status='cancelled'` (sin política DELETE).
+* **Pagos de socios:** no se copian. `payments` pagados cuentan como ingreso (categoría *Membresías*) y
+  los pendientes como *por cobrar*. Si un pago se enlaza (`source_type='payment'`, `source_id`), deja de
+  contarse desde `payments`; un índice único impide enlazarlo dos veces.
+* **Recibos:** bucket privado `accounting-receipts` (`tenant/movimiento/uuid.ext`, JPG/PNG/WEBP/HEIC/PDF,
+  máx. 10 MB, validados por contenido). Solo el backend los lee y entrega.
+* **Categorías iniciales:** 5 de ingreso y 9 de gasto por tenant (también para tenants nuevos, por trigger).
+  No se crean movimientos ficticios. La migración activa `tenants.modules.accounting`.
+* **Permisos:** owner/manager todo; staff consulta y registra movimientos (y adjunta recibo a los suyos),
+  sin editar, cancelar, gestionar categorías/pendientes ni exportar; socios y otros tenants: nada.
+* **Reporte:** CSV (Excel, UTF-8 con BOM) y PDF con resumen, detalle, gastos por categoría y pendientes.
+  Se indica que no es una declaración fiscal oficial.
+* **Idioma:** español / inglés (botón en la pantalla; se recuerda en el navegador).
+
+| Método | Ruta (`/api/manager/accounting/…`) | Quién |
+|---|---|---|
+| GET | `summary`, `transactions`, `categories`, `obligations` (`?tenant_id&start&end`) | owner/manager/staff |
+| POST | `transactions` | owner/manager/staff |
+| PATCH / POST | `transactions/{id}` · `transactions/{id}/cancel` | owner/manager |
+| POST / GET | `transactions/{id}/receipt` (multipart `tenant_id`, `file`) | owner/manager/staff* |
+| POST / PATCH | `categories` · `categories/{id}` | owner/manager |
+| POST / PATCH / POST | `obligations` · `obligations/{id}` · `obligations/{id}/pay` | owner/manager |
+| GET | `export?format=csv\|pdf&lang=es\|en` | owner/manager |
+
+Tests: `tests/test_accounting.py` y `tests/sql/test_accounting.sql`.
