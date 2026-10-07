@@ -2,7 +2,7 @@
 // Ejecutar: node --test tests/js/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CATALOG, visibleModules, canOpen, homeModule, tenantProfile, roleAllows } from '../../manager/assets/js/nav.js';
+import { CATALOG, visibleModules, canOpen, homeModule, tenantProfile, roleAllows, safeLogoUrl, applyBrandColors } from '../../manager/assets/js/nav.js';
 
 // Configuración real de Golden Age en producción (módulos apagados = false)
 const golden = {
@@ -69,8 +69,46 @@ test('perfil de la empresa desde tenants, con fallback del piloto', () => {
   assert.equal(tenantProfile({ address: { line1: '1 A St', city: 'Houston', state: 'TX' } }).address, '1 A St, Houston, TX');
 });
 
-test('el logo solo se acepta del propio sitio o como data:image (CSP)', () => {
-  assert.equal(tenantProfile({ branding: { logo_url: 'https://evil.example/x.png' } }).logo, null);
-  assert.equal(tenantProfile({ branding: { logo_url: 'javascript:alert(1)' } }).logo, null);
-  assert.equal(tenantProfile({ branding: { logo_url: '/media/logo.png' } }).logo, '/media/logo.png');
+// PNG real de 1x1 en base64
+const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+const logo = (url) => tenantProfile({ branding: { logo_url: url } }).logo;
+
+test('logo: acepta ruta local /media/logo.png', () => {
+  assert.equal(logo('/media/logo.png'), '/media/logo.png');
+});
+
+test('logo: acepta data:image/png;base64 válido (y JPEG, WebP, GIF)', () => {
+  assert.equal(logo(PNG), PNG);
+  for (const t of ['jpeg', 'webp', 'gif']) assert.ok(safeLogoUrl(`data:image/${t};base64,AAAA`));
+});
+
+test('logo: rechaza URL protocol-relative //evil.example/logo.png', () => {
+  assert.equal(logo('//evil.example/logo.png'), null);
+  assert.equal(logo('/\\evil.example/logo.png'), null);     // el navegador también lo trata como otro dominio
+});
+
+test('logo: rechaza data:image/svg+xml', () => {
+  assert.equal(logo('data:image/svg+xml;base64,PHN2Zz48L3N2Zz4='), null);
+  assert.equal(logo('data:image/svg+xml,<svg onload=alert(1)>'), null);
+});
+
+test('logo: rechaza URLs externas, otros esquemas y data sin base64 limpio', () => {
+  for (const bad of ['https://evil.example/x.png', 'http://x/y.png', 'javascript:alert(1)', 'media/logo.png',
+    'data:image/png,iVBOR', 'data:image/png;base64,AAAA"><script>', 'data:text/html;base64,AAAA', '', null, 42]) {
+    assert.equal(safeLogoUrl(bad), null, String(bad));
+  }
+});
+
+test('colores: al pasar de un tenant con colores a otro sin colores no quedan los anteriores', () => {
+  const props = new Map();
+  const style = { setProperty: (k, v) => props.set(k, v), removeProperty: (k) => props.delete(k) };
+  applyBrandColors(style, tenantProfile(golden));
+  assert.equal(props.get('--brand-primary'), '#0B1F3A');
+  assert.equal(props.get('--brand-accent'), '#C9A227');
+  applyBrandColors(style, tenantProfile({ name: 'Sin colores', branding: {} }));
+  assert.equal(props.has('--brand-primary'), false);
+  assert.equal(props.has('--brand-accent'), false);
+  applyBrandColors(style, tenantProfile({ branding: { color_accent: '#7FB069' } }));   // solo uno propio
+  assert.equal(props.get('--brand-accent'), '#7FB069');
+  assert.equal(props.has('--brand-primary'), false);
 });

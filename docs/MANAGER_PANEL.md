@@ -287,8 +287,8 @@ Tests: `tests/test_accounting.py` y `tests/sql/test_accounting.sql`.
 | Dato | Fuente en `tenants` |
 |---|---|
 | Nombre comercial | `branding.business_name` → `name` (fallback del piloto: "Golden Age Fitness") |
-| Logotipo | `branding.logo_url` (solo `/ruta` propia o `data:image/…`, por la CSP); si no, iniciales |
-| Colores | `branding.color_primary`, `branding.color_accent` |
+| Logotipo | `branding.logo_url`: solo ruta local `/…` (nunca `//host` ni `/\host`) o PNG/JPEG/WebP/GIF en `data:image/…;base64` (sin SVG ni URLs externas); si no, iniciales |
+| Colores | `branding.color_primary`, `branding.color_accent` (si faltan, se restablecen los colores por defecto; nunca quedan los del tenant anterior) |
 | Teléfono / dirección | `settings.public_phone`, `settings.address` (solo esos campos se leen) |
 | Zona horaria / idioma | `timezone`, `branding.language` o `branding.locale` |
 | Módulos | `modules` (un módulo con `false` no aparece ni se puede abrir) |

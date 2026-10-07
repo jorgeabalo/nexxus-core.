@@ -60,13 +60,32 @@ export function homeModule(tenant, role) {
   return v.length ? v[0].key : null;
 }
 
+// Logo permitido: ruta local con una sola barra (/media/logo.png; nunca //host ni /\\host,
+// que el navegador trata como otro dominio) o imagen rasterizada en base64 (PNG, JPEG,
+// WebP, GIF). Nada de SVG ni URLs externas.
+const LOCAL_PATH = /^\/(?![\/\\])[^\s\\]*$/;
+const DATA_IMAGE = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/;
+export function safeLogoUrl(url) {
+  if (typeof url !== 'string' || url.length > 2_000_000) return null;
+  return LOCAL_PATH.test(url) || DATA_IMAGE.test(url) ? url : null;
+}
+
+// Colores de marca del tenant activo. Si la empresa no trae colores propios se
+// quitan los del tenant anterior y vuelven los valores por defecto de la hoja de estilos.
+export function applyBrandColors(style, profile) {
+  const c = (profile && profile.colors) || {};
+  for (const [prop, value] of [['--brand-primary', c.primary], ['--brand-accent', c.accent]]) {
+    if (value) style.setProperty(prop, value); else style.removeProperty(prop);
+  }
+}
+
 // Datos variables de la empresa activa, desde la fila de tenants que ya existe.
 export function tenantProfile(tenant) {
   const t = tenant || {};
   const b = t.branding || {};
   const locale = String(b.locale || '');
   const lang = b.language || (locale ? locale.slice(0, 2).toLowerCase() : null);
-  const logo = typeof b.logo_url === 'string' && /^(\/|data:image\/)/.test(b.logo_url) ? b.logo_url : null;
+  const logo = safeLogoUrl(b.logo_url);
   const addr = t.address;
   const address = addr && typeof addr === 'object'
     ? [addr.line1 || addr.street, addr.city, addr.state, addr.zip || addr.postal_code].filter(Boolean).join(', ')

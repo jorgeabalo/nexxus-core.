@@ -8,7 +8,7 @@
 //   * Todas las consultas van con el JWT del usuario: RLS filtra por tenant.
 import { el, clear, icon, nexxusMark, setFormatContext, toast, errorBox } from './ui.js';
 import { tr, getLang, setLang, useTenantDefault } from './i18n.js';
-import { CATALOG, canOpen, visibleModules, homeModule, tenantProfile } from './nav.js';
+import { CATALOG, canOpen, visibleModules, homeModule, tenantProfile, applyBrandColors } from './nav.js';
 import { initApi, api } from './api.js';
 import * as dashboard from './modules/dashboard.js';
 import * as members from './modules/members.js';
@@ -191,9 +191,7 @@ function setTenant(m) {
   try { localStorage.setItem('aita.tenant', t.id); } catch (_) { /* opcional */ }
   useTenantDefault(profile.language);
   setFormatContext({ timezone: profile.timezone, locale: b.locale, currency: profile.currency });
-  const root = document.documentElement.style;
-  if (profile.colors.primary) root.setProperty('--brand-primary', profile.colors.primary);
-  if (profile.colors.accent) root.setProperty('--brand-accent', profile.colors.accent);
+  applyBrandColors(document.documentElement.style, profile);
   document.documentElement.lang = getLang();
   document.title = `${tr('platform')} · ${profile.name}`;
 }

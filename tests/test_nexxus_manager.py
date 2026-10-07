@@ -83,3 +83,11 @@ def test_config_exposes_no_secrets(client, monkeypatch):
     monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service-secret")
     r = client.get("/api/manager/config")
     assert r.status_code == 200 and "service-secret" not in r.text
+
+
+def test_set_tenant_resets_brand_colors():
+    """setTenant usa applyBrandColors (que quita los colores del tenant anterior), no setProperty suelto."""
+    app = (JS / "app.js").read_text()
+    body = app[app.index("function setTenant(m) {"):app.index("let shellRefs = null;")]
+    assert "applyBrandColors(document.documentElement.style, profile)" in body
+    assert "setProperty('--brand-" not in body
