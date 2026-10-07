@@ -1,5 +1,6 @@
 import { el, clear, card, table, tabs, badge, empty, errorBox, loading, fmtDate, fmtDateTime, fmtClock, money, num, icon, debounce, openModal, field, input, select, toast } from '../ui.js';
 import { api } from '../api.js';
+import { trainingCard } from './training.js';
 
 const FILTERS = [
   { value: 'all', label: 'All' },
@@ -87,6 +88,7 @@ async function renderDetail(root, ctx, id) {
     dt('Notes', m.notes))));
 
   holder.appendChild(portalCard(m));
+  holder.appendChild(trainingCard(ctx, m));
   holder.appendChild(progressCard(ctx, m));
 
   holder.appendChild(el('div', { class: 'grid-2' },

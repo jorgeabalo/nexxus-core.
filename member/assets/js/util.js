@@ -143,6 +143,7 @@ const PATHS = {
   pay: 'M3 5h18a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm1 4v8h16V9H4zm0-2h16V7H4z',
   visits: 'M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z',
   me: 'M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm0 2c-3 0-8 1.5-8 4.5V21h16v-2.5c0-3-5-4.5-8-4.5z',
+  train: 'M3 8h3v8H3zM6 6h3v12H6zm9 0h3v12h-3zm3 2h3v8h-3zM9 11h6v2H9z',
 };
 export function icon(name, size = 22) {
   const ns = 'http://www.w3.org/2000/svg';

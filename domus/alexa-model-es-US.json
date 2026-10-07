@@ -1,0 +1,144 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "nexxus",
+      "intents": [
+        {
+          "name": "JarvisCommandIntent",
+          "slots": [
+            {
+              "name": "command",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "consulta a nexxus {command}",
+            "pregunta a nexxus {command}",
+            "dile a nexxus {command}"
+          ]
+        },
+        {
+          "name": "DomesticCommandIntent",
+          "slots": [
+            {
+              "name": "device",
+              "type": "DomusDevice"
+            },
+            {
+              "name": "action",
+              "type": "DomusAction"
+            }
+          ],
+          "samples": [
+            "controla {device} para {action}",
+            "en {device} ejecuta {action}"
+          ]
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.FallbackIntent",
+          "samples": []
+        }
+      ],
+      "types": [
+        {
+          "name": "DomusDevice",
+          "values": [
+            {
+              "id": "tv",
+              "name": {
+                "value": "televisión",
+                "synonyms": [
+                  "televisor"
+                ]
+              }
+            },
+            {
+              "id": "wiim",
+              "name": {
+                "value": "música",
+                "synonyms": [
+                  "audio",
+                  "wiim"
+                ]
+              }
+            },
+            {
+              "id": "plug",
+              "name": {
+                "value": "enchufe",
+                "synonyms": [
+                  "enchufes"
+                ]
+              }
+            },
+            {
+              "id": "thermostat",
+              "name": {
+                "value": "termostato",
+                "synonyms": [
+                  "temperatura"
+                ]
+              }
+            },
+            {
+              "id": "roomba",
+              "name": {
+                "value": "roomba",
+                "synonyms": [
+                  "aspiradora"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DomusAction",
+          "values": [
+            {
+              "name": {
+                "value": "encender"
+              }
+            },
+            {
+              "name": {
+                "value": "apagar"
+              }
+            },
+            {
+              "name": {
+                "value": "reproducir"
+              }
+            },
+            {
+              "name": {
+                "value": "pausar"
+              }
+            },
+            {
+              "name": {
+                "value": "limpiar"
+              }
+            },
+            {
+              "name": {
+                "value": "consultar estado"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

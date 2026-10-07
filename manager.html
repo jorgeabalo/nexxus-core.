@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Golden Age Fitness - Manager Dashboard">
+    <title>Manager Dashboard - Golden Age Fitness</title>
+    <style>
+        :root {
+            --primary-white: #ffffff;
+            --primary-black: #1a1a1a;
+            --accent-gold: #d4af37;
+            --accent-gold-light: #e6c75d;
+            --neutral-light: #f8f8f8;
+            --neutral-gray: #4a4a4a;
+            --neutral-dark: #2a2a2a;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --info: #3b82f6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+            background: var(--neutral-light);
+            color: var(--primary-black);
+            line-height: 1.6;
+        }
+
+        /* Layout */
+        .dashboard-container {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            min-height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            background: var(--primary-black);
+            color: var(--primary-white);
+            padding: 2rem 0;
+            overflow-y: auto;
+            box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .sidebar-header {
+            padding: 0 1.5rem;
+            margin-bottom: 2rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .sidebar-logo {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--accent-gold), var(--accent-gold-light));
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            font-size: 1.2rem;
+            color: var(--primary-black);
+        }
+
+        .sidebar-title {
+            font-weight: 800;
+            font-size: 1.2rem;
+        }
+
+        .sidebar-nav {
+            list-style: none;
+        }
+
+        .sidebar-nav li {
+            margin: 0;
+        }
+
+        .sidebar-nav button {
+            width: 100%;
+            background: none;
+            border: none;
+            color: var(--primary-white);
+            padding: 1rem 1.5rem;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: left;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .sidebar-nav button:hover,
+        .sidebar-nav button.active {
+            background: var(--accent-gold);
+            color: var(--primary-black);
+            padding-left: 2rem;
+        }
+
+        /* Main Content */
+        .main-content {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .top-bar {
+            background: var(--primary-white);
+            padding: 1.5rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #e0e0e0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .top-bar-title {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--primary-black);
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--accent-gold), var(--accent-gold-light));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--primary-black);
+            font-weight: 700;
+        }
+
+        .btn-logout {
+            background: var(--error);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+            font-size: 0.9rem;
+        }
+
+        .btn-logout:hover {
+            background: #dc2626;
+            transform: translateY(-2px);
+        }
+
+        /* Content Area */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            overflow-y: auto;
+        }
+
+        .section {
+            display: none;
+        }
+
+        .section.active {
+            display: block;
+        }
+
+        /* Dashboard Grid */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--primary-white);
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            border-left: 4px solid var(--accent-gold);
+            transition: all 0.3s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 900;
+            color: var(--primary-black);
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            color: var(--neutral-gray);
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        /* Table Styles */
+        .table-container {
+            background: var(--primary-white);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            margin-bottom: 2rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead {
+            background: #f0f0f0;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        th {
+            padding: 1rem;
+            text-align: left;
+            font-weight: 700;
+            color: var(--primary-black);
+            font-size: 0.9rem;
+        }
+
+        td {
+            padding: 1rem;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 0.95rem;
+        }
+
+        tbody tr:hover {
+            background: #f8f8f8;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: var(--accent-gold);
+            color: var(--primary-black);
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-gold-light);
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: #e0e0e0;
+            color: var(--primary-black);
+        }
+
+        .btn-secondary:hover {
+            background: #d0d0d0;
+        }
+
+        .btn-small {
+            padding: 0.4rem 0.8rem;
+            font-size: 0.85rem;
+        }
+
+        .btn-danger {
+            background: var(--error);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+
+        /* Form Styles */
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: var(--primary-black);
+        }
+
+        input, textarea, select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            font-family: inherit;
+            transition: border-color 0.3s;
+        }
+
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: var(--accent-gold);
+            box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.1);
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--primary-white);
+            padding: 2rem;
+            border-radius: 12px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-header {
+            font-size: 1.5rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+            margin-top: 2rem;
+        }
+
+        /* Status Badge */
+        .status-badge {
+            display: inline-block;
+            padding: 0.4rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .status-active {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .status-inactive {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .status-pending {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .dashboard-container {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                padding: 1rem 0;
+            }
+
+            .sidebar-nav button {
+                padding: 0.75rem 1rem;
+            }
+
+            .content {
+                padding: 1.5rem;
+            }
+
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            table {
+                font-size: 0.85rem;
+            }
+
+            th, td {
+                padding: 0.75rem;
+            }
+
+            .top-bar {
+                flex-direction: column;
+                gap: 1rem;
+                text-align: center;
+            }
+        }
+
+        /* Print */
+        @media print {
+            .sidebar, .top-bar, .btn, button {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Sidebar -->
+        <aside class="sidebar" role="navigation">
+            <div class="sidebar-header">
+                <div class="sidebar-logo">GA</div>
+                <div class="sidebar-title">Manager</div>
+            </div>
+
+            <ul class="sidebar-nav">
+                <li><button class="nav-btn active" data-section="dashboard" aria-label="Dashboard">📊 Dashboard</button></li>
+                <li><button class="nav-btn" data-section="members" aria-label="Members">👥 Miembros</button></li>
+                <li><button class="nav-btn" data-section="attendance" aria-label="Attendance">📍 Asistencia</button></li>
+                <li><button class="nav-btn" data-section="payments" aria-label="Payments">💳 Pagos</button></li>
+                <li><button class="nav-btn" data-section="progress" aria-label="Progress">📈 Progreso</button></li>
+                <li><button class="nav-btn" data-section="expenses" aria-label="Expenses">💰 Gastos</button></li>
+                <li><button class="nav-btn" data-section="inventory" aria-label="Inventory">📦 Inventario</button></li>
+                <li><button class="nav-btn" data-section="marketing" aria-label="Marketing">📢 Marketing</button></li>
+                <li><button class="nav-btn" data-section="reminders" aria-label="Wellness Reminders">🔔 Recordatorios</button></li>
+                <li><button class="nav-btn" data-section="claudia" aria-label="Claudia AI">🤖 Claudia IA</button></li>
+            </ul>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Top Bar -->
+            <div class="top-bar">
+                <h1 class="top-bar-title" id="section-title">Dashboard</h1>
+                <div class="user-info">
+                    <div class="user-avatar">GM</div>
+                    <span>Manager</span>
+                    <button class="btn-logout" onclick="goHome()">← Salir</button>
+                </div>
+            </div>
+
+            <!-- Content Area -->
+            <div class="content">
+                <!-- Dashboard Section -->
+                <section id="dashboard" class="section active">
+                    <div class="dashboard-grid">
+                        <div class="stat-card">
+                            <div class="stat-value">156</div>
+                            <div class="stat-label">Miembros Activos</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">$24.5K</div>
+                            <div class="stat-label">Ingresos Este Mes</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">89%</div>
+                            <div class="stat-label">Tasa de Asistencia</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">42</div>
+                            <div class="stat-label">Nuevos Miembros</div>
+                        </div>
+                    </div>
+
+                    <div class="table-container">
+                        <h3 style="padding: 1.5rem 1rem 1rem; font-size: 1.2rem;">Actividad Reciente</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Miembro</th>
+                                    <th>Actividad</th>
+                                    <th>Fecha</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Carlos López</td>
+                                    <td>Entrenamiento completado</td>
+                                    <td>Hoy 10:30 AM</td>
+                                    <td><span class="status-badge status-active">Completado</span></td>
+                                </tr>
+                                <tr>
+                                    <td>María García</td>
+                                    <td>Pago procesado</td>
+                                    <td>Hoy 9:15 AM</td>
+                                    <td><span class="status-badge status-active">Completado</span></td>
+                                </tr>
+                                <tr>
+                                    <td>Juan Rodríguez</td>
+                                    <td>Nueva inscripción</td>
+                                    <td>Ayer 4:45 PM</td>
+                                    <td><span class="status-badge status-pending">Pendiente</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Members Section -->
+                <section id="members" class="section">
+                    <button class="btn btn-primary" style="margin-bottom: 1rem;" onclick="openAddMemberModal()">+ Agregar Miembro</button>
+
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Edad</th>
+                                    <th>Email</th>
+                                    <th>Plan</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Carlos López</td>
+                                    <td>65</td>
+                                    <td>carlos@email.com</td>
+                                    <td>Premium</td>
+                                    <td><span class="status-badge status-active">Activo</span></td>
+                                    <td>
+                                        <button class="btn btn-small btn-secondary">Ver</button>
+                                        <button class="btn btn-small btn-danger">Eliminar</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>María García</td>
+                                    <td>58</td>
+                                    <td>maria@email.com</td>
+                                    <td>Standard</td>
+                                    <td><span class="status-badge status-active">Activo</span></td>
+                                    <td>
+                                        <button class="btn btn-small btn-secondary">Ver</button>
+                                        <button class="btn btn-small btn-danger">Eliminar</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>Juan Rodríguez</td>
+                                    <td>72</td>
+                                    <td>juan@email.com</td>
+                                    <td>Premium Plus</td>
+                                    <td><span class="status-badge status-inactive">Inactivo</span></td>
+                                    <td>
+                                        <button class="btn btn-small btn-secondary">Ver</button>
+                                        <button class="btn btn-small btn-danger">Eliminar</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Attendance Section -->
+                <section id="attendance" class="section">
+                    <div class="table-container">
+                        <h3 style="padding: 1.5rem 1rem 1rem; font-size: 1.2rem;">Asistencias del Mes</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Miembro</th>
+                                    <th>Fecha</th>
+                                    <th>Hora Entrada</th>
+                                    <th>Hora Salida</th>
+                                    <th>Duración</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Carlos López</td>
+                                    <td>2026-10-03</td>
+                                    <td>10:30 AM</td>
+                                    <td>11:45 AM</td>
+                                    <td>1h 15m</td>
+                                </tr>
+                                <tr>
+                                    <td>María García</td>
+                                    <td>2026-10-03</td>
+                                    <td>9:00 AM</td>
+                                    <td>10:30 AM</td>
+                                    <td>1h 30m</td>
+                                </tr>
+                                <tr>
+                                    <td>Juan Rodríguez</td>
+                                    <td>2026-10-02</td>
+                                    <td>4:00 PM</td>
+                                    <td>5:15 PM</td>
+                                    <td>1h 15m</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Payments Section -->
+                <section id="payments" class="section">
+                    <div class="table-container">
+                        <h3 style="padding: 1.5rem 1rem 1rem; font-size: 1.2rem;">Pagos Recientes</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Miembro</th>
+                                    <th>Monto</th>
+                                    <th>Plan</th>
+                                    <th>Fecha</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Carlos López</td>
+                                    <td>$99.99</td>
+                                    <td>Premium</td>
+                                    <td>2026-10-03</td>
+                                    <td><span class="status-badge status-active">Pagado</span></td>
+                                </tr>
+                                <tr>
+                                    <td>María García</td>
+                                    <td>$59.99</td>
+                                    <td>Standard</td>
+                                    <td>2026-10-02</td>
+                                    <td><span class="status-badge status-active">Pagado</span></td>
+                                </tr>
+                                <tr>
+                                    <td>Juan Rodríguez</td>
+                                    <td>$129.99</td>
+                                    <td>Premium Plus</td>
+                                    <td>2026-09-28</td>
+                                    <td><span class="status-badge status-pending">Pendiente</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Progress Section -->
+                <section id="progress" class="section">
+                    <div class="table-container">
+                        <h3 style="padding: 1.5rem 1rem 1rem; font-size: 1.2rem;">Progreso de Miembros</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Miembro</th>
+                                    <th>Peso Inicial</th>
+                                    <th>Peso Actual</th>
+                                    <th>Cambio</th>
+                                    <th>Sesiones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Carlos López</td>
+                                    <td>85 kg</td>
+                                    <td>82 kg</td>
+                                    <td>-3 kg ✓</td>
+                                    <td>24</td>
+                                </tr>
+                                <tr>
+                                    <td>María García</td>
+                                    <td>72 kg</td>
+                                    <td>70 kg</td>
+                                    <td>-2 kg ✓</td>
+                                    <td>18</td>
+                                </tr>
+                                <tr>
+                                    <td>Juan Rodríguez</td>
+                                    <td>90 kg</td>
+                                    <td>89 kg</td>
+                                    <td>-1 kg ✓</td>
+                                    <td>12</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Expenses Section -->
+                <section id="expenses" class="section">
+                    <button class="btn btn-primary" style="margin-bottom: 1rem;" onclick="openAddExpenseModal()">+ Registrar Gasto</button>
+
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Categoría</th>
+                                    <th>Descripción</th>
+                                    <th>Monto</th>
+                                    <th>Fecha</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Equipos</td>
+                                    <td>Mancuernas ajustables</td>
+                                    <td>$2,500</td>
+                                    <td>2026-10-01</td>
+                                </tr>
+                                <tr>
+                                    <td>Mantenimiento</td>
+                                    <td>Servicio de aire acondicionado</td>
+                                    <td>$450</td>
+                                    <td>2026-09-28</td>
+                                </tr>
+                                <tr>
+                                    <td>Nómina</td>
+                                    <td>Sueldos del personal</td>
+                                    <td>$8,000</td>
+                                    <td>2026-09-30</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Inventory Section -->
+                <section id="inventory" class="section">
+                    <button class="btn btn-primary" style="margin-bottom: 1rem;" onclick="openAddInventoryModal()">+ Agregar Equipo</button>
+
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Equipo</th>
+                                    <th>Cantidad</th>
+                                    <th>Estado</th>
+                                    <th>Ubicación</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Mancuernas</td>
+                                    <td>24 pares</td>
+                                    <td><span class="status-badge status-active">Bueno</span></td>
+                                    <td>Zona 1</td>
+                                    <td><button class="btn btn-small btn-secondary">Editar</button></td>
+                                </tr>
+                                <tr>
+                                    <td>Bicicletas Estáticas</td>
+                                    <td>8</td>
+                                    <td><span class="status-badge status-active">Bueno</span></td>
+                                    <td>Zona 2</td>
+                                    <td><button class="btn btn-small btn-secondary">Editar</button></td>
+                                </tr>
+                                <tr>
+                                    <td>Colchonetas</td>
+                                    <td>12</td>
+                                    <td><span class="status-badge status-pending">Necesita Mantenimiento</span></td>
+                                    <td>Zona 3</td>
+                                    <td><button class="btn btn-small btn-secondary">Editar</button></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Marketing Section -->
+                <section id="marketing" class="section">
+                    <button class="btn btn-primary" style="margin-bottom: 1rem;" onclick="openCampaignModal()">+ Nueva Campaña</button>
+
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Campaña</th>
+                                    <th>Tipo</th>
+                                    <th>Fecha Inicio</th>
+                                    <th>Alcance</th>
+                                    <th>Conversiones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Membresía Premium - Otoño</td>
+                                    <td>Email</td>
+                                    <td>2026-09-15</td>
+                                    <td>450</td>
+                                    <td>42 (9.3%)</td>
+                                </tr>
+                                <tr>
+                                    <td>Referidos - Amigos & Familia</td>
+                                    <td>Redes</td>
+                                    <td>2026-08-20</td>
+                                    <td>1,200</td>
+                                    <td>78 (6.5%)</td>
+                                </tr>
+                                <tr>
+                                    <td>Prueba Gratuita 1 Semana</td>
+                                    <td>Digital</td>
+                                    <td>2026-09-01</td>
+                                    <td>800</td>
+                                    <td>156 (19.5%)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Wellness Reminders Section -->
+                <section id="reminders" class="section">
+                    <button class="btn btn-primary" style="margin-bottom: 1rem;" onclick="openReminderModal()">+ Nuevo Recordatorio</button>
+
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Tipo</th>
+                                    <th>Mensaje</th>
+                                    <th>Frecuencia</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Hidratación</td>
+                                    <td>Recuerda beber agua cada 30 minutos</td>
+                                    <td>Diario</td>
+                                    <td><span class="status-badge status-active">Activo</span></td>
+                                </tr>
+                                <tr>
+                                    <td>Entrenamiento</td>
+                                    <td>Tu sesión de yoga inicia en 15 minutos</td>
+                                    <td>2x Semana</td>
+                                    <td><span class="status-badge status-active">Activo</span></td>
+                                </tr>
+                                <tr>
+                                    <td>Salud</td>
+                                    <td>Recuerda tu cita anual de chequeo</td>
+                                    <td>Mensual</td>
+                                    <td><span class="status-badge status-active">Activo</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Claudia IA Section -->
+                <section id="claudia" class="section">
+                    <div style="background: var(--primary-white); padding: 2rem; border-radius: 12px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);">
+                        <h3 style="margin-bottom: 1rem; font-size: 1.3rem;">🤖 Claudia - Entrenador Virtual IA</h3>
+                        <p style="margin-bottom: 1rem; color: var(--neutral-gray);">Sistema de IA para soporte, programación de citas y orientación a miembros.</p>
+
+                        <div class="form-group">
+                            <label>Estado del Sistema</label>
+                            <p style="padding: 0.75rem; background: #d1fae5; border-radius: 6px; color: #065f46;">✓ Conectado y operativo</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Estadísticas de Uso</label>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                <div style="background: #f0f0f0; padding: 1rem; border-radius: 6px;">
+                                    <div style="font-weight: 700; color: var(--primary-black);">542</div>
+                                    <div style="color: var(--neutral-gray); font-size: 0.9rem;">Consultas Este Mes</div>
+                                </div>
+                                <div style="background: #f0f0f0; padding: 1rem; border-radius: 6px;">
+                                    <div style="font-weight: 700; color: var(--primary-black);">4.8/5</div>
+                                    <div style="color: var(--neutral-gray); font-size: 0.9rem;">Calificación Promedio</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary" style="width: 100%;">Gestionar Configuración de Claudia</button>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Member Modal -->
+    <div id="addMemberModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">Agregar Nuevo Miembro</div>
+            <div class="form-group">
+                <label>Nombre Completo</label>
+                <input type="text" placeholder="Ingrese el nombre completo">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Edad</label>
+                    <input type="number" placeholder="Edad">
+                </div>
+                <div class="form-group">
+                    <label>Plan</label>
+                    <select>
+                        <option>Standard</option>
+                        <option>Premium</option>
+                        <option>Premium Plus</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" placeholder="correo@ejemplo.com">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('addMemberModal')">Cancelar</button>
+                <button class="btn btn-primary" onclick="saveMember()">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Navigation
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+
+                const section = this.dataset.section;
+                document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+                document.getElementById(section).classList.add('active');
+
+                document.getElementById('section-title').textContent =
+                    this.textContent.trim().substring(1).trim();
+            });
+        });
+
+        // Modal functions
+        function openAddMemberModal() {
+            document.getElementById('addMemberModal').classList.add('active');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        function openAddExpenseModal() {
+            alert('Modal para agregar gasto');
+        }
+
+        function openAddInventoryModal() {
+            alert('Modal para agregar equipo');
+        }
+
+        function openCampaignModal() {
+            alert('Modal para nueva campaña');
+        }
+
+        function openReminderModal() {
+            alert('Modal para nuevo recordatorio');
+        }
+
+        function saveMember() {
+            alert('Miembro guardado');
+            closeModal('addMemberModal');
+        }
+
+        function goHome() {
+            window.location.href = '/';
+        }
+
+        // Close modal when clicking outside
+        window.addEventListener('click', function(e) {
+            if (e.target.classList.contains('modal')) {
+                e.target.classList.remove('active');
+            }
+        });
+    </script>
+</body>
+</html>

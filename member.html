@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Golden Age Fitness - Member Portal v2">
+    <title>Golden Age - Portal de Miembro</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        :root {
+            --primary-black: #000000;
+            --accent-gold: #b8960f;
+            --accent-gold-light: #c9a830;
+            --accent-gold-dark: #8b6f0a;
+            --dark-sidebar: #0d0d0d;
+            --dark-bg: #1a1a1a;
+            --dark-card: #252525;
+            --text-light: #e0e0e0;
+            --success: #4ade80;
+            --warning: #fbbf24;
+            --danger: #ef4444;
+            --info: #3b82f6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--text-light);
+            background: var(--primary-black);
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            overflow-x: hidden;
+        }
+
+        /* ===== SIDEBAR NAVIGATION ===== */
+        .sidebar {
+            width: 280px;
+            background: linear-gradient(180deg, var(--dark-sidebar) 0%, var(--dark-bg) 100%);
+            border-right: 2px solid var(--accent-gold);
+            padding: 2rem 1.5rem;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 4px 0 15px rgba(184, 150, 15, 0.2);
+        }
+
+        .sidebar-header {
+            text-align: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid var(--accent-gold);
+        }
+
+        .sidebar-logo {
+            width: 50px;
+            height: 50px;
+            margin: 0 auto 0.75rem;
+            filter: drop-shadow(0 0 4px rgba(184, 150, 15, 0.6));
+        }
+
+        .sidebar-title {
+            color: var(--accent-gold-light);
+            font-size: 0.9rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .nav-section {
+            margin-bottom: 2rem;
+        }
+
+        .nav-label {
+            color: var(--accent-gold-dark);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 0.75rem;
+            display: block;
+        }
+
+        .nav-button {
+            width: 100%;
+            padding: 0.9rem 1rem;
+            background: rgba(184, 150, 15, 0.1);
+            border: 1px solid var(--accent-gold-dark);
+            color: var(--text-light);
+            cursor: pointer;
+            margin-bottom: 0.5rem;
+            border-radius: 3px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.3s;
+            text-align: left;
+            letter-spacing: 0.5px;
+        }
+
+        .nav-button:hover {
+            background: rgba(184, 150, 15, 0.2);
+            border-color: var(--accent-gold-light);
+            color: var(--accent-gold-light);
+            transform: translateX(4px);
+        }
+
+        .nav-button.active {
+            background: rgba(184, 150, 15, 0.3);
+            border-color: var(--accent-gold);
+            color: var(--accent-gold-light);
+        }
+
+        /* ===== MAIN CONTENT ===== */
+        .main-content {
+            margin-left: 280px;
+            flex: 1;
+            overflow-y: auto;
+            padding: 2rem;
+            background: linear-gradient(135deg, var(--primary-black) 0%, #0a0a0a 100%);
+        }
+
+        /* ===== HEADER AREA ===== */
+        .header-area {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2.5rem;
+            align-items: start;
+        }
+
+        /* Avatar & User Info Section */
+        .avatar-card {
+            background: linear-gradient(135deg, var(--dark-card) 0%, var(--dark-bg) 100%);
+            border: 2px solid var(--accent-gold);
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            box-shadow: 0 8px 30px rgba(184, 150, 15, 0.2);
+        }
+
+        .avatar-container {
+            margin-bottom: 1.5rem;
+        }
+
+        .avatar {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent-gold), var(--accent-gold-light));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 4rem;
+            box-shadow: 0 0 20px rgba(184, 150, 15, 0.4);
+            border: 3px solid var(--accent-gold-light);
+        }
+
+        .member-name {
+            color: var(--accent-gold-light);
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 0.3rem;
+        }
+
+        .member-info {
+            color: var(--accent-gold-dark);
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        .info-row {
+            margin: 0.5rem 0;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .stat-box {
+            background: rgba(184, 150, 15, 0.08);
+            border: 1px solid var(--accent-gold-dark);
+            border-radius: 4px;
+            padding: 1rem;
+            text-align: center;
+        }
+
+        .stat-number {
+            color: var(--accent-gold-light);
+            font-size: 1.6rem;
+            font-weight: 700;
+        }
+
+        .stat-label {
+            color: var(--accent-gold-dark);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 0.3rem;
+        }
+
+        /* ===== MAIN DASHBOARD ===== */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        /* Datos Principales */
+        .main-data {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .data-section {
+            background: linear-gradient(135deg, var(--dark-card) 0%, var(--dark-bg) 100%);
+            border: 2px solid var(--accent-gold);
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 8px 30px rgba(184, 150, 15, 0.15);
+        }
+
+        .section-title {
+            color: var(--accent-gold-light);
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .section-icon {
+            font-size: 1.3rem;
+        }
+
+        /* Medidas */
+        .metrics-list {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .metric-item {
+            background: rgba(184, 150, 15, 0.05);
+            border-left: 3px solid var(--accent-gold);
+            padding: 1rem;
+            border-radius: 3px;
+        }
+
+        .metric-label {
+            color: var(--accent-gold-dark);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.3rem;
+        }
+
+        .metric-value {
+            color: var(--accent-gold-light);
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .metric-change {
+            color: var(--success);
+            font-size: 0.8rem;
+            margin-top: 0.2rem;
+        }
+
+        .metric-change.down {
+            color: var(--danger);
+        }
+
+        /* Pagos */
+        .payment-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            border-bottom: 1px solid rgba(184, 150, 15, 0.2);
+            background: rgba(184, 150, 15, 0.03);
+        }
+
+        .payment-item:last-child {
+            border-bottom: none;
+        }
+
+        .payment-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .payment-type {
+            color: var(--text-light);
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .payment-date {
+            color: var(--accent-gold-dark);
+            font-size: 0.8rem;
+        }
+
+        .payment-amount {
+            color: var(--accent-gold-light);
+            font-weight: 700;
+            font-size: 0.95rem;
+        }
+
+        /* Ejercicios */
+        .exercise-item {
+            display: flex;
+            gap: 1rem;
+            padding: 1rem;
+            background: rgba(184, 150, 15, 0.05);
+            border-radius: 4px;
+            margin-bottom: 0.75rem;
+            align-items: center;
+        }
+
+        .exercise-icon {
+            font-size: 1.8rem;
+            width: 50px;
+            text-align: center;
+        }
+
+        .exercise-details {
+            flex: 1;
+        }
+
+        .exercise-name {
+            color: var(--text-light);
+            font-weight: 600;
+            margin-bottom: 0.2rem;
+        }
+
+        .exercise-sets {
+            color: var(--accent-gold-dark);
+            font-size: 0.85rem;
+        }
+
+        .exercise-reps {
+            color: var(--accent-gold-light);
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        /* ===== SIDE PANEL - GRÁFICAS ===== */
+        .side-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .chart-card {
+            background: linear-gradient(135deg, var(--dark-card) 0%, var(--dark-bg) 100%);
+            border: 2px solid var(--accent-gold);
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 8px 30px rgba(184, 150, 15, 0.15);
+        }
+
+        .chart-title {
+            color: var(--accent-gold-light);
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 1.2rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 250px;
+        }
+
+        /* ===== BOTTOM SECTION - SCHEDULE ===== */
+        .schedule-section {
+            background: linear-gradient(135deg, var(--dark-card) 0%, var(--dark-bg) 100%);
+            border: 2px solid var(--accent-gold);
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 8px 30px rgba(184, 150, 15, 0.15);
+            margin-bottom: 2rem;
+        }
+
+        .schedule-title {
+            color: var(--accent-gold-light);
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+        }
+
+        .schedule-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+        }
+
+        .schedule-card {
+            background: rgba(184, 150, 15, 0.05);
+            border: 1px solid var(--accent-gold-dark);
+            border-radius: 4px;
+            padding: 1rem;
+            transition: all 0.3s;
+        }
+
+        .schedule-card:hover {
+            background: rgba(184, 150, 15, 0.1);
+            border-color: var(--accent-gold);
+            transform: translateY(-2px);
+        }
+
+        .class-time {
+            color: var(--accent-gold-light);
+            font-weight: 700;
+            font-size: 1.1rem;
+            margin-bottom: 0.3rem;
+        }
+
+        .class-name {
+            color: var(--text-light);
+            margin-bottom: 0.3rem;
+            font-weight: 600;
+        }
+
+        .class-instructor {
+            color: var(--accent-gold-dark);
+            font-size: 0.8rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .class-status {
+            display: inline-block;
+            padding: 0.3rem 0.7rem;
+            font-size: 0.75rem;
+            border-radius: 3px;
+            text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .status-upcoming {
+            background: rgba(74, 222, 128, 0.2);
+            color: var(--success);
+            border: 1px solid var(--success);
+        }
+
+        .status-completed {
+            background: rgba(184, 150, 15, 0.2);
+            color: var(--accent-gold);
+            border: 1px solid var(--accent-gold);
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 1024px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .header-area {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .metrics-list {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+                border-right: none;
+                border-bottom: 2px solid var(--accent-gold);
+                padding: 1rem;
+            }
+
+            .main-content {
+                margin-left: 0;
+                padding: 1rem;
+            }
+
+            .header-area {
+                grid-template-columns: 1fr;
+            }
+
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .nav-section {
+                display: inline-block;
+                margin-right: 1rem;
+                margin-bottom: 0;
+            }
+
+            .nav-button {
+                display: inline-block;
+                width: auto;
+                margin-right: 0.5rem;
+                padding: 0.5rem 1rem;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- SIDEBAR NAVIGATION -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <svg class="sidebar-logo" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="goldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#c9a830;stop-opacity:1" />
+                        <stop offset="100%" style="stop-color:#8b6f0a;stop-opacity:1" />
+                    </linearGradient>
+                </defs>
+                <path d="M 30 80 L 50 20 L 70 80 M 38 55 L 62 55" stroke="url(#goldGradient)" stroke-width="6" fill="none" stroke-linecap="round"/>
+                <line x1="75" y1="15" x2="85" y2="85" stroke="url(#goldGradient)" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
+            </svg>
+            <div class="sidebar-title">GOLDEN AGE</div>
+        </div>
+
+        <div class="nav-section">
+            <span class="nav-label">📊 Dashboard</span>
+            <button class="nav-button active">Home</button>
+            <button class="nav-button">Progress</button>
+            <button class="nav-button">Medidas</button>
+        </div>
+
+        <div class="nav-section">
+            <span class="nav-label">💪 Entrenamiento</span>
+            <button class="nav-button">Mi Plan</button>
+            <button class="nav-button">Historial</button>
+            <button class="nav-button">Ejercicios</button>
+        </div>
+
+        <div class="nav-section">
+            <span class="nav-label">💳 Cuenta</span>
+            <button class="nav-button">Pagos</button>
+            <button class="nav-button">Membresia</button>
+            <button class="nav-button">Preferencias</button>
+        </div>
+
+        <div class="nav-section">
+            <span class="nav-label">📱 Información</span>
+            <button class="nav-button">Clases</button>
+            <button class="nav-button">Contacto</button>
+            <button class="nav-button">← Salir</button>
+        </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="main-content">
+        <!-- HEADER AREA: Avatar + Quick Stats -->
+        <div class="header-area">
+            <!-- Avatar Card -->
+            <div class="avatar-card">
+                <div class="avatar-container">
+                    <div class="avatar">👨</div>
+                </div>
+                <div class="member-name">Diego Martínez</div>
+                <div class="member-info">
+                    <div class="info-row">📍 Miembro por 8 meses</div>
+                    <div class="info-row">🔥 Racha: 34 días</div>
+                    <div class="info-row">🎯 Meta: 100 sesiones</div>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-number">87</div>
+                        <div class="stat-label">Sesiones</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-number">24</div>
+                        <div class="stat-label">Octubre</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Stats 1 -->
+            <div class="data-section">
+                <div class="section-title">
+                    <span class="section-icon">⚖️</span>
+                    PESO
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">Actual</div>
+                    <div class="metric-value">78.5 kg</div>
+                    <div class="metric-change">↓ 4.5 kg (-5.4%)</div>
+                </div>
+                <div style="margin-top: 1rem;">
+                    <div class="metric-label">Meta</div>
+                    <div class="metric-value">75 kg</div>
+                    <div style="background: rgba(184, 150, 15, 0.2); height: 8px; border-radius: 4px; margin-top: 0.5rem; overflow: hidden;">
+                        <div style="background: linear-gradient(90deg, #c9a830, #b8960f); height: 100%; width: 88%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Stats 2 -->
+            <div class="data-section">
+                <div class="section-title">
+                    <span class="section-icon">💪</span>
+                    COMPOSICIÓN
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">Masa Muscular</div>
+                    <div class="metric-value">32.2%</div>
+                    <div class="metric-change">↑ +2.8%</div>
+                </div>
+                <div style="margin-top: 1rem;">
+                    <div class="metric-label">Grasa</div>
+                    <div class="metric-value">24.1%</div>
+                    <div class="metric-change down">↑ +0.3%</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MAIN DASHBOARD -->
+        <div class="dashboard-grid">
+            <!-- MAIN DATA SECTION -->
+            <div class="main-data">
+                <!-- MEDIDAS COMPLETAS -->
+                <div class="data-section">
+                    <div class="section-title">
+                        <span class="section-icon">📏</span>
+                        MIS MEDIDAS
+                    </div>
+                    <div class="metrics-list">
+                        <div class="metric-item">
+                            <div class="metric-label">Cintura</div>
+                            <div class="metric-value">82 cm</div>
+                            <div class="metric-change">↓ 3 cm</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">Pecho</div>
+                            <div class="metric-value">105 cm</div>
+                            <div class="metric-change">↑ 2 cm</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">Hombros</div>
+                            <div class="metric-value">118 cm</div>
+                            <div class="metric-change">↑ 3.5 cm</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">Brazos</div>
+                            <div class="metric-value">34 cm</div>
+                            <div class="metric-change">↑ 1.2 cm</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">Muslos</div>
+                            <div class="metric-value">58 cm</div>
+                            <div class="metric-change">↑ 2.1 cm</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">Pantorrilla</div>
+                            <div class="metric-value">39 cm</div>
+                            <div class="metric-change">↑ 0.8 cm</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PAGOS -->
+                <div class="data-section">
+                    <div class="section-title">
+                        <span class="section-icon">💳</span>
+                        PAGOS RECIENTES
+                    </div>
+                    <div class="payment-item">
+                        <div class="payment-info">
+                            <div class="payment-type">Membresía Mensual</div>
+                            <div class="payment-date">01 Oct, 2026</div>
+                        </div>
+                        <div class="payment-amount">$150.00</div>
+                    </div>
+                    <div class="payment-item">
+                        <div class="payment-info">
+                            <div class="payment-type">Entrenamiento Personal</div>
+                            <div class="payment-date">15 Sep, 2026</div>
+                        </div>
+                        <div class="payment-amount">$75.00</div>
+                    </div>
+                    <div class="payment-item">
+                        <div class="payment-info">
+                            <div class="payment-type">Membresía Mensual</div>
+                            <div class="payment-date">01 Sep, 2026</div>
+                        </div>
+                        <div class="payment-amount">$150.00</div>
+                    </div>
+                    <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(184, 150, 15, 0.2);">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="color: var(--accent-gold-dark);">PRÓXIMO PAGO</span>
+                            <span style="color: var(--accent-gold-light); font-weight: 700;">01 Nov, 2026</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- EJERCICIOS RECIENTES -->
+                <div class="data-section">
+                    <div class="section-title">
+                        <span class="section-icon">🏋️</span>
+                        ÚLTIMOS EJERCICIOS
+                    </div>
+                    <div class="exercise-item">
+                        <div class="exercise-icon">🏋️</div>
+                        <div class="exercise-details">
+                            <div class="exercise-name">Sentadillas</div>
+                            <div class="exercise-sets">4 series x 10 reps</div>
+                            <div class="exercise-reps">120 kg</div>
+                        </div>
+                    </div>
+                    <div class="exercise-item">
+                        <div class="exercise-icon">💪</div>
+                        <div class="exercise-details">
+                            <div class="exercise-name">Press de Banca</div>
+                            <div class="exercise-sets">4 series x 8 reps</div>
+                            <div class="exercise-reps">100 kg</div>
+                        </div>
+                    </div>
+                    <div class="exercise-item">
+                        <div class="exercise-icon">🤸</div>
+                        <div class="exercise-details">
+                            <div class="exercise-name">Flexiones</div>
+                            <div class="exercise-sets">3 series x 15 reps</div>
+                            <div class="exercise-reps">Peso corporal</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SIDE PANEL: GRÁFICAS -->
+            <div class="side-panel">
+                <!-- Gráfica Peso -->
+                <div class="chart-card">
+                    <div class="chart-title">PROGRESO PESO</div>
+                    <div class="chart-container">
+                        <canvas id="weightChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Gráfica Calorías -->
+                <div class="chart-card">
+                    <div class="chart-title">CALORÍAS QUEMADAS</div>
+                    <div class="chart-container">
+                        <canvas id="caloriesChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Gráfica Consistencia -->
+                <div class="chart-card">
+                    <div class="chart-title">CONSISTENCIA</div>
+                    <div class="chart-container">
+                        <canvas id="consistencyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SCHEDULE SECTION -->
+        <div class="schedule-section">
+            <div class="schedule-title">📅 PRÓXIMAS CLASES</div>
+            <div class="schedule-grid">
+                <div class="schedule-card">
+                    <div class="class-time">09:00 AM</div>
+                    <div class="class-name">Yoga Matutino</div>
+                    <div class="class-instructor">Instructor: María</div>
+                    <span class="class-status status-upcoming">PRÓXIMAMENTE</span>
+                </div>
+                <div class="schedule-card">
+                    <div class="class-time">06:00 PM</div>
+                    <div class="class-name">CrossFit</div>
+                    <div class="class-instructor">Instructor: Carlos</div>
+                    <span class="class-status status-upcoming">PRÓXIMAMENTE</span>
+                </div>
+                <div class="schedule-card">
+                    <div class="class-time">07:30 PM</div>
+                    <div class="class-name">Spinning</div>
+                    <div class="class-instructor">Instructor: Ana</div>
+                    <span class="class-status status-completed">COMPLETADO</span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Gráfica de Peso
+        const weightCtx = document.getElementById('weightChart').getContext('2d');
+        new Chart(weightCtx, {
+            type: 'line',
+            data: {
+                labels: ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4', 'Sem 5', 'Sem 6', 'Sem 7', 'Sem 8', 'Ahora'],
+                datasets: [{
+                    label: 'Peso (kg)',
+                    data: [83, 82.8, 82.5, 82.2, 81.9, 81.5, 81.1, 80.2, 78.5],
+                    borderColor: '#c9a830',
+                    backgroundColor: 'rgba(184, 150, 15, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    pointBackgroundColor: '#c9a830',
+                    pointBorderColor: '#b8960f',
+                    pointRadius: 5,
+                    pointHoverRadius: 7,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: '#c9a830', font: { size: 12 } } }
+                },
+                scales: {
+                    y: {
+                        ticks: { color: '#8b6f0a', font: { size: 11 } },
+                        grid: { color: 'rgba(184, 150, 15, 0.1)' }
+                    },
+                    x: {
+                        ticks: { color: '#8b6f0a', font: { size: 11 } },
+                        grid: { color: 'rgba(184, 150, 15, 0.1)' }
+                    }
+                }
+            }
+        });
+
+        // Gráfica de Calorías
+        const caloriesCtx = document.getElementById('caloriesChart').getContext('2d');
+        new Chart(caloriesCtx, {
+            type: 'bar',
+            data: {
+                labels: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
+                datasets: [{
+                    label: 'Calorías Quemadas',
+                    data: [520, 580, 610, 570, 640, 720, 450],
+                    backgroundColor: [
+                        'rgba(201, 168, 48, 0.8)',
+                        'rgba(184, 150, 15, 0.8)',
+                        'rgba(201, 168, 48, 0.8)',
+                        'rgba(184, 150, 15, 0.8)',
+                        'rgba(201, 168, 48, 0.9)',
+                        'rgba(139, 111, 10, 0.9)',
+                        'rgba(184, 150, 15, 0.6)',
+                    ],
+                    borderColor: '#c9a830',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: '#c9a830', font: { size: 12 } } }
+                },
+                scales: {
+                    y: {
+                        ticks: { color: '#8b6f0a', font: { size: 11 } },
+                        grid: { color: 'rgba(184, 150, 15, 0.1)' }
+                    },
+                    x: {
+                        ticks: { color: '#8b6f0a', font: { size: 11 } },
+                        grid: { display: false }
+                    }
+                }
+            }
+        });
+
+        // Gráfica de Consistencia (Radar)
+        const consistencyCtx = document.getElementById('consistencyChart').getContext('2d');
+        new Chart(consistencyCtx, {
+            type: 'radar',
+            data: {
+                labels: ['Fuerza', 'Cardio', 'Flexibilidad', 'Nutrición', 'Descanso', 'Disciplina'],
+                datasets: [{
+                    label: 'Octubre',
+                    data: [85, 78, 72, 88, 80, 90],
+                    borderColor: '#c9a830',
+                    backgroundColor: 'rgba(184, 150, 15, 0.2)',
+                    pointBackgroundColor: '#c9a830',
+                    pointBorderColor: '#b8960f',
+                    pointRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: '#c9a830', font: { size: 12 } } }
+                },
+                scales: {
+                    r: {
+                        ticks: { color: '#8b6f0a', font: { size: 10 } },
+                        grid: { color: 'rgba(184, 150, 15, 0.2)' }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
