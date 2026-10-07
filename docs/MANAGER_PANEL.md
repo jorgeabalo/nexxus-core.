@@ -279,3 +279,27 @@ Migración: `20261006120000_accounting_basic.sql` (idempotente; no borra ni reno
 | GET | `export?format=csv\|pdf&lang=es\|en` | owner/manager |
 
 Tests: `tests/test_accounting.py` y `tests/sql/test_accounting.sql`.
+
+# Nexxus Manager (identidad y navegación multitenant)
+
+**Nexxus Manager** es la marca fija de la plataforma; la empresa activa (tenant) aporta sus datos:
+
+| Dato | Fuente en `tenants` |
+|---|---|
+| Nombre comercial | `branding.business_name` → `name` (fallback del piloto: "Golden Age Fitness") |
+| Logotipo | `branding.logo_url` (solo `/ruta` propia o `data:image/…`, por la CSP); si no, iniciales |
+| Colores | `branding.color_primary`, `branding.color_accent` |
+| Teléfono / dirección | `settings.public_phone`, `settings.address` (solo esos campos se leen) |
+| Zona horaria / idioma | `timezone`, `branding.language` o `branding.locale` |
+| Módulos | `modules` (un módulo con `false` no aparece ni se puede abrir) |
+
+* **Menú** (`manager/assets/js/nav.js`): Resumen, Miembros, Asistencia, Citas y servicios, Pagos,
+  Contabilidad, Personal, Inventario, Marketing, Claudia IA, Configuración. Las rutas (`#/clave`) no cambian
+  (Contabilidad sigue en `#/accounting`).
+* **Por rol:** owner ve todo lo habilitado; manager todo salvo Configuración; staff Resumen, Miembros,
+  Asistencia, Citas, Pagos, Contabilidad y Claudia. Ajustable por empresa con
+  `tenants.settings.role_modules = {"staff": [...], "manager": [...]}`. Una ruta no permitida muestra
+  "Sin acceso". Esto solo controla lo que se muestra: RLS y el backend siguen imponiendo los permisos.
+* **Idioma:** selector ES/EN en el encabezado (`manager/assets/js/i18n.js`, compartido con Contabilidad).
+* **Estado del sistema:** punto discreto que comprueba `/api/manager/config` cada minuto.
+* Pruebas: `tests/test_nexxus_manager.py` y `node --test tests/js/nav.test.mjs`.

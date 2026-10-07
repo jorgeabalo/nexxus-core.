@@ -278,7 +278,7 @@ def test_manager_page_security_headers(client, monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
     r = client.get("/manager")
     assert r.status_code == 200
-    assert "Manager Dashboard" in r.text
+    assert "Nexxus Manager" in r.text
     assert r.headers["cache-control"] == "no-store"
     assert r.headers["x-frame-options"] == "DENY"
     csp = r.headers["content-security-policy"]

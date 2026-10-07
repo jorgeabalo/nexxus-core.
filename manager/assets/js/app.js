@@ -1,10 +1,14 @@
-// AITA/Nexxus Manager Panel — arranque, autenticación, layout y rutas.
+// Nexxus Manager — arranque, autenticación, layout y rutas.
+// Nexxus es la plataforma; la empresa activa (tenant) aporta nombre, logo,
+// colores, contacto, zona horaria, idioma y módulos habilitados.
 //
 // Seguridad:
 //   * El servidor solo entrega SUPABASE_URL y la clave pública (anon).
 //   * Sin sesión válida solo se muestra el login; ningún módulo carga datos.
 //   * Todas las consultas van con el JWT del usuario: RLS filtra por tenant.
-import { el, clear, icon, setFormatContext, fmtLongToday, toast, errorBox } from './ui.js';
+import { el, clear, icon, nexxusMark, setFormatContext, toast, errorBox } from './ui.js';
+import { tr, getLang, setLang, useTenantDefault } from './i18n.js';
+import { CATALOG, canOpen, visibleModules, homeModule, tenantProfile } from './nav.js';
 import { initApi, api } from './api.js';
 import * as dashboard from './modules/dashboard.js';
 import * as members from './modules/members.js';
@@ -15,22 +19,10 @@ import * as team from './modules/team.js';
 import * as accounting from './modules/accounting.js';
 import * as comingSoon from './modules/coming-soon.js';
 
-// Catálogo de módulos del Manager Panel (igual para todos los tenants).
-// Qué módulos están activos lo decide tenants.modules en la base de datos.
-export const MODULES = [
-  { key: 'dashboard', label: 'Dashboard', icon: 'dashboard', view: dashboard },
-  { key: 'members', label: 'Members', icon: 'members', view: members },
-  { key: 'schedule', label: 'Schedule', icon: 'schedule', view: schedule },
-  { key: 'claudia', label: 'Claudia', icon: 'claudia', view: claudia },
-  { key: 'payments', label: 'Payments', icon: 'payments', view: payments },
-  { key: 'team', label: 'Team', icon: 'user', view: team },
-  { key: 'accounting', label: 'Accounting', icon: 'accounting', view: accounting },
-  { key: 'marketing', label: 'Marketing', icon: 'marketing', view: comingSoon },
-  { key: 'inventory', label: 'Inventory', icon: 'inventory', view: comingSoon },
-  { key: 'agents', label: 'Agents', icon: 'agents', view: comingSoon },
-  { key: 'settings', label: 'Settings', icon: 'settings', view: comingSoon },
-];
-const PHASE_1 = new Set(['dashboard', 'members', 'schedule', 'claudia', 'payments', 'team', 'accounting']);
+// Vista de cada módulo. El orden del menú, qué está habilitado y qué ve cada
+// rol se deciden en nav.js (tenants.modules + rol del usuario).
+const VIEWS = { dashboard, members, schedule, claudia, payments, team, accounting };
+export const MODULES = CATALOG.map(m => ({ ...m, view: m.live ? VIEWS[m.key] : comingSoon }));
 
 const app = document.getElementById('app');
 const state = { sb: null, session: null, memberships: [], ctx: null };
@@ -76,7 +68,8 @@ function authCard(subtitle, ...content) {
   return el('div', { class: 'auth-wrap' },
     el('div', { class: 'auth-card' },
       el('div', { class: 'auth-brand' },
-        el('div', { class: 'wordmark' }, 'MANAGER'),
+        el('div', { class: 'auth-mark' }, nexxusMark(44)),
+        el('div', { class: 'wordmark' }, 'NEXXUS MANAGER'),
         el('div', { class: 'rule' }),
         el('p', {}, subtitle)),
       ...content,
@@ -149,7 +142,7 @@ function renderSetPassword() {
 }
 
 function renderFatal(message) {
-  clear(app).appendChild(authCard('Manager Dashboard', el('p', { class: 'form-error' }, message)));
+  clear(app).appendChild(authCard('Nexxus Manager', el('p', { class: 'form-error' }, message)));
 }
 
 function renderNoAccess() {
@@ -185,6 +178,7 @@ async function enter() {
 function setTenant(m) {
   const t = m.tenant;
   const b = t.branding || {};
+  const profile = tenantProfile(t);
   state.ctx = {
     tenant: t,
     tenantId: t.id,
@@ -192,63 +186,114 @@ function setTenant(m) {
     user: state.session.user,
     modules: t.modules || {},
     branding: b,
+    profile,
   };
   try { localStorage.setItem('aita.tenant', t.id); } catch (_) { /* opcional */ }
-  setFormatContext({ timezone: t.timezone, locale: b.locale, currency: b.currency });
+  useTenantDefault(profile.language);
+  setFormatContext({ timezone: profile.timezone, locale: b.locale, currency: profile.currency });
   const root = document.documentElement.style;
-  if (b.color_primary) root.setProperty('--brand-primary', b.color_primary);
-  if (b.color_accent) root.setProperty('--brand-accent', b.color_accent);
-  document.title = `${b.display_name || t.name} · ${b.subtitle || 'Manager Dashboard'}`;
+  if (profile.colors.primary) root.setProperty('--brand-primary', profile.colors.primary);
+  if (profile.colors.accent) root.setProperty('--brand-accent', profile.colors.accent);
+  document.documentElement.lang = getLang();
+  document.title = `${tr('platform')} · ${profile.name}`;
 }
 
 let shellRefs = null;
 function renderShell() {
-  const { tenant, branding, role, user } = state.ctx;
-  const displayName = branding.display_name || tenant.name;
-  const subtitle = branding.subtitle || 'Manager Dashboard';
+  const { role, user, profile, tenant } = state.ctx;
+  const userName = (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.name)) || user.email;
+  const roleLabel = tr(`role_${role}`);
 
-  const nav = el('nav', { class: 'sb-nav', 'aria-label': 'Main' });
-  MODULES.forEach((mod, i) => {
-    if (mod.key === 'team' && !['owner', 'manager'].includes(role)) return;  // staff no gestiona el equipo
-    if (i === PHASE_1.size) nav.appendChild(el('div', { class: 'sb-sep', role: 'separator' }));
-    const enabled = isEnabled(mod.key);
+  const nav = el('nav', { class: 'sb-nav', 'aria-label': tr('mainNav') });
+  for (const mod of visibleModules(tenant, role)) {
     nav.appendChild(el('a', { class: 'sb-link', href: `#/${mod.key}`, dataset: { key: mod.key }, onclick: closeNav },
-      icon(mod.icon), el('span', {}, mod.view.navLabel ? mod.view.navLabel() : mod.label), enabled ? null : el('span', { class: 'soon' }, 'Soon')));
-  });
+      icon(mod.icon), el('span', {}, tr(`m_${mod.key}`)), mod.live ? null : el('span', { class: 'soon' }, tr('soon'))));
+  }
+
+  const companyLogo = profile.logo
+    ? el('img', { class: 'co-logo', src: profile.logo, alt: '' })
+    : el('span', { class: 'co-logo co-initials', 'aria-hidden': 'true' }, profile.initials);
 
   const sidebar = el('aside', { class: 'sidebar', id: 'sidebar' },
-    el('div', { class: 'sb-brand' }, el('div', { class: 'wordmark' }, displayName), el('div', { class: 'sub' }, subtitle)),
+    el('div', { class: 'sb-brand' },
+      el('div', { class: 'nx-brand' }, nexxusMark(30), el('div', { class: 'wordmark' }, 'NEXXUS', el('span', {}, 'MANAGER'))),
+      el('div', { class: 'sb-company' }, companyLogo,
+        el('div', { class: 'co-text' }, el('div', { class: 'co-name' }, profile.name),
+          profile.phone ? el('div', { class: 'co-meta' }, profile.phone) : null))),
     nav,
     el('div', { class: 'sb-foot' },
-      el('div', { class: 'sb-user', title: user.email }, user.email),
-      el('div', { class: 'sb-role' }, role),
-      el('button', { class: 'btn btn-sm', type: 'button', onclick: () => state.sb.auth.signOut() }, 'Sign out')));
+      el('div', { class: 'sb-user', title: user.email }, userName),
+      el('div', { class: 'sb-role' }, roleLabel),
+      el('button', { class: 'btn btn-sm', type: 'button', onclick: () => state.sb.auth.signOut() }, tr('signOut')),
+      el('a', { class: 'sb-site', href: '/' }, `← ${tr('websiteTitle')}`)));
 
   const tenantSelect = state.memberships.length > 1
     ? el('select', {
-      class: 'input tenant-select', 'aria-label': 'Business',
+      class: 'input tenant-select', 'aria-label': tr('business'),
       onchange: (e) => { const m = state.memberships.find(x => x.tenant.id === e.target.value); setTenant(m); renderShell(); route(); },
-    }, state.memberships.map(m => { const o = el('option', { value: m.tenant.id }, m.tenant.name); if (m.tenant.id === tenant.id) o.selected = true; return o; }))
+    }, state.memberships.map(m => { const o = el('option', { value: m.tenant.id }, tenantProfile(m.tenant).name); if (m.tenant.id === tenant.id) o.selected = true; return o; }))
     : null;
+
+  const langSelect = el('select', { class: 'input lang-select', 'aria-label': tr('language'), onchange: (e) => setLang(e.target.value) },
+    [['es', 'ES'], ['en', 'EN']].map(([v, l]) => { const o = el('option', { value: v }, l); if (v === getLang()) o.selected = true; return o; }));
+
+  const status = el('span', { class: 'sys-status checking', role: 'status', title: tr('status_checking') },
+    el('span', { class: 'dot', 'aria-hidden': 'true' }), el('span', { class: 'label' }, tr('status_checking')));
 
   const content = el('main', { class: 'content', id: 'content', tabindex: '-1' });
   const topbar = el('header', { class: 'topbar' },
-    el('button', { class: 'menu-btn', type: 'button', 'aria-label': 'Open menu', 'aria-controls': 'sidebar', onclick: toggleNav }, icon('menu')),
-    el('div', { class: 'titles' }, el('div', { class: 't-brand' }, displayName), el('div', { class: 't-sub' }, subtitle)),
-    el('div', { class: 'date' }, fmtLongToday()),
+    el('button', { class: 'menu-btn', type: 'button', 'aria-label': tr('openMenu'), 'aria-controls': 'sidebar', onclick: toggleNav }, icon('menu')),
+    el('div', { class: 'titles' },
+      el('div', { class: 't-brand' }, nexxusMark(22), el('span', {}, tr('platform'))),
+      el('div', { class: 't-sub' }, profile.name)),
+    el('div', { class: 'date' }, new Intl.DateTimeFormat(getLang() === 'es' ? 'es-US' : 'en-US',
+      { timeZone: profile.timezone, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).format(new Date())),
+    status,
     tenantSelect,
-    el('a', { class: 'btn btn-sm site-link', href: '/', title: 'Back to website' }, '← Website'));
+    langSelect,
+    el('div', { class: 'tb-user' }, el('span', { class: 'tb-name', title: user.email }, userName), el('span', { class: 'tb-role' }, roleLabel)),
+    el('button', { class: 'btn btn-sm tb-signout', type: 'button', onclick: () => state.sb.auth.signOut() }, tr('signOut')),
+    el('a', { class: 'btn btn-sm site-link', href: '/', title: tr('websiteTitle') }, `← ${tr('website')}`));
 
   const shell = el('div', { class: 'shell' }, sidebar, el('div', { class: 'scrim', onclick: closeNav }),
     el('div', { class: 'main' }, topbar, content));
   clear(app).appendChild(shell);
-  shellRefs = { shell, nav, content };
+  shellRefs = { shell, nav, content, status };
+  checkStatus();
 }
 
-function isEnabled(key) {
-  // Solo los módulos de la Fase 1 tienen vista real; el resto es "Coming soon".
-  return PHASE_1.has(key) && state.ctx.modules[key] !== false;
+// Indicador discreto: el servidor responde y hay conexión. Sin datos sensibles.
+let statusTimer = null;
+async function checkStatus() {
+  if (!shellRefs) return;
+  let st = 'ok';
+  if (!navigator.onLine) st = 'offline';
+  else {
+    try {
+      const r = await fetch('/api/manager/config', { cache: 'no-store', credentials: 'same-origin' });
+      if (!r.ok) st = 'degraded';
+    } catch (_) { st = 'offline'; }
+  }
+  const s = shellRefs && shellRefs.status;
+  if (!s) return;
+  s.className = `sys-status ${st}`;
+  s.title = tr(`status_${st}`);
+  s.querySelector('.label').textContent = tr(`status_${st}`);
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(checkStatus, 60000);
 }
+window.addEventListener('online', checkStatus);
+window.addEventListener('offline', checkStatus);
+
+// Cambio de idioma: se redibuja el encabezado, el menú y el módulo actual.
+window.addEventListener('aita:lang', () => {
+  if (!state.ctx) return;
+  document.documentElement.lang = getLang();
+  document.title = `${tr('platform')} · ${state.ctx.profile.name}`;
+  renderShell();
+  route();
+});
+
 function toggleNav() { shellRefs.shell.classList.toggle('nav-open'); }
 function closeNav() { shellRefs && shellRefs.shell.classList.remove('nav-open'); }
 
@@ -259,18 +304,27 @@ let renderToken = 0;
 async function route() {
   if (!state.ctx || !shellRefs) return;
   closeNav();
-  const [key = 'dashboard', ...params] = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
-  const mod = MODULES.find(m => m.key === key) || MODULES[0];
+  const { tenant, role } = state.ctx;
+  const home = homeModule(tenant, role);
+  const [key = home, ...params] = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+  const mod = MODULES.find(m => m.key === key);
   for (const a of shellRefs.nav.querySelectorAll('.sb-link')) {
-    if (a.dataset.key === mod.key) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+    if (mod && a.dataset.key === mod.key) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   }
   const token = ++renderToken;
   const content = clear(shellRefs.content);
-  const view = isEnabled(mod.key) ? mod.view : comingSoon;
-  try {
-    await view.render(content, { ...state.ctx, params, module: mod, isCurrent: () => token === renderToken });
-  } catch (e) {
-    if (token === renderToken) { clear(content).appendChild(errorBox(e)); }
+  if (!mod || !canOpen(tenant, role, mod.key)) {
+    // Módulo inexistente, deshabilitado para la empresa o no permitido para el rol.
+    content.appendChild(el('section', { class: 'card soon-card' },
+      el('span', { class: 'pill' }, tr('noAccessTitle')),
+      el('p', {}, tr('noAccessText')),
+      home ? el('p', {}, el('a', { class: 'btn', href: `#/${home}` }, tr('backHome'))) : null));
+  } else {
+    try {
+      await mod.view.render(content, { ...state.ctx, params, module: { ...mod, label: tr(`m_${mod.key}`) }, isCurrent: () => token === renderToken });
+    } catch (e) {
+      if (token === renderToken) { clear(content).appendChild(errorBox(e)); }
+    }
   }
   content.focus({ preventScroll: true });
   window.scrollTo(0, 0);

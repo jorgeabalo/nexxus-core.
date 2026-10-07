@@ -4,13 +4,11 @@
 // sin duplicarlos; se editan desde Payments.
 import { el, clear, card, kpi, table, tabs, badge, empty, errorBox, loading, money, todayISO, toast } from '../ui.js';
 import { api } from '../api.js';
-import { t, getLang, setLang, errText, fmtDay } from './accounting-i18n.js';
+import { t, getLang, errText, fmtDay } from './accounting-i18n.js';
 import { transactionModal, attachReceiptModal, cancelModal, obligationModal, payModal, exportModal, categoriesModal } from './accounting-forms.js';
 
 const A = api.accounting;
 const state = { start: null, end: null, filter: 'all' };
-
-export const navLabel = () => t('nav');
 
 function monthStart(iso) { return `${iso.slice(0, 8)}01`; }
 function shiftMonth(iso, n) {
@@ -36,8 +34,6 @@ export async function render(root, ctx) {
   from.addEventListener('change', apply); to.addEventListener('change', apply);
   const preset = (label, s, e) => el('button', { class: 'btn btn-sm', type: 'button', onclick: () => { from.value = s; to.value = e; apply(); } }, label);
   const today = todayISO();
-  const langBtn = el('button', { class: 'btn btn-sm', type: 'button', 'aria-label': 'Language / Idioma',
-    onclick: () => { setLang(getLang() === 'es' ? 'en' : 'es'); render(clear(root), ctx); } }, getLang() === 'es' ? 'English' : 'Español');
 
   root.appendChild(el('div', { class: 'page-head' },
     el('div', {}, el('h1', {}, t('title')), el('p', {}, t('subtitle'))),
@@ -53,8 +49,7 @@ export async function render(root, ctx) {
       preset(t('thisMonth'), monthStart(today), today),
       preset(t('lastMonth'), shiftMonth(today, -1), monthEnd(shiftMonth(today, -1))),
       preset(t('thisYear'), `${today.slice(0, 4)}-01-01`, today),
-      canEdit ? el('button', { class: 'btn btn-sm', type: 'button', onclick: () => categoriesModal(ctx, categories, reload) }, t('categories')) : null,
-      langBtn)));
+      canEdit ? el('button', { class: 'btn btn-sm', type: 'button', onclick: () => categoriesModal(ctx, categories, reload) }, t('categories')) : null)));
   if (!canEdit) root.appendChild(el('p', { class: 'hint' }, t('staffNote')));
 
   const kpis = el('div', { class: 'kpis acc-kpis' }, loading());
