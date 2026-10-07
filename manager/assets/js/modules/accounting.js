@@ -2,9 +2,9 @@
 // Los datos vienen del backend (/api/manager/accounting/*), que valida rol y
 // tenant. Los pagos de socios (módulo Payments) se muestran aquí como ingresos
 // sin duplicarlos; se editan desde Payments.
-import { el, clear, card, kpi, table, tabs, badge, empty, errorBox, loading, money, fmtDate, todayISO, toast } from '../ui.js';
+import { el, clear, card, kpi, table, tabs, badge, empty, errorBox, loading, money, todayISO, toast } from '../ui.js';
 import { api } from '../api.js';
-import { t, getLang, setLang, errText } from './accounting-i18n.js';
+import { t, getLang, setLang, errText, fmtDay } from './accounting-i18n.js';
 import { transactionModal, attachReceiptModal, cancelModal, obligationModal, payModal, exportModal, categoriesModal } from './accounting-forms.js';
 
 const A = api.accounting;
@@ -78,7 +78,7 @@ export async function render(root, ctx) {
   function drawMovements() {
     const rows = state.filter === 'all' ? movements : movements.filter(m => m.type === state.filter);
     clear(movBody).appendChild(table([
-      { label: t('date'), render: m => fmtDate(m.date) },
+      { label: t('date'), render: m => fmtDay(m.date) },
       { label: t('type'), render: m => el('span', { class: `acc-type ${m.type}` }, t(`t_${m.type}`)) },
       { label: t('category'), render: m => m.category_name || el('span', { class: 'muted' }, t('noCategory')) },
       { label: t('description'), render: m => el('span', {}, m.description, m.kind === 'payment' ? el('span', { class: 'badge gold' }, t('fromPayments')) : null) },
@@ -150,7 +150,7 @@ function drawPending(body, data, ctx, canEdit, reload) {
     { label: t('who'), render: o => el('span', { class: 'strong' }, o.counterparty) },
     { label: t('type'), render: o => el('span', { class: `badge ${o.obligation_type === 'receivable' ? 'info' : 'gold'}` }, t(o.obligation_type === 'receivable' ? 'toCollect' : 'toPay')) },
     { label: t('description'), key: 'description' },
-    { label: t('due'), render: o => o.due_date ? el('span', { class: o.effective_status === 'overdue' ? 'acc-late' : '' }, fmtDate(o.due_date)) : null },
+    { label: t('due'), render: o => o.due_date ? el('span', { class: o.effective_status === 'overdue' ? 'acc-late' : '' }, fmtDay(o.due_date)) : null },
     { label: t('status'), render: o => badge(o.effective_status, o.effective_status === 'overdue' ? `⚠ ${t('late')}` : t('s_pending')) },
     { label: t('amount'), num: true, render: o => money(o.amount) },
     { label: t('actions'), render: o => o.kind === 'payment'

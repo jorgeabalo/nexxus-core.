@@ -1,7 +1,7 @@
 // Formularios (modales) del módulo Contabilidad.
-import { el, clear, openModal, field, input, select, toast, money, fmtDate, todayISO, empty, badge } from '../ui.js';
+import { el, clear, openModal, field, input, select, toast, money, todayISO, empty, badge } from '../ui.js';
 import { api } from '../api.js';
-import { t, errText, getLang } from './accounting-i18n.js';
+import { t, errText, getLang, fmtDay } from './accounting-i18n.js';
 
 export const METHODS = ['cash', 'card', 'bank', 'check', 'other'];
 const A = api.accounting;
@@ -32,6 +32,7 @@ export function transactionModal(ctx, { type, existing = null, categories }, rel
   const err = el('p', { class: 'form-error full', role: 'alert' });
 
   openModal({
+    closeLabel: t('close'),
     title: existing ? t('editMovement') : t(typ === 'income' ? 'newIncome' : 'newExpense'),
     body: el('form', { class: 'form-grid', onsubmit: (e) => e.preventDefault() },
       field(`${t('date')} *`, date), field(`${t('amount')} (USD) *`, amount),
@@ -63,8 +64,9 @@ export function attachReceiptModal(ctx, m, reload) {
   const photo = input({ type: 'file', accept: 'image/jpeg,image/png,image/webp,image/heic,application/pdf' });
   const err = el('p', { class: 'form-error', role: 'alert' });
   openModal({
+    closeLabel: t('close'),
     title: t('photo'),
-    body: el('div', { class: 'form-grid' }, el('p', { class: 'hint full' }, `${fmtDate(m.date)} · ${m.description} · ${money(m.amount)}`),
+    body: el('div', { class: 'form-grid' }, el('p', { class: 'hint full' }, `${fmtDay(m.date)} · ${m.description} · ${money(m.amount)}`),
       field(t('photo'), photo, { full: true, hint: t('photoHint') }), err),
     actions: [saveButton(t('save'), async (close) => {
       if (!photo.files[0]) { err.textContent = t('required'); return; }
@@ -76,8 +78,9 @@ export function attachReceiptModal(ctx, m, reload) {
 
 export function cancelModal(ctx, m, reload) {
   openModal({
+    closeLabel: t('close'),
     title: t('cancelTitle'),
-    body: el('div', {}, el('p', { class: 'strong m0' }, `${fmtDate(m.date)} · ${m.description} · ${money(m.amount)}`),
+    body: el('div', {}, el('p', { class: 'strong m0' }, `${fmtDay(m.date)} · ${m.description} · ${money(m.amount)}`),
       el('p', { class: 'hint mt6' }, t('cancelText'))),
     actions: [saveButton(t('cancelBtn'), async (close) => {
       try { await A.cancelTransaction(ctx.tenantId, m.id); } catch (ex) { toast(errText(ex), 'error'); return; }
@@ -95,6 +98,7 @@ export function obligationModal(ctx, reload) {
   const due = input({ type: 'date', value: todayISO(7) });
   const err = el('p', { class: 'form-error full', role: 'alert' });
   openModal({
+    closeLabel: t('close'),
     title: t('newPending'),
     body: el('form', { class: 'form-grid', onsubmit: (e) => e.preventDefault() },
       field(`${t('pendingKind')} *`, kind, { full: true }), field(`${t('who')} *`, who), field(`${t('amount')} (USD) *`, amount),
@@ -115,9 +119,10 @@ export function obligationModal(ctx, reload) {
 export function payModal(ctx, o, reload) {
   const method = select(METHODS.map(m => ({ value: m, label: t(`m_${m}`) })));
   openModal({
+    closeLabel: t('close'),
     title: t('payTitle'),
     body: el('div', { class: 'form-grid' },
-      el('p', { class: 'strong full m0' }, `${o.counterparty} · ${money(o.amount)} · ${t('due')} ${fmtDate(o.due_date)}`),
+      el('p', { class: 'strong full m0' }, `${o.counterparty} · ${money(o.amount)} · ${t('due')} ${fmtDay(o.due_date)}`),
       el('p', { class: 'hint full' }, t('payText')), field(t('method'), method, { full: true })),
     actions: [saveButton(t('markPaid'), async (close) => {
       try { await A.payObligation(ctx.tenantId, o.id, { payment_method: method.value }); } catch (ex) { toast(errText(ex), 'error'); return; }
@@ -139,8 +144,9 @@ export function exportModal(ctx, range) {
     } catch (ex) { toast(errText(ex), 'error'); } finally { btn.disabled = false; }
   };
   openModal({
+    closeLabel: t('close'),
     title: t('exportTitle'),
-    body: el('div', {}, el('p', { class: 'strong m0' }, `${fmtDate(range.start)} → ${fmtDate(range.end)}`),
+    body: el('div', {}, el('p', { class: 'strong m0' }, `${fmtDay(range.start)} → ${fmtDay(range.end)}`),
       el('p', { class: 'hint mt6' }, t('exportText'))),
     actions: ['csv', 'pdf'].map(fmt => () => el('button', { class: 'btn btn-primary', type: 'button',
       onclick: (e) => download(fmt, e.target) }, t(fmt))),
@@ -177,6 +183,7 @@ export function categoriesModal(ctx, categories, reload) {
     catch (ex) { err.textContent = errText(ex); } finally { add.disabled = false; }
   } }, t('addCat'));
   openModal({
+    closeLabel: t('close'),
     title: t('catTitle'),
     body: el('div', { class: 'stack' }, list,
       el('div', { class: 'form-grid' }, field(t('catName'), name), field(t('type'), typ), el('div', { class: 'full' }, add), err)),

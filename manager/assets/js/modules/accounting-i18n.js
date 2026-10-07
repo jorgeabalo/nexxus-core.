@@ -2,7 +2,7 @@
 // este navegador (aita.lang); por defecto, el del navegador.
 const T = {
   es: {
-    nav: 'Contabilidad', title: 'Contabilidad', subtitle: 'Lo que entra, lo que sale y lo que queda pendiente.',
+    nav: 'Contabilidad', close: 'Cerrar', title: 'Contabilidad', subtitle: 'Lo que entra, lo que sale y lo que queda pendiente.',
     from: 'Desde', to: 'Hasta', thisMonth: 'Este mes', lastMonth: 'Mes pasado', thisYear: 'Este año',
     addIncome: 'Registrar ingreso', addExpense: 'Registrar gasto', export: 'Exportar reporte', categories: 'Categorías',
     income: 'Ingresos', expenses: 'Gastos', net: 'Ganancia neta', receivable: 'Por cobrar', payable: 'Por pagar',
@@ -38,7 +38,7 @@ const T = {
       invalid_counterparty: 'Escribe un nombre.', obligation_closed: 'Esta cuenta ya está cerrada.' },
   },
   en: {
-    nav: 'Accounting', title: 'Accounting', subtitle: 'What comes in, what goes out and what is still pending.',
+    nav: 'Accounting', close: 'Close', title: 'Accounting', subtitle: 'What comes in, what goes out and what is still pending.',
     from: 'From', to: 'To', thisMonth: 'This month', lastMonth: 'Last month', thisYear: 'This year',
     addIncome: 'Record income', addExpense: 'Record expense', export: 'Export report', categories: 'Categories',
     income: 'Income', expenses: 'Expenses', net: 'Net profit', receivable: 'To collect', payable: 'To pay',
@@ -84,3 +84,11 @@ export const getLang = () => lang;
 export function setLang(l) { lang = l; try { localStorage.setItem('aita.lang', l); } catch (_) { /* opcional */ } }
 export function t(key, ...args) { const v = T[lang][key] ?? T.en[key] ?? key; return typeof v === 'function' ? v(...args) : v; }
 export function errText(e) { return T[lang].err[e?.code] || e?.message || 'Error'; }
+
+// Fechas "date" de Postgres (YYYY-MM-DD) en el idioma de esta pantalla.
+export function fmtDay(d) {
+  if (!d) return '—';
+  const [y, m, day] = String(d).slice(0, 10).split('-').map(Number);
+  return new Intl.DateTimeFormat(lang === 'es' ? 'es-US' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+    .format(new Date(Date.UTC(y, m - 1, day)));
+}
