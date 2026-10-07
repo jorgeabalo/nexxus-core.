@@ -28,6 +28,15 @@ async function backend(method, path, body, retried = false) {
   return data;
 }
 function uid() { return sb.auth.getSession().then(r => r.data.session?.user?.id); }
+function qs(params) {
+  return new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')).toString();
+}
+async function blob(path) {
+  const token = (await sb.auth.getSession()).data.session?.access_token;
+  const res = await fetch(path, { headers: { Authorization: `Bearer ${token || ''}` }, cache: 'no-store' });
+  if (!res.ok) { const data = await res.json().catch(() => ({})); const e = new Error(data.error || `HTTP ${res.status}`); e.code = data.error; throw e; }
+  return res.blob();
+}
 
 export const api = {
   // ----- contexto -----
@@ -198,6 +207,33 @@ export const api = {
   },
   async updateMember(tenantId, id, values) {
     return must(await sb.from('members').update(values).eq('tenant_id', tenantId).eq('id', id));
+  },
+
+  // ----- contabilidad (backend: valida rol y tenant con el JWT) -----
+  accounting: {
+    summary(tenantId, start, end) { return backend('GET', `/api/manager/accounting/summary?${qs({ tenant_id: tenantId, start, end })}`); },
+    transactions(tenantId, start, end) { return backend('GET', `/api/manager/accounting/transactions?${qs({ tenant_id: tenantId, start, end })}`); },
+    createTransaction(tenantId, values) { return backend('POST', '/api/manager/accounting/transactions', { ...values, tenant_id: tenantId }); },
+    updateTransaction(tenantId, id, values) { return backend('PATCH', `/api/manager/accounting/transactions/${encodeURIComponent(id)}`, { ...values, tenant_id: tenantId }); },
+    cancelTransaction(tenantId, id) { return backend('POST', `/api/manager/accounting/transactions/${encodeURIComponent(id)}/cancel`, { tenant_id: tenantId }); },
+    categories(tenantId) { return backend('GET', `/api/manager/accounting/categories?${qs({ tenant_id: tenantId })}`); },
+    createCategory(tenantId, values) { return backend('POST', '/api/manager/accounting/categories', { ...values, tenant_id: tenantId }); },
+    updateCategory(tenantId, id, values) { return backend('PATCH', `/api/manager/accounting/categories/${encodeURIComponent(id)}`, { ...values, tenant_id: tenantId }); },
+    obligations(tenantId) { return backend('GET', `/api/manager/accounting/obligations?${qs({ tenant_id: tenantId })}`); },
+    createObligation(tenantId, values) { return backend('POST', '/api/manager/accounting/obligations', { ...values, tenant_id: tenantId }); },
+    payObligation(tenantId, id, values) { return backend('POST', `/api/manager/accounting/obligations/${encodeURIComponent(id)}/pay`, { ...values, tenant_id: tenantId }); },
+    async uploadReceipt(tenantId, id, file) {
+      const token = (await sb.auth.getSession()).data.session?.access_token;
+      const form = new FormData();
+      form.append('tenant_id', tenantId);
+      form.append('file', file);
+      const res = await fetch(`/api/manager/accounting/transactions/${encodeURIComponent(id)}/receipt`, { method: 'POST', headers: { Authorization: `Bearer ${token || ''}` }, body: form });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { const e = new Error(data.error || `HTTP ${res.status}`); e.code = data.error; throw e; }
+      return data;
+    },
+    receipt(tenantId, id) { return blob(`/api/manager/accounting/transactions/${encodeURIComponent(id)}/receipt?${qs({ tenant_id: tenantId })}`); },
+    exportReport(tenantId, start, end, format, lang) { return blob(`/api/manager/accounting/export?${qs({ tenant_id: tenantId, start, end, format, lang })}`); },
   },
 
   // ----- plan de entrenamiento (RLS: staff del mismo gym) -----

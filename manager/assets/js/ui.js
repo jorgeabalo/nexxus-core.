@@ -162,14 +162,14 @@ export function toast(message, kind = '') {
 }
 
 // ---------- modal ----------
-export function openModal({ title, body, actions = [] }) {
+export function openModal({ title, body, actions = [], closeLabel = 'Cancel' }) {
   const root = document.getElementById('modal-root');
   clear(root);
   const close = () => { clear(root); document.removeEventListener('keydown', onKey); };
   const onKey = (e) => { if (e.key === 'Escape') close(); };
   document.addEventListener('keydown', onKey);
   const foot = el('div', { class: 'modal-foot' },
-    el('button', { class: 'btn', type: 'button', onclick: close }, 'Cancel'),
+    el('button', { class: 'btn', type: 'button', onclick: close }, closeLabel),
     ...actions.map(a => a(close)));
   const dialog = el('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
     el('div', { class: 'modal-head' }, el('h2', {}, title),

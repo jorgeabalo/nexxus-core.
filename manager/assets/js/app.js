@@ -12,6 +12,7 @@ import * as schedule from './modules/schedule.js';
 import * as claudia from './modules/claudia.js';
 import * as payments from './modules/payments.js';
 import * as team from './modules/team.js';
+import * as accounting from './modules/accounting.js';
 import * as comingSoon from './modules/coming-soon.js';
 
 // Catálogo de módulos del Manager Panel (igual para todos los tenants).
@@ -23,13 +24,13 @@ export const MODULES = [
   { key: 'claudia', label: 'Claudia', icon: 'claudia', view: claudia },
   { key: 'payments', label: 'Payments', icon: 'payments', view: payments },
   { key: 'team', label: 'Team', icon: 'user', view: team },
-  { key: 'accounting', label: 'Accounting', icon: 'accounting', view: comingSoon },
+  { key: 'accounting', label: 'Accounting', icon: 'accounting', view: accounting },
   { key: 'marketing', label: 'Marketing', icon: 'marketing', view: comingSoon },
   { key: 'inventory', label: 'Inventory', icon: 'inventory', view: comingSoon },
   { key: 'agents', label: 'Agents', icon: 'agents', view: comingSoon },
   { key: 'settings', label: 'Settings', icon: 'settings', view: comingSoon },
 ];
-const PHASE_1 = new Set(['dashboard', 'members', 'schedule', 'claudia', 'payments', 'team']);
+const PHASE_1 = new Set(['dashboard', 'members', 'schedule', 'claudia', 'payments', 'team', 'accounting']);
 
 const app = document.getElementById('app');
 const state = { sb: null, session: null, memberships: [], ctx: null };
@@ -212,7 +213,7 @@ function renderShell() {
     if (i === PHASE_1.size) nav.appendChild(el('div', { class: 'sb-sep', role: 'separator' }));
     const enabled = isEnabled(mod.key);
     nav.appendChild(el('a', { class: 'sb-link', href: `#/${mod.key}`, dataset: { key: mod.key }, onclick: closeNav },
-      icon(mod.icon), el('span', {}, mod.label), enabled ? null : el('span', { class: 'soon' }, 'Soon')));
+      icon(mod.icon), el('span', {}, mod.view.navLabel ? mod.view.navLabel() : mod.label), enabled ? null : el('span', { class: 'soon' }, 'Soon')));
   });
 
   const sidebar = el('aside', { class: 'sidebar', id: 'sidebar' },
