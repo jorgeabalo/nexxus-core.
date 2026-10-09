@@ -39,3 +39,14 @@ psql -d t3 -f tests/sql/test_accounting.sql             # "ALL ACCOUNTING SQL TE
 Cubren: categorías iniciales (idempotentes, también para tenants nuevos), cantidades/estados/tipos
 inválidos, categoría de otro tipo u otro tenant, pago de socio enlazado una sola vez, RLS por rol
 (manager edita; staff consulta y registra a su nombre; nadie borra), socio y otro gimnasio sin acceso, anon bloqueado.
+
+AITA Marketing (PGlite en memoria, sin psql):
+
+```bash
+NODE_PATH=/ruta/node_modules node tests/sql/marketing.mjs   # "ALL MARKETING SQL TESTS PASSED"
+```
+Cubren: migración idempotente, configuración inicial apagada con aprobación obligatoria, transiciones
+(nada se programa sin aprobar; draft → approved solo sin aprobación obligatoria), tenant inmutable,
+historial inmutable (UPDATE y DELETE bloqueados incluso para el service role), idempotency_key única (restricción en la base, sin duplicados en reintentos), límites sin negativos (null = sin límite), logo/archivos sin binarios ni URLs externas, RLS
+(owner/manager leen su tenant; staff, socio, otro tenant y anon nada) y ninguna escritura directa.
+Desde pytest: `PGLITE_NODE_PATH=/ruta/node_modules python3 -m pytest tests/test_marketing_http.py`.

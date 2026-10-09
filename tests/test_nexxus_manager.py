@@ -49,7 +49,7 @@ def test_routes_unchanged():
                 "marketing", "inventory", "agents", "settings"):
         assert f"key: '{key}'" in nav, key
     app = (JS / "app.js").read_text()
-    assert "const VIEWS = { dashboard, members, schedule, claudia, payments, team, accounting }" in app
+    assert "const VIEWS = { dashboard, members, schedule, claudia, payments, team, accounting, marketing }" in app
     assert "canOpen(tenant, role, mod.key)" in app            # rutas no permitidas no se renderizan
 
 
