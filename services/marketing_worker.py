@@ -6,6 +6,9 @@ AITA Marketing (Fase 2) — ejecución de trabajos de generación (preparada par
 * Antes de enviar nada se vuelven a comprobar las entradas: consentimiento retirado, menores,
   archivo excluido o eliminado → el trabajo falla con un código público y no se envía nada.
 * Cada subtarea lleva su idempotency_key: un reintento nunca crea un segundo cargo.
+* Antes de registrar un resultado con archivo se compara su tamaño REAL con lo reservado y la cuota
+  disponible (marketing_confirm_output_storage). Si no cabe: no se registra, se borra el temporal,
+  se libera la reserva y el trabajo falla con 'storage_quota_exceeded'.
 * Vídeo, render, anonimización y proveedores reales son trabajo pesado y deben ejecutarse en un
   proceso aparte (run_pending, llamado por un worker programado). En esta fase NO hay worker
   desplegado: la petición HTTP solo puede ejecutar trabajos 100 % simulados (rápidos, sin red).
@@ -16,12 +19,25 @@ from typing import Any, Dict, List, Optional
 
 from services import marketing_jobs_domain as jd
 from services import marketing_privacy as pv
+from services import marketing_storage as ms
+from services.marketing_studio_base import BUCKET
 from services.marketing_ai_router import RouteRequest
 
 JOB_COLS = ("id,tenant_id,content_id,status,quality_tier,maximum_cost,estimated_cost,reserved_cost,currency,approved_at,approved_by,"
             "request_metadata,result_metadata,real_media_percent,ai_media_percent")
 MEDIA_CHECK = ("id,processing_status,validation_status,contains_people,contains_minors,people_policy,consent_status,"
                "retention_status")
+
+
+OUTPUT_KINDS = ("image", "video", "subtitles", "cover", "render")
+
+
+def temp_file_ok(path: Any, tenant_id: str, job_id: str) -> bool:
+    """Los temporales de un trabajo viven SOLO en {tenant}/derivatives/{job}/{archivo} (carpeta del propio
+    trabajo; los ids de trabajo y de archivo nunca coinciden)."""
+    parts = str(path or "").split("/")
+    return (len(parts) == 4 and parts[0] == str(tenant_id) and parts[1] == "derivatives" and parts[2] == str(job_id)
+            and parts[3] not in ("", ".", "..") and "/" not in parts[3] and len(parts[3]) <= 120)
 
 
 class WorkerError(Exception):
@@ -78,7 +94,34 @@ class JobRunner:
         self._event(c, job["id"], action, job["status"], to, detail)
         return rows[0]
 
-    def _fail(self, c, j, code: str, cost: float):
+    def _confirm_files(self, c, j, files: List[Dict[str, Any]]) -> Optional[str]:
+        """Tamaño real de los temporales frente a la reserva y la cuota. None = cabe."""
+        if not files:
+            return None
+        if not all(temp_file_ok(f.get("temp_path"), c.tenant_id, j["id"]) and f.get("kind", "render") in OUTPUT_KINDS
+                   for f in files):
+            return "internal_error"
+        try:
+            sizes = [int(f["byte_size"]) for f in files]
+        except (KeyError, TypeError, ValueError):
+            return "internal_error"
+        if any(x <= 0 for x in sizes):
+            return "internal_error"
+        why = ms.confirm_output(self.db, c.tenant_id, j["id"], sum(sizes))
+        return None if why is None else ("timeout" if why == "reservation_expired" else "storage_quota_exceeded")
+
+    def _discard(self, c, j, files: List[Dict[str, Any]]) -> None:
+        """Borra los temporales (solo los del propio trabajo) y libera su reserva (idempotente)."""
+        for f in files:
+            if temp_file_ok(f.get("temp_path"), c.tenant_id, j["id"]):
+                try:
+                    self.db.storage_remove(BUCKET, f["temp_path"])
+                except Exception:                                       # noqa: BLE001 — la purga lo reintenta
+                    pass
+        ms.release(self.db, c.tenant_id, f"job:{j['id']}", consumed=False)
+
+    def _fail(self, c, j, code: str, cost: float, files: Optional[List[Dict[str, Any]]] = None):
+        self._discard(c, j, files or [])
         out = self._move(c, j, "failed", "fail", {"error_code": jd.public_error(code), "actual_cost": round(cost, 4),
                                                   "completed_at": c.now.isoformat()}, detail={"error_code": code})
         return out
@@ -94,7 +137,7 @@ class JobRunner:
         why = recheck_inputs(self.db, tenant_id, j["id"])
         if why:
             return self._fail(c, j, why, 0.0)
-        total, n, first = 0.0, 0, None
+        total, n, first, files = 0.0, 0, None, []
         for st in est.get("subtasks") or []:
             adapter = self.adapters.get(st["provider"])
             model = next((m for m in self.router.catalog.models if m.model_id == st["model_id"]), None)
@@ -112,11 +155,12 @@ class JobRunner:
                 total += float(done[0].get("actual_cost") or 0)
                 continue
             res = adapter.submit(req, model)
+            files += list((res.output or {}).get("files") or [])         # temporales que dejó el proveedor
             if res.status != "succeeded":
-                return self._fail(c, j, jd.public_error(res.error_code), total)
+                return self._fail(c, j, jd.public_error(res.error_code), total, files)
             cost = float(res.actual_cost or 0)
             if total + cost > min(float(j["maximum_cost"]), float(j.get("reserved_cost") or 0)):
-                return self._fail(c, j, "budget_exceeded", total)      # nunca más que lo aprobado y reservado
+                return self._fail(c, j, "budget_exceeded", total, files)      # nunca más que lo aprobado y reservado
             total += cost
             n += 1
             first = first or (st["provider"], st["model_id"], res.provider_job_id)
@@ -127,14 +171,17 @@ class JobRunner:
                 "actual_cost": cost, "currency": j["currency"], "idempotency_key": req.idempotency_key,
                 "provider_job_id": res.provider_job_id, "status": "charged" if cost else "not_charged"})
         mock = all_mock(est)
-        self._outputs(c, j, est, mock)
+        why = self._confirm_files(c, j, files)
+        if why:
+            return self._fail(c, j, why, total, files)
+        self._outputs(c, j, est, mock, files)
         prov, model_id, pjid = first or ("mock", None, None)
         return self._move(c, j, "succeeded", "succeed", {
             "actual_cost": round(total, 4), "selected_provider": prov, "selected_model": model_id,
             "provider_job_id": pjid, "completed_at": c.now.isoformat(),
             "result_metadata": {"mock": mock, "scenes": est.get("plan", {}).get("scenes"), "provider_jobs": n}})
 
-    def _outputs(self, c, j, est: Dict[str, Any], mock: bool) -> None:
+    def _outputs(self, c, j, est: Dict[str, Any], mock: bool, files: List[Dict[str, Any]]) -> None:
         brief = (j["request_metadata"] or {}).get("brief") or {}
         # Resultados temporales: simulados 7 días, reales 30 (después los purga el RetentionRunner).
         expires = (c.now + timedelta(days=7 if mock else 30)).isoformat()
@@ -150,6 +197,11 @@ class JobRunner:
                                                         "review_status": "generated",
                                                         "metadata": {"mock": mock, "aspect_ratio": "9:16",
                                                                      "safe_subtitles": brief.get("subtitles", True)}})
+        for f in files:                                       # ya confirmados: cuentan por su tamaño real
+            self.db.insert("marketing_generation_outputs", {
+                **base, "kind": f.get("kind") or "render", "storage_path": f["temp_path"],
+                "mime_type": f.get("mime_type"), "byte_size": int(f["byte_size"]), "review_status": "generated",
+                "metadata": {"mock": mock}})
 
     def run_pending(self, limit: int = 5) -> List[Dict[str, Any]]:
         """Punto de entrada de un worker futuro (service role): procesa trabajos en cola, más antiguos

@@ -14,22 +14,22 @@ export function warnings() {
 export const privacyBadge = (cls) => el('span', { class: `badge mk-pc-${cls}` }, s(`pc_${cls}`));
 const peopleText = (v) => (v === true ? s('yes') : v === false ? s('no') : s('unknown'));
 
-// Reproducción con HTTP Range real: el panel pide una autorización temporal same-origin (ligada a tenant,
-// usuario y archivo) y el <video> pide HEAD y rangos directamente: avanza y retrocede sin descargar todo.
-// Si el token caduca durante la reproducción, se renueva y se continúa en el mismo segundo.
-// Al cerrar, el token se revoca y el elemento deja de cargar.
-async function showPreview(ctx, m, derivativeId) {
+// Reproducción con HTTP Range real: el panel pide una sesión de reproducción (el servidor la guarda en una
+// cookie HttpOnly limitada a la ruta del archivo) y el <video> usa la URL limpia: el navegador pide HEAD y
+// rangos con la cookie y puede avanzar y retroceder sin descargar todo. Si la sesión caduca durante la
+// reproducción, se renueva y se continúa en el mismo segundo. Al cerrar, se revoca y la cookie se expira.
+async function showPreview(ctx, m) {
   const root = document.getElementById('modal-root');
   const holder = el('div', { class: 'mk-preview' }, el('div', { class: 'spinner spinner-inline' }));
   const close = openModal({ title: s('preview'), closeLabel: s('close'), body: holder });
-  const isVideo = (derivativeId ? 'image' : m.media_type) === 'video';
+  const isVideo = m.media_type === 'video';   // los derivados aún no tienen archivo real (simulados)
   let media = null;
   let renewals = 0;
   try {
-    const tok = await M.streamToken(ctx.tenantId, m.id, derivativeId);
+    const session = await M.streamSession(ctx.tenantId, m.id);
     media = isVideo
-      ? el('video', { src: tok.url, controls: true, playsinline: true, preload: 'metadata' })
-      : el('img', { src: tok.url, alt: m.original_filename || '' });
+      ? el('video', { src: session.url, controls: true, playsinline: true, preload: 'metadata' })
+      : el('img', { src: session.url, alt: m.original_filename || '' });
     if (isVideo) {
       media.addEventListener('error', async () => {
         if (!root.contains(holder) || renewals >= 3) return;
@@ -37,8 +37,10 @@ async function showPreview(ctx, m, derivativeId) {
         const at = media.currentTime || 0;
         const playing = !media.paused;
         try {
-          const fresh = await M.streamToken(ctx.tenantId, m.id, derivativeId);
-          media.src = fresh.url;
+          const fresh = await M.streamSession(ctx.tenantId, m.id);
+          media.removeAttribute('src');
+          media.src = fresh.url;                                        // misma URL limpia, nueva cookie
+          media.load();
           media.addEventListener('loadedmetadata', () => { media.currentTime = at; if (playing) media.play().catch(() => {}); },
             { once: true });
         } catch (e) { clear(holder).appendChild(errorBox({ message: sErr(e) })); }
@@ -128,7 +130,6 @@ function derivativeRow(ctx, m, d, reload) {
   return el('li', { class: `mk-der${simulated ? ' mk-der-mock' : ''}` },
     el('span', {}, `${s(`am_${d.method}`)} · `), badge(d.status, s(`ds_${d.status}`)),
     simulated ? el('span', { class: 'hint' }, ` ${s('mockDerNote')}`) : null,
-    d.storage_path && !simulated ? el('button', { class: 'btn btn-sm', type: 'button', onclick: () => showPreview(ctx, m, d.id) }, s('preview')) : null,
     d.status === 'needs_review' && !simulated ? el('span', { class: 'btn-row' },
       el('button', { class: 'btn btn-sm btn-primary', type: 'button', disabled: !d.storage_path, onclick: () => act(true) }, s('approveDer')),
       el('button', { class: 'btn btn-sm', type: 'button', onclick: () => act(false) }, s('rejectDer'))) : null,

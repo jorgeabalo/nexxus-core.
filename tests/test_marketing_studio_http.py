@@ -48,7 +48,7 @@ def test_upload_and_preview_same_origin(client, db):
     p = client.get(f"/api/manager/marketing/library/{m['id']}/content?tenant_id={T1}", headers=H(OWNER))
     assert p.status_code == 200 and p.content == PNG
     assert p.headers["content-type"] == "image/png" and p.headers["x-content-type-options"] == "nosniff"
-    assert p.headers["cache-control"] == "no-store"
+    assert p.headers["cache-control"] == "private, no-store" and p.headers["referrer-policy"] == "no-referrer"
     assert "supabase" not in p.text.lower() and "token" not in str(p.headers).lower()
     assert client.get(f"/api/manager/marketing/library/{m['id']}/content?tenant_id={T2}", headers=H(OTHER)).status_code == 404
 

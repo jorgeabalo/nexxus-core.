@@ -13,7 +13,7 @@ from starlette.concurrency import run_in_threadpool
 
 from services.marketing_domain import DomainError
 from services.marketing_library import LibraryService
-from services.marketing_media_stream import MediaStreamService, RedactStreamTokens
+from services.marketing_media_stream import COOKIE, MediaStreamService, stream_path
 from services.marketing_studio import StudioService, public_job
 from services.member_portal import PortalError
 
@@ -23,9 +23,6 @@ P = "/api/manager/marketing"
 
 def build_router(get_db: Callable) -> APIRouter:
     r = APIRouter()
-    access = logging.getLogger("uvicorn.access")
-    if not any(isinstance(f, RedactStreamTokens) for f in access.filters):
-        access.addFilter(RedactStreamTokens())               # el token de streaming nunca llega a los logs
 
     def _db():
         db = get_db()
@@ -43,7 +40,7 @@ def build_router(get_db: Callable) -> APIRouter:
         return MediaStreamService(_db())
 
     def media_response(res, extra=None):
-        headers = {**res["headers"], "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
+        headers = {**res["headers"], "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
                    "Content-Disposition": "inline", "Cross-Origin-Resource-Policy": "same-origin",
                    "Referrer-Policy": "no-referrer", **(extra or {})}
         mime = headers.pop("Content-Type")
@@ -54,6 +51,15 @@ def build_router(get_db: Callable) -> APIRouter:
     def bearer(request: Request) -> str:
         a = request.headers.get("authorization", "")
         return a[7:].strip() if a.lower().startswith("bearer ") else ""
+
+    def secure_cookie(request: Request) -> bool:
+        """Secure en producción (HTTPS); sin Secure solo en desarrollo local."""
+        return request.url.hostname not in ("localhost", "127.0.0.1", "testserver", "::1")
+
+    def expire_stream_cookie(response, request: Request, media_id: str):
+        response.set_cookie(COOKIE, "", max_age=0, expires=0, path=stream_path(media_id), httponly=True,
+                            secure=secure_cookie(request), samesite="strict")
+        return response
 
     async def call(fn):
         try:
@@ -112,24 +118,33 @@ def build_router(get_db: Callable) -> APIRouter:
                                                request.headers.get("range"), head))
         return media_response(res) if isinstance(res, dict) else res
 
-    # ---------- reproducción con HTTP Range (autorización temporal same-origin) ----------
-    @r.post(f"{P}/library/{{media_id}}/stream-token")
-    async def stream_token(request: Request, media_id: str):
+    # ---------- reproducción con HTTP Range (sesión opaca en cookie, URL limpia) ----------
+    @r.post(f"{P}/library/{{media_id}}/stream-session")
+    async def stream_session(request: Request, media_id: str):
         b = await body(request)
-        res = await call(lambda: streamer().issue_token(bearer(request), tid(b), media_id,
-                                                        str(b.get("derivative_id") or "")))
-        return JSONResponse(res, headers={"Cache-Control": "no-store"}) if isinstance(res, dict) else res
+        res = await call(lambda: streamer().issue_session(bearer(request), tid(b), media_id))
+        if not isinstance(res, dict):
+            return res
+        out = JSONResponse({"url": res["url"], "max_age": res["max_age"], "mime": res["mime"]},
+                           headers={"Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer"})
+        out.set_cookie(COOKIE, res["token"], max_age=res["max_age"], path=res["path"], httponly=True,
+                       secure=secure_cookie(request), samesite="strict")
+        return out
 
     @r.post(f"{P}/library/{{media_id}}/stream-revoke")
     async def stream_revoke(request: Request, media_id: str):
         b = await body(request)
-        return await call(lambda: streamer().revoke(bearer(request), tid(b), media_id))
+        res = await call(lambda: streamer().revoke(bearer(request), tid(b), media_id))
+        if not isinstance(res, dict):
+            return res
+        return expire_stream_cookie(JSONResponse({"revoked": res["revoked"]}), request, media_id)
 
-    @r.api_route(f"{P}/library/stream/{{token}}", methods=["GET", "HEAD"])
-    async def stream(request: Request, token: str):
-        """El <video> pide aquí HEAD y rangos directamente. El token es la autorización; cada petición la
-        revalida (vigencia, revocación, usuario, rol, tenant, módulo, estado del archivo y ruta)."""
-        res = await call(lambda: streamer().stream(token, request.headers.get("range"), request.method == "HEAD"))
+    @r.api_route(f"{P}/library/{{media_id}}/stream", methods=["GET", "HEAD"])
+    async def stream(request: Request, media_id: str):
+        """El <video> pide aquí HEAD y rangos con la cookie de sesión (sin token en la URL). Cada petición
+        revalida la sesión (vigencia, revocación, archivo), usuario, rol, tenant, módulo, estado y ruta."""
+        res = await call(lambda: streamer().stream(media_id, request.cookies.get(COOKIE), request.headers.get("range"),
+                                                   request.method == "HEAD"))
         return media_response(res) if isinstance(res, dict) else res
 
     @r.patch(f"{P}/library/{{media_id}}/privacy")
@@ -150,13 +165,15 @@ def build_router(get_db: Callable) -> APIRouter:
     @r.post(f"{P}/library/{{media_id}}/revoke-consent")
     async def revoke_consent(request: Request, media_id: str):
         b = await body(request)
-        return await call(lambda: lib().revoke_consent(bearer(request), tid(b), media_id))
+        res = await call(lambda: lib().revoke_consent(bearer(request), tid(b), media_id))
+        return expire_stream_cookie(JSONResponse(res), request, media_id) if isinstance(res, dict) else res
 
     @r.post(f"{P}/library/{{media_id}}/delete")
     async def delete(request: Request, media_id: str):
         b = await body(request)
-        return await call(lambda: lib().delete(bearer(request), tid(b), media_id, str(b.get("reason") or ""),
-                                               b.get("confirm") is True))
+        res = await call(lambda: lib().delete(bearer(request), tid(b), media_id, str(b.get("reason") or ""),
+                                              b.get("confirm") is True))
+        return expire_stream_cookie(JSONResponse(res), request, media_id) if isinstance(res, dict) else res
 
     @r.post(f"{P}/library/{{media_id}}/anonymize")
     async def anonymize(request: Request, media_id: str):

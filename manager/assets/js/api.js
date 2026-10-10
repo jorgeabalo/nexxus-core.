@@ -269,9 +269,10 @@ export const api = {
       if (!res.ok) { const e = new Error(data.error || `HTTP ${res.status}`); e.code = data.error; throw e; }
       return data;
     },
-    // Autorización temporal same-origin para reproducir con HTTP Range (el <video> no envía Authorization).
-    streamToken(tenantId, id, derivativeId) {
-      return backend('POST', `/api/manager/marketing/library/${encodeURIComponent(id)}/stream-token`, { tenant_id: tenantId, derivative_id: derivativeId || null });
+    // Sesión de reproducción: el servidor la guarda en una cookie HttpOnly (Path = el archivo, 10 min).
+    // El <video> usa la URL limpia que devuelve y el navegador envía la cookie en HEAD y en cada Range.
+    streamSession(tenantId, id) {
+      return backend('POST', `/api/manager/marketing/library/${encodeURIComponent(id)}/stream-session`, { tenant_id: tenantId });
     },
     streamRevoke(tenantId, id) { return backend('POST', `/api/manager/marketing/library/${encodeURIComponent(id)}/stream-revoke`, { tenant_id: tenantId }); },
     setRetention(tenantId, id, days) { return backend('POST', `/api/manager/marketing/library/${encodeURIComponent(id)}/retention`, { tenant_id: tenantId, days }); },

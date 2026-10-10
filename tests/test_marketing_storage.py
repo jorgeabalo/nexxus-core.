@@ -4,6 +4,7 @@ AITA Marketing (Fase 2): cuota de almacenamiento de la Biblioteca. Cuenta origin
 pendientes; la reserva es atómica para que operaciones simultáneas no superen el límite.
 """
 import threading
+from datetime import timedelta
 
 import pytest
 
@@ -15,6 +16,7 @@ from test_marketing import NOW, T1, T2, OWNER, OTHER
 from test_marketing_studio import StudioDB, err, jwt, png, PNG, new_job
 
 MB = 1024 * 1024
+LATER, EARLIER = (NOW + timedelta(hours=1)).isoformat(), (NOW - timedelta(seconds=1)).isoformat()
 
 
 @pytest.fixture
@@ -53,15 +55,17 @@ def test_quota_counts_originals_derivatives_outputs_and_pending(lib, db):
                                                      "byte_size": 300, "kind": "thumbnail"})              # vista previa
     db.tables["marketing_generation_outputs"].append({"id": "o1", "tenant_id": T1, "job_id": "j", "byte_size": 5000})
     db.tables["marketing_storage_reservations"].append({"tenant_id": T1, "reservation_key": "upload:x", "kind": "upload",
-                                                        "bytes": 700, "status": "reserved"})             # subida en curso
-    db.tables["marketing_generation_jobs"].append({"id": "jq", "tenant_id": T1, "status": "queued",
-                                                   "reserved_storage_bytes": 20000})                    # trabajo pendiente
+                                                        "bytes": 700, "status": "reserved", "expires_at": LATER})  # subida
+    db.tables["marketing_storage_reservations"].append({"tenant_id": T1, "reservation_key": "job:jq", "kind": "generation",
+                                                        "bytes": 20000, "status": "reserved", "expires_at": LATER})  # trabajo
     # lo que NO cuenta: eliminados, purgados, reservas liberadas, trabajos terminados, otros tenants
     db.tables["marketing_media_derivatives"].append({"id": "d3", "tenant_id": T1, "media_id": m["id"], "status": "deleted", "byte_size": 9})
     db.tables["marketing_generation_outputs"].append({"id": "o2", "tenant_id": T1, "job_id": "j", "byte_size": 9, "purged_at": "x"})
     db.tables["marketing_storage_reservations"].append({"tenant_id": T1, "reservation_key": "upload:y", "kind": "upload",
-                                                        "bytes": 9, "status": "released"})
-    db.tables["marketing_generation_jobs"].append({"id": "jd", "tenant_id": T1, "status": "succeeded", "reserved_storage_bytes": 9})
+                                                        "bytes": 9, "status": "released", "expires_at": LATER})
+    for st, exp in (("consumed", LATER), ("expired", EARLIER), ("reserved", EARLIER)):        # cerradas o caducadas
+        db.tables["marketing_storage_reservations"].append({"tenant_id": T1, "reservation_key": f"job:{st}{exp}",
+                                                            "kind": "generation", "bytes": 9, "status": st, "expires_at": exp})
     db.tables["marketing_generation_outputs"].append({"id": "o3", "tenant_id": T2, "job_id": "j", "byte_size": 10 ** 9})
     expected = base + 1000 + 300 + 5000 + 700 + 20000
     assert ms.used_bytes(db, T1) == expected

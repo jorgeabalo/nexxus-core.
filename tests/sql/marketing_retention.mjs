@@ -105,13 +105,21 @@ const d = (await sys(`select expires_at - created_at d from marketing_media_deri
 ok(String(d.d.days ?? d.d).includes('7'), 'derivado simulado vence a los 7 días');
 await sys(`update marketing_media_derivatives set expires_at = null`, '23502');
 
-// 5. publicación: hasta 30 días tras publicar (máx. 90 + 30); protección: máx. 14 días más
+// 5. publicación: expires_at = mínimo(publicación + 30 días, subida + 90 días); protección: máx. 14 días más
 const M6 = '20000000-0000-0000-0000-0000000000a6';
 await add(M6, TA, '6');
-await sys(`update marketing_media set publication_hold_until = created_at + interval '121 days' where id = '${M6}'`, '23514');
-await sys(`update marketing_media set publication_hold_until = created_at + interval '120 days' where id = '${M6}'`);
-await sys(`update marketing_media set protected_until = created_at + interval '135 days' where id = '${M6}'`, '23514');
-await sys(`update marketing_media set protected_until = created_at + interval '134 days' where id = '${M6}'`);
+const pub = (p, e) => `update marketing_media set published_at = created_at + interval '${p} days',
+  expires_at = created_at + interval '${e} days' where id = '${M6}'`;
+await sys(pub(5, 36), '23514');                        // publicado el día 5: como mucho día 35
+await sys(pub(5, 35));
+await sys(pub(75, 91), '23514');                       // publicado el día 75: el tope absoluto es el día 90, no 105
+await sys(pub(75, 105), '23514');
+await sys(pub(75, 90));
+const M7 = '20000000-0000-0000-0000-0000000000a7';
+await add(M7, TA, 'b');
+await sys(`update marketing_media set expires_at = created_at + interval '61 days' where id = '${M7}'`, '23514');   // sin publicar: máximo del plan (60)
+await sys(`update marketing_media set protected_until = created_at + interval '105 days' where id = '${M6}'`, '23514');
+await sys(`update marketing_media set protected_until = created_at + interval '104 days' where id = '${M6}'`);
 
 // 6. cuota: todo cuenta (originales, derivados, resultados, reservas y trabajos pendientes) y la reserva es atómica
 await sys(`update marketing_settings set library_storage_limit_bytes = 0 where tenant_id = '${TB}'`);
@@ -147,12 +155,49 @@ ok(await used() === 75, 'sin doble conteo entre la reserva y el archivo');
 ok(Number((await sys(`select public.marketing_storage_used('${TA}') u`))[0].u) >= 0
    && (await sys(`select public.marketing_storage_used('${TA}') u`))[0].u !== (await sys(`select public.marketing_storage_used('${TB}') u`))[0].u,
    'cada tenant cuenta lo suyo');
+// reservas abandonadas: caducan una sola vez y nunca liberan bytes dos veces
+ok((await sys(`select public.marketing_reserve_storage('${TB}','upload:k-000004','upload',10) r`))[0].r.status === 'reserved', 'reserva 10');
+ok(await used() === 85, 'cuenta mientras está viva');
+await sys(`update marketing_storage_reservations set expires_at = now() - interval '1 second' where reservation_key = 'upload:k-000004'`);
+ok(await used() === 75, 'subida interrumpida: caducada deja de contar');
+ok((await sys(`select public.marketing_release_storage('${TB}','upload:k-000004', false) r`)).every((x) => x.r === null),
+  'una reserva caducada no se libera');
+ok((await sys(`select public.marketing_expire_storage_reservations() n`))[0].n >= 1, 'barrido: pasa a expired');
+ok((await sys(`select public.marketing_expire_storage_reservations() n`))[0].n === 0, 'idempotente');
+ok((await sys(`select status from marketing_storage_reservations where reservation_key = 'upload:k-000004'`))[0].status === 'expired', 'expired');
+await sys(`update marketing_storage_reservations set status = 'released' where reservation_key = 'upload:k-000004'`, '23514');
+await sys(`update marketing_storage_reservations set status = 'reserved' where reservation_key = 'upload:k-000002'`, '23514');
+await sys(`update marketing_storage_reservations set bytes = 1 where reservation_key = 'upload:k-000002'`, '23514');
+ok(await used() === 75, 'nada se cuenta ni se libera dos veces');
+// reserva de un trabajo: se cierra sola cuando el trabajo termina (cancelado, fallido, timeout, consentimiento, purga)
+const job = async (k) => (await sys(`insert into marketing_generation_jobs (tenant_id, created_by, task_type, real_media_percent,
+  ai_media_percent, idempotency_key) values ('${TB}','${U.ownerB}','reel',0,100,'job-quota-key-${k}') returning id`))[0].id;
+const JR = await job('000002');
+await sys(`insert into marketing_storage_reservations (tenant_id, reservation_key, kind, bytes, expires_at)
+  values ('${TB}','job:${JR}','generation',5, now() + interval '24 hours')`);
+ok(await used() === 80, 'trabajo pendiente: su reserva cuenta');
+await sys(`update marketing_generation_jobs set status = 'cancelled' where id = '${JR}'`);
+ok((await sys(`select status from marketing_storage_reservations where reservation_key = 'job:${JR}'`))[0].status === 'released',
+  'trabajo cancelado: reserva liberada');
+ok(await used() === 75, 'y deja de contar');
+// confirmar resultado: tamaño real frente a lo reservado + lo disponible
+const JC = await job('000003');
+await sys(`insert into marketing_storage_reservations (tenant_id, reservation_key, kind, bytes, expires_at)
+  values ('${TB}','job:${JC}','generation',5, now() + interval '24 hours')`);
+const conf = async (j, b) => (await sys(`select public.marketing_confirm_output_storage('${TB}','${j}',${b}) r`))[0].r;
+ok((await conf(JC, 26)).reason === 'storage_quota_exceeded', 'resultado real más grande de lo que cabe: rechazado');
+ok((await sys(`select bytes from marketing_storage_reservations where reservation_key = 'job:${JC}'`))[0].bytes == 5, 'rechazo sin cambios');
+ok((await conf(JC, 0)).reason === 'invalid_size', 'tamaño inválido');
+ok((await conf(JR, 1)).reason === 'reservation_expired', 'sin reserva viva no se confirma');
+ok((await conf(JC, 25)).status === 'ok' && await used() === 100, 'cabe justo: la reserva pasa al tamaño real');
+await sys(`update marketing_generation_jobs set status = 'cancelled' where id = '${JC}'`);
+ok(await used() === 75, 'fallido/cancelado: liberado una vez');
 const fsrc = (await sys(`select prosrc from pg_proc where proname = 'marketing_reserve_storage'`))[0].prosrc;
 ok(/from public\.marketing_settings where tenant_id = p_tenant for update/i.test(fsrc), 'reserva serializada por tenant');
 
 // 7. tokens de streaming: solo hash, caducidad corta, nadie más que el backend los lee
 await sys(`insert into marketing_stream_tokens (tenant_id, user_id, media_id, token_hash, expires_at)
-  values ('${TB}','${U.ownerB}','${MB2}','${'a'.repeat(64)}', now() + interval '16 minutes')`, '23514');
+  values ('${TB}','${U.ownerB}','${MB2}','${'a'.repeat(64)}', now() + interval '11 minutes')`, '23514');   // sesión ≤ 10 min
 await sys(`insert into marketing_stream_tokens (tenant_id, user_id, media_id, token_hash, expires_at)
   values ('${TB}','${U.ownerB}','${MB2}','plaintext-token', now() + interval '5 minutes')`, '23514');
 await sys(`insert into marketing_stream_tokens (tenant_id, user_id, media_id, token_hash, expires_at)
@@ -163,7 +208,8 @@ for (const role of ['anon', 'authenticated']) {
   for (const t of ['marketing_stream_tokens', 'marketing_storage_reservations']) {
     ok(!(await sys(`select has_table_privilege('${role}', 'public.${t}', 'SELECT') x`))[0].x, `${role} no lee ${t}`);
   }
-  for (const f of ['marketing_storage_used(uuid)', 'marketing_reserve_storage(uuid,text,text,bigint)', 'marketing_release_storage(uuid,text,boolean)']) {
+  for (const f of ['marketing_storage_used(uuid)', 'marketing_reserve_storage(uuid,text,text,bigint)', 'marketing_release_storage(uuid,text,boolean)',
+    'marketing_expire_storage_reservations()', 'marketing_confirm_output_storage(uuid,uuid,bigint)']) {
     ok(!(await sys(`select has_function_privilege('${role}', 'public.${f}', 'EXECUTE') x`))[0].x, `${role} no ejecuta ${f}`);
   }
 }

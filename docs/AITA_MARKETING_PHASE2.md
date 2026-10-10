@@ -130,28 +130,34 @@ está prohibido. El mismo archivo puede volver a subirse después.
 
 ## 4d. Vista previa, reproducción con HTTP Range y CSP
 
-* El `<video>` no puede enviar la cabecera Authorization, así que el panel pide una **autorización temporal
-  same-origin** (`POST …/library/{id}/stream-token`, con el JWT). Es un token aleatorio de un solo archivo, ligado a
-  tenant + usuario + archivo, que caduca en minutos (`MARKETING_STREAM_TTL`, 60–900 s, 600 por defecto) y se
-  puede revocar. En la base de datos solo se guarda su hash (`marketing_stream_tokens`, solo service_role).
-* El reproductor usa directamente `GET|HEAD /api/manager/marketing/library/stream/{token}`. El navegador pide HEAD
-  y rangos (`Range: bytes=a-b | a- | -n` → 206 + `Content-Range` + `Content-Length` + `Accept-Ranges: bytes`;
-  416 si el rango es inválido) y puede avanzar y retroceder **sin descargar el archivo completo**. El rango se pide
-  así a Storage y se transmite en trozos.
-* Cada petición (HEAD y cada Range) revalida: token vigente y no revocado, usuario todavía owner/manager activo
-  del tenant, módulo Marketing activo, archivo validado, no eliminado ni pendiente de purga, y ruta del tenant.
-* Revocación: al cerrar la vista previa, al eliminar o purgar el archivo y al retirar el consentimiento. Si el
-  token caduca durante la reproducción, el panel pide otro y continúa en el mismo segundo.
-* El token nunca aparece en los logs de acceso (filtro `RedactStreamTokens`). Las respuestas llevan `no-store`,
-  `no-referrer`, `nosniff` y `same-origin`.
+* El `<video>` no puede enviar la cabecera Authorization. La petición autenticada que autoriza la vista previa
+  (`POST …/library/{id}/stream-session`, con el JWT) crea una **sesión opaca** de un solo archivo, ligada a
+  tenant + usuario + archivo, y la coloca en una **cookie** `mk_stream`: `HttpOnly`, `Secure` en producción
+  (solo se omite en localhost/127.0.0.1), `SameSite=Strict`, `Path` = la ruta **exacta** del archivo y
+  `Max-Age` ≤ 600 s (`MARKETING_STREAM_TTL`, 60–600, 600 por defecto). En la base de datos solo se guarda su hash
+  (`marketing_stream_tokens`, solo service_role; la base exige caducidad ≤ 10 minutos).
+* El reproductor usa una **URL limpia**, sin token: `GET|HEAD /api/manager/marketing/library/{id}/stream`. El
+  navegador envía la cookie en HEAD, GET y cada Range (`Range: bytes=a-b | a- | -n` → 206 + `Content-Range` +
+  `Content-Length` + `Accept-Ranges: bytes`; 416 si el rango es inválido) y puede avanzar y retroceder **sin
+  descargar el archivo completo**. El rango se pide así a Storage y se transmite en trozos.
+* Cada petición (HEAD y cada Range) revalida: sesión vigente, no revocada y de **ese** archivo, usuario todavía
+  owner/manager activo del tenant, módulo Marketing activo, archivo validado, no eliminado ni pendiente de purga,
+  y ruta del tenant. Sin cookie, nada (ni siquiera con el JWT).
+* Revocación: al cerrar la vista previa (`POST …/stream-revoke`), al eliminar, al purgar y al retirar el
+  consentimiento se revoca la sesión y las respuestas expiran la cookie (`Max-Age=0`, mismo Path). Si la sesión
+  caduca durante la reproducción, el panel pide otra y continúa en el mismo segundo con la misma URL limpia.
+* Como la URL ya no lleva secretos, desaparece el filtro de logs. Las respuestas llevan
+  `Cache-Control: private, no-store`, `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff` y
+  `Cross-Origin-Resource-Policy: same-origin`.
 * CSP: ya no hace falta `blob:`; el vídeo queda cubierto por `default-src 'self'`, igual que en `main`.
   `GET|HEAD …/library/{id}/content` (con JWT) sigue disponible para clientes de la API.
 
 ## 4e. Retención y eliminación automática
 
-Ningún archivo se guarda indefinidamente: `expires_at` es obligatorio (máximo 90 días desde la subida), la
-publicación lo conserva como máximo hasta 30 días después de publicarse (tope absoluto 120 días) y la protección
-por trabajo activo añade como máximo 14 días. Nunca hay retención permanente.
+Ningún archivo se guarda indefinidamente: `expires_at` es obligatorio y su **tope absoluto es 90 días desde la
+subida**. Una publicación lo conserva hasta 30 días después de publicarse, pero
+`expires_at = mínimo(published_at + 30 días, subida + 90 días)` (lo exige también la base). La protección por
+trabajo activo añade como máximo 14 días. Nunca hay retención permanente.
 
 | Caso | Retención |
 |---|---|
@@ -159,7 +165,7 @@ por trabajo activo añade como máximo 14 días. Nunca hay retención permanente
 | derivado simulado / temporal | 7 días |
 | resultados de trabajos simulados, fallidos o cancelados | 7 días |
 | usado por un trabajo activo o una publicación programada | protegido como **máximo 14 días** desde que empieza la protección (`protected_until`); después el trabajo se cancela de forma idempotente (`timeout`), se solicita la purga y se purga (`workflow_timeout`) |
-| publicación confirmada (`published`) | se conserva hasta **30 días después de publicarse** (`publication_hold_until`); luego se purga (`publication_done`) |
+| publicación confirmada (`published`) | `expires_at` = mínimo(`published_at` + 30 días, subida + 90 días); luego se purga (`publication_done`) |
 | consentimiento retirado | purga prioritaria; trabajos pendientes cancelados (reservas liberadas); resultados bloqueados para reutilización |
 
 * El operador fija `max_retention_days` (7–90, por defecto 30). Owner/manager eligen 7, 30, 60 o 90 días desde la
@@ -183,8 +189,22 @@ de 80 USD por tenant (voz, IA de Claudia, infraestructura…), que irá en otro 
 * Cuota de almacenamiento (ver tabla de límites): `public.marketing_storage_used()` lo cuenta todo y
   `public.marketing_reserve_storage()` reserva de forma atómica (bloquea la configuración del tenant). Las subidas
   reservan sus bytes antes de guardar el archivo (y los liberan si falla); al aprobar un trabajo se reservan los
-  bytes estimados del resultado (`reserved_storage_bytes`), que dejan de contar al terminar. Una subida ya
-  registrada no cuenta dos veces.
+  bytes estimados del resultado (fila `job:{id}`). Una subida ya registrada no cuenta dos veces.
+* **Reservas abandonadas**: cada reserva caduca (subida: 15 min; trabajo: 24 h) y una caducada deja de contar.
+  Se cierra **una sola vez** (`consumed`, `released` o `expired`): un disparador impide reabrirla o cambiar sus
+  bytes, `marketing_release_storage` solo actúa sobre reservas vivas y `marketing_expire_storage_reservations()`
+  (llamada por `RetentionRunner.run`) las marca `expired` de forma idempotente. La reserva de un trabajo se cierra
+  sola cuando termina (disparador `marketing_job_storage_release`): completado → `consumed`; cancelado, fallido,
+  timeout (trabajo aprobado sin terminar en 24 h), consentimiento retirado o purga del archivo → `released`.
+* **Tamaño real del resultado**: antes de registrar un resultado con archivo, el worker llama a
+  `marketing_confirm_output_storage(tenant, job, bytes_reales)`, que compara el tamaño real con lo reservado + lo
+  disponible (bloqueando la configuración del tenant). Si no cabe: no se registra, se borra el temporal (solo
+  rutas `{tenant}/derivatives/{job}/…`), se libera la reserva y el trabajo falla con `storage_quota_exceeded`.
+  Si cabe, la reserva pasa al tamaño real hasta que el trabajo termina.
+* **Concurrencia en PostgreSQL real**: `tests/test_marketing_pg_concurrency.py` crea un clúster desechable
+  (initdb en un directorio temporal, solo 127.0.0.1), carga las migraciones y abre transacciones simultáneas:
+  dos subidas, dos aprobaciones por bytes, dos por costo y subida contra aprobación, cerca del límite → solo una
+  entra. Se omite sin `MARKETING_PG_BIN`. Nunca usa Supabase ni producción.
 
 * `marketing_settings.monthly_ai_cost_limit` (USD/mes) lo fija **solo el operador**; `0` por defecto = ninguna
   generación, ni siquiera simulada; `null` = sin límite. El tenant no puede cambiarlo (sin endpoint; SELECT only).
@@ -286,7 +306,7 @@ transporte inyectado explícitamente, `submit()` devuelve `provider_disabled`.
 | `MARKETING_AI_MOCK_ENABLED` | `true` | Proveedor simulado (sin red, coste 0) |
 | `MARKETING_LOCAL_TOOLS_ENABLED` | `false` | Herramientas locales (FFmpeg); no instaladas en producción |
 | `MARKETING_AI_CATALOG_PATH` | catálogo del repo | Otro catálogo en el servidor |
-| `MARKETING_STREAM_TTL` | 600 | Vida del token de reproducción en segundos (se limita a 60–900) |
+| `MARKETING_STREAM_TTL` | 600 | Vida de la sesión de reproducción (cookie) en segundos (se limita a 60–600) |
 | `MARKETING_MAX_VIDEO_DURATION_MS` | 900000 | Duración máxima creíble de un vídeo subido (15 min) |
 | `MARKETING_HARD_MAX_UPLOAD_BYTES` | 100 MB | Tope absoluto por archivo (memoria del servidor) |
 

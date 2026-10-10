@@ -112,7 +112,8 @@ async def manager_security_headers(request: Request, call_next):
     p = request.url.path
     if (p.startswith("/manager") or p.startswith("/api/manager")
             or p == "/m" or p.startswith("/m/") or p.startswith("/api/member")):
-        response.headers["Cache-Control"] = "no-store"
+        if "no-store" not in response.headers.get("Cache-Control", ""):
+            response.headers["Cache-Control"] = "no-store"     # respeta "private, no-store" (vista previa)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Frame-Options"] = "DENY"

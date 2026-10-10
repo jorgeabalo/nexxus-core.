@@ -1,10 +1,12 @@
 """
-AITA Marketing (Fase 2): reproducción con HTTP Range real mediante autorización temporal same-origin.
-El <video> pide HEAD y rangos con la URL del token (sin cabecera Authorization). Cada petición revalida
-token, usuario, rol, tenant, módulo, estado del archivo y ruta. Caducidad, revocación y aislamiento.
+AITA Marketing (Fase 2): reproducción con HTTP Range real mediante una sesión opaca en cookie.
+La petición autenticada (JWT) crea la sesión y la coloca en una cookie HttpOnly, SameSite=Strict,
+Secure en producción, con Path = ruta EXACTA del archivo y Max-Age ≤ 600. El <video> usa una URL limpia
+(sin token) y el navegador envía la cookie en GET, HEAD y cada Range. Cada petición revalida sesión,
+usuario, rol, tenant, módulo, estado del archivo y ruta. Caducidad, revocación y aislamiento.
 """
-import logging
 from datetime import datetime, timedelta, timezone
+from http.cookies import SimpleCookie
 from types import SimpleNamespace
 
 import pytest
@@ -19,6 +21,7 @@ from test_marketing import NOW, T1, T2, OWNER, MANAGER, STAFF, OTHER
 from test_marketing_studio import StudioDB, mp4_with_duration, consented
 
 VIDEO = mp4_with_duration(2, pad=200_000)
+LIB = "/api/manager/marketing/library"
 
 
 @pytest.fixture
@@ -36,32 +39,52 @@ def H(u):
     return {"Authorization": f"Bearer jwt-{u}"}
 
 
-@pytest.fixture
-def video(client):
-    r = client.post(f"/api/manager/marketing/library?tenant_id={T1}", content=VIDEO,
-                    headers={**H(OWNER), "Content-Type": "video/mp4", "X-File-Name": "clase.mp4"})
+def upload(client, data=VIDEO, name="clase.mp4"):
+    r = client.post(f"{LIB}?tenant_id={T1}", content=data,
+                    headers={**H(OWNER), "Content-Type": "video/mp4", "X-File-Name": name})
     assert r.status_code == 200, r.text
     return r.json()
 
 
-def token_url(client, media, user=OWNER, tenant=T1):
-    r = client.post(f"/api/manager/marketing/library/{media['id']}/stream-token", json={"tenant_id": tenant}, headers=H(user))
-    return r
+@pytest.fixture
+def video(client):
+    return upload(client)
 
 
-def url_of(client, media, user=OWNER):
-    r = token_url(client, media, user)
+def session(client, media, user=OWNER, tenant=T1):
+    return client.post(f"{LIB}/{media['id']}/stream-session", json={"tenant_id": tenant}, headers=H(user))
+
+
+def cookie_of(r):
+    """(valor, atributos en minúsculas) de la cookie de sesión de una respuesta."""
+    raw = next(h for h in r.headers.get_list("set-cookie") if h.startswith(f"{mstream.COOKIE}="))
+    c = SimpleCookie()
+    c.load(raw)
+    return c[mstream.COOKIE].value, raw.lower()
+
+
+def open_session(client, media, user=OWNER):
+    """Como el navegador: POST autenticado → la cookie queda en el tarro del cliente. Devuelve (url, token)."""
+    r = session(client, media, user)
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["url"].startswith(mstream.STREAM_PATH) and 60 <= body["expires_in"] <= 900
-    return body["url"]
+    token, _ = cookie_of(r)
+    assert body["url"] == mstream.stream_path(media["id"]) and token not in r.text
+    return body["url"], token
+
+
+def bare(token=None):
+    """Cliente sin tarro de cookies: solo envía lo que se le pasa."""
+    return lambda method, url, **kw: TestClient(main.app).request(
+        method, url, headers={**kw.pop("headers", {}), **({"Cookie": f"{mstream.COOKIE}={token}"} if token else {})}, **kw)
 
 
 # ------------------------------------------------------------------ lo que hace el reproductor
-def test_player_head_and_ranges_without_authorization_header(client, video):
-    url = url_of(client, video)
+def test_player_head_and_ranges_with_cookie_on_clean_url(client, video):
+    url, token = open_session(client, video)
+    assert "?" not in url and token not in url and url.endswith(f"/{video['id']}/stream")
     size = len(VIDEO)
-    h = client.head(url)                                                   # sin Authorization: solo el token
+    h = client.head(url)                                                   # sin Authorization: la cookie
     assert h.status_code == 200 and h.headers["content-length"] == str(size) and h.headers["accept-ranges"] == "bytes"
     assert h.content == b""
     first = client.get(url, headers={"Range": "bytes=0-1"})               # sondeo inicial (Safari)
@@ -79,37 +102,74 @@ def test_player_head_and_ranges_without_authorization_header(client, video):
     assert bad.status_code == 416 and bad.headers["content-range"] == f"bytes */{size}"
     full = client.get(url)
     assert full.status_code == 200 and full.content == VIDEO
-    for r in (h, first, full):
-        assert r.headers["cache-control"] == "no-store" and r.headers["referrer-policy"] == "no-referrer"
+    for r in (h, first, full, bad):
+        assert r.headers["cache-control"] == "private, no-store" and r.headers["referrer-policy"] == "no-referrer"
         assert r.headers["x-content-type-options"] == "nosniff"
 
 
+def test_without_cookie_nothing_is_served(client, video):
+    url, _ = open_session(client, video)
+    call = bare()
+    assert call("HEAD", url).status_code == 404 and call("GET", url, headers={"Range": "bytes=0-1"}).status_code == 404
+    assert call("GET", url, headers=H(OWNER)).status_code == 404           # ni siquiera con el JWT: solo la sesión
+
+
 def test_ranges_are_requested_from_storage_not_whole_file(client, db, video):
-    url = url_of(client, video)
+    url, _ = open_session(client, video)
     db.streamed.clear()
     client.get(url, headers={"Range": "bytes=150000-150099"})
     client.head(url)
     assert db.streamed == [(video["storage_path"], (150000, 150099))]      # HEAD no toca Storage
 
 
-def test_token_is_only_issued_to_owner_manager_of_tenant(client, video):
-    assert token_url(client, video, MANAGER).status_code == 200
-    assert token_url(client, video, STAFF).status_code == 403
-    assert token_url(client, video, OTHER, T2).status_code == 404
-    assert client.post(f"/api/manager/marketing/library/{video['id']}/stream-token", json={"tenant_id": T1}).status_code == 401
+# ------------------------------------------------------------------ la cookie
+def test_cookie_attributes_in_development(client, video):
+    r = session(client, video)
+    _, attrs = cookie_of(r)
+    assert "httponly" in attrs and "samesite=strict" in attrs
+    assert f"path={mstream.stream_path(video['id'])}".lower() in attrs     # ruta EXACTA del archivo
+    assert "max-age=600" in attrs and "; secure" not in attrs
+    assert r.headers["cache-control"] == "private, no-store" and r.headers["referrer-policy"] == "no-referrer"
+    assert set(r.json()) == {"url", "max_age", "mime"} and r.json()["max_age"] <= 600
+
+
+def test_cookie_is_secure_in_production(monkeypatch, db):
+    monkeypatch.setattr(main, "member_portal", SimpleNamespace(db=db))
+    prod = TestClient(main.app, base_url="https://app.nexxus.example")
+    m = upload(prod)
+    r = session(prod, m)
+    _, attrs = cookie_of(r)
+    assert "; secure" in attrs and "httponly" in attrs and "samesite=strict" in attrs and "max-age=600" in attrs
+    rv = prod.post(f"{LIB}/{m['id']}/stream-revoke", json={"tenant_id": T1}, headers=H(OWNER))
+    assert "; secure" in cookie_of(rv)[1]
+
+
+def test_session_is_only_issued_to_owner_manager_of_tenant(client, video):
+    assert session(client, video, MANAGER).status_code == 200
+    r = session(client, video, STAFF)
+    assert r.status_code == 403 and not r.headers.get_list("set-cookie")
+    assert session(client, video, OTHER, T2).status_code == 404
+    assert client.post(f"{LIB}/{video['id']}/stream-session", json={"tenant_id": T1}).status_code == 401
 
 
 def test_only_hash_is_stored(client, db, video):
-    url = url_of(client, video)
-    token = url.rsplit("/", 1)[1]
+    _, token = open_session(client, video)
     row = db.tables["marketing_stream_tokens"][-1]
     assert token not in str(row) and row["token_hash"] == mstream.token_hash(token)
     assert row["user_id"] == OWNER and row["tenant_id"] == T1 and row["media_id"] == video["id"]
 
 
+def test_session_only_serves_its_own_file(client, db, video):
+    other = upload(client, VIDEO[:-1] + b"\x02", "c.mp4")
+    _, token = open_session(client, video)
+    call = bare(token)
+    assert call("HEAD", mstream.stream_path(video["id"])).status_code == 200
+    assert call("HEAD", mstream.stream_path(other["id"])).status_code == 404   # aunque se envíe a mano
+
+
 # ------------------------------------------------------------------ caducidad y revocación
-def test_expired_token_stops_working(client, db, video):
-    url = url_of(client, video)
+def test_expired_session_stops_working(client, db, video):
+    url, _ = open_session(client, video)
     assert client.head(url).status_code == 200
     db.tables["marketing_stream_tokens"][-1]["expires_at"] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
     assert client.head(url).status_code == 404 and client.get(url, headers={"Range": "bytes=0-1"}).status_code == 404
@@ -118,109 +178,122 @@ def test_expired_token_stops_working(client, db, video):
 def test_expiry_with_controlled_clock(db):
     lib = LibraryService(db, now=NOW)
     m = lib.upload(f"jwt-{OWNER}", T1, "c.mp4", "video/mp4", VIDEO)
-    tok = MediaStreamService(db, now=NOW).issue_token(f"jwt-{OWNER}", T1, m["id"])
-    t = tok["url"].rsplit("/", 1)[1]
-    assert MediaStreamService(db, now=NOW + timedelta(seconds=tok["expires_in"] - 1)).stream(t, "bytes=0-1", False)["status"] == 206
+    s = MediaStreamService(db, now=NOW).issue_session(f"jwt-{OWNER}", T1, m["id"])
+    assert s["max_age"] == 600 and s["path"] == s["url"] == mstream.stream_path(m["id"])
+    assert MediaStreamService(db, now=NOW + timedelta(seconds=599)).stream(m["id"], s["token"], "bytes=0-1", False)["status"] == 206
     with pytest.raises(Exception) as e:
-        MediaStreamService(db, now=NOW + timedelta(seconds=tok["expires_in"])).stream(t, "bytes=0-1", False)
+        MediaStreamService(db, now=NOW + timedelta(seconds=600)).stream(m["id"], s["token"], "bytes=0-1", False)
     assert getattr(e.value, "code", "") == "not_found"
 
 
-def test_ttl_is_short(monkeypatch):
+def test_ttl_is_at_most_600(monkeypatch):
     monkeypatch.setenv("MARKETING_STREAM_TTL", "99999")
-    assert mstream.stream_ttl() == 900
+    assert mstream.stream_ttl() == 600
     monkeypatch.setenv("MARKETING_STREAM_TTL", "1")
     assert mstream.stream_ttl() == 60
+    monkeypatch.setenv("MARKETING_STREAM_TTL", "abc")
+    assert mstream.stream_ttl() == 600
 
 
-def test_explicit_revocation(client, video):
-    url = url_of(client, video)
-    r = client.post(f"/api/manager/marketing/library/{video['id']}/stream-revoke", json={"tenant_id": T1}, headers=H(OWNER))
+def test_close_revokes_session_and_expires_cookie(client, video):
+    url, token = open_session(client, video)
+    r = client.post(f"{LIB}/{video['id']}/stream-revoke", json={"tenant_id": T1}, headers=H(OWNER))
     assert r.status_code == 200 and r.json()["revoked"] == 1
+    _, attrs = cookie_of(r)
+    assert "max-age=0" in attrs and f"path={mstream.stream_path(video['id'])}".lower() in attrs and "httponly" in attrs
     assert client.head(url).status_code == 404
+    assert bare(token)("HEAD", url).status_code == 404                      # el valor antiguo ya no sirve
+
+
+@pytest.mark.parametrize("how", ["deleted", "consent_revoked"])
+def test_delete_and_consent_responses_expire_cookie(client, db, video, how):
+    if how == "consent_revoked":
+        consented(LibraryService(db), video)
+    _, token = open_session(client, video)
+    if how == "deleted":
+        r = client.post(f"{LIB}/{video['id']}/delete", json={"tenant_id": T1, "confirm": True}, headers=H(OWNER))
+    else:
+        r = client.post(f"{LIB}/{video['id']}/revoke-consent", json={"tenant_id": T1}, headers=H(OWNER))
+    assert r.status_code == 200, r.text
+    assert "max-age=0" in cookie_of(r)[1]
+    assert bare(token)("HEAD", mstream.stream_path(video["id"])).status_code == 404
 
 
 @pytest.mark.parametrize("how", ["role_removed", "module_off", "deleted", "consent_revoked", "purged", "path_tampered"])
-def test_access_changes_invalidate_existing_tokens(client, db, video, how):
-    url = url_of(client, video)
+def test_access_changes_invalidate_existing_sessions(client, db, video, how):
+    if how == "consent_revoked":
+        consented(LibraryService(db), video)
+    url, token = open_session(client, video)
     assert client.get(url, headers={"Range": "bytes=0-1"}).status_code == 206
     if how == "role_removed":
         db.tables["tenant_users"][0]["active"] = False
     elif how == "module_off":
         db.tables["tenants"][0]["modules"] = {"marketing": False}
     elif how == "deleted":
-        assert client.post(f"/api/manager/marketing/library/{video['id']}/delete", json={"tenant_id": T1, "confirm": True},
-                           headers=H(OWNER)).status_code == 200
+        LibraryService(db).delete(f"jwt-{OWNER}", T1, video["id"], "", True)
     elif how == "consent_revoked":
-        lib = LibraryService(db)
-        consented(lib, video)
-        url = url_of(client, video)
-        lib.revoke_consent(f"jwt-{OWNER}", T1, video["id"])
+        LibraryService(db).revoke_consent(f"jwt-{OWNER}", T1, video["id"])
     elif how == "purged":
         m = next(x for x in db.tables["marketing_media"] if x["id"] == video["id"])
         RetentionRunner(db, now=datetime.now(timezone.utc) + timedelta(days=60)).purge(dict(m), "expired")
     elif how == "path_tampered":
         next(x for x in db.tables["marketing_media"] if x["id"] == video["id"])["storage_path"] = \
             f"{T2}/originals/{video['id']}/clase.mp4"
-    assert client.head(url).status_code == 404
-    assert client.get(url, headers={"Range": "bytes=0-1"}).status_code == 404
+    call = bare(token)                                                      # aunque el navegador aún tenga la cookie
+    assert call("HEAD", url).status_code == 404
+    assert call("GET", url, headers={"Range": "bytes=0-1"}).status_code == 404
 
 
-# ------------------------------------------------------------------ aislamiento y formato
-def test_token_never_serves_another_tenants_file(client, db, video):
-    url = url_of(client, video)
-    row = db.tables["marketing_stream_tokens"][-1]
-    row["tenant_id"] = T2                                                  # alguien manipula la fila
-    assert client.head(url).status_code == 404                            # OWNER es manager de T2, pero el archivo es de T1
-
-
-@pytest.mark.parametrize("bad", ["", "x", "../../etc/passwd", "A" * 200, "abc$%", "0" * 31])
-def test_malformed_tokens(client, bad):
-    assert client.get(mstream.STREAM_PATH + bad).status_code in (404, 405)
-
-
-def test_tokens_redacted_from_access_logs():
-    f = mstream.RedactStreamTokens()
-    rec = logging.LogRecord("uvicorn.access", logging.INFO, "x", 1, '%s - "%s %s HTTP/%s" %d',
-                            ("1.2.3.4", "GET", "/api/manager/marketing/library/stream/SECRETtoken_1234567890abcdef1234567890", "1.1", 206), None)
-    f.filter(rec)
-    assert "SECRET" not in rec.getMessage() and "/library/stream/***" in rec.getMessage()
-    assert any(isinstance(x, mstream.RedactStreamTokens) for x in logging.getLogger("uvicorn.access").filters)
-
-
-def test_frontend_player_uses_range_url_not_blob():
-    from pathlib import Path
-    root = Path(__file__).resolve().parents[1]
-    lib = (root / "manager/assets/js/modules/marketing-library.js").read_text()
-    api = (root / "manager/assets/js/api.js").read_text()
-    assert "streamToken" in lib and "src: tok.url" in lib and "streamRevoke" in lib
-    assert "createObjectURL" not in lib and "previewBlob" not in api
-    assert "/stream-token" in api and "supabase" not in api[api.index("streamToken"):api.index("streamRevoke")].lower()
-
-
-def test_pending_purge_blocks_even_unrevoked_tokens(client, db, video):
-    url = url_of(client, video)
+def test_pending_purge_blocks_even_unrevoked_sessions(client, db, video):
+    url, _ = open_session(client, video)
     next(x for x in db.tables["marketing_media"] if x["id"] == video["id"])["retention_status"] = "purge_pending"
-    assert client.head(url).status_code == 404                             # aunque el token no se haya revocado
+    assert client.head(url).status_code == 404
 
 
-def test_consent_revocation_and_purge_revoke_token_rows(client, db, video):
+def test_consent_revocation_and_purge_revoke_session_rows(client, db, video):
     lib = LibraryService(db)
     consented(lib, video)
-    url_of(client, video)
+    open_session(client, video)
     lib.revoke_consent(f"jwt-{OWNER}", T1, video["id"])
     assert all(t["revoked_at"] for t in db.tables["marketing_stream_tokens"] if t["media_id"] == video["id"])
-    other = client.post(f"/api/manager/marketing/library?tenant_id={T1}", content=VIDEO[:-1] + b"\x01",
-                        headers={**H(OWNER), "Content-Type": "video/mp4", "X-File-Name": "b.mp4"}).json()
-    url_of(client, other)
+    other = upload(client, VIDEO[:-1] + b"\x01", "b.mp4")
+    open_session(client, other)
     m = next(x for x in db.tables["marketing_media"] if x["id"] == other["id"])
     RetentionRunner(db, now=datetime.now(timezone.utc) + timedelta(days=60)).purge(dict(m), "expired")
     assert all(t["revoked_at"] for t in db.tables["marketing_stream_tokens"] if t["media_id"] == other["id"])
 
 
-def test_token_never_serves_another_file_of_same_tenant(client, db, video):
-    other = client.post(f"/api/manager/marketing/library?tenant_id={T1}", content=VIDEO[:-1] + b"\x02",
-                        headers={**H(OWNER), "Content-Type": "video/mp4", "X-File-Name": "c.mp4"}).json()
-    url = url_of(client, video)
+# ------------------------------------------------------------------ aislamiento y formato
+def test_session_never_serves_another_tenants_file(client, db, video):
+    url, _ = open_session(client, video)
+    db.tables["marketing_stream_tokens"][-1]["tenant_id"] = T2             # alguien manipula la fila
+    assert client.head(url).status_code == 404                            # OWNER es manager de T2, pero el archivo es de T1
+
+
+def test_session_never_serves_another_file_of_same_tenant(client, db, video):
+    other = upload(client, VIDEO[:-1] + b"\x02", "c.mp4")
+    url, _ = open_session(client, video)
     next(x for x in db.tables["marketing_media"] if x["id"] == video["id"])["storage_path"] = other["storage_path"]
     assert client.head(url).status_code == 404
+
+
+@pytest.mark.parametrize("bad", ["", "x", "../../etc/passwd", "A" * 200, "abc$%", "0" * 31])
+def test_malformed_session_values(client, video, bad):
+    assert bare(bad)("GET", mstream.stream_path(video["id"])).status_code == 404
+
+
+def test_old_token_url_routes_are_gone(client, video):
+    open_session(client, video)
+    assert client.post(f"{LIB}/{video['id']}/stream-token", json={"tenant_id": T1}, headers=H(OWNER)).status_code in (404, 405)
+    assert client.get(f"{LIB}/stream/{'a' * 43}").status_code in (404, 405)
+
+
+def test_frontend_player_uses_clean_url_and_cookie_session():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    lib = (root / "manager/assets/js/modules/marketing-library.js").read_text()
+    api = (root / "manager/assets/js/api.js").read_text()
+    assert "streamSession" in lib and "src: session.url" in lib and "streamRevoke" in lib
+    assert "media.src = fresh.url;" in lib and "?r=" not in lib and "token" not in lib.lower()
+    assert "createObjectURL" not in lib and "previewBlob" not in api and "streamToken" not in api
+    assert "/stream-session" in api and "supabase" not in api[api.index("streamSession"):api.index("streamRevoke")].lower()

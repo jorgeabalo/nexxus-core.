@@ -40,6 +40,18 @@ def release(db, tenant_id: str, key: str, consumed: bool) -> None:
     db.rpc("marketing_release_storage", {"p_tenant": tenant_id, "p_key": key, "p_consumed": bool(consumed)})
 
 
+def expire_abandoned(db) -> int:
+    """Reservas abandonadas (subida interrumpida, trabajo atascado): pasan a 'expired' una sola vez.
+    Una reserva cerrada nunca vuelve a liberar bytes (lo impide también un disparador en la base)."""
+    return int(db.rpc("marketing_expire_storage_reservations", {}) or 0)
+
+
+def confirm_output(db, tenant_id: str, job_id: str, size: int) -> Optional[str]:
+    """Antes de registrar un resultado: ¿cabe su tamaño REAL? None si cabe; si no, el motivo."""
+    res = db.rpc("marketing_confirm_output_storage", {"p_tenant": tenant_id, "p_job": job_id, "p_bytes": int(size)}) or {}
+    return None if res.get("status") == "ok" else (res.get("reason") or "storage_quota_exceeded")
+
+
 def state(limit: Optional[int], used: int) -> str:
     """disabled (0) · unlimited (null) · full · enabled."""
     if limit is None:

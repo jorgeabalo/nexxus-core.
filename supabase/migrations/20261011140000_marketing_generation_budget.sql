@@ -89,6 +89,12 @@ begin
   if not found then
     return jsonb_build_object('status', 'rejected', 'reason', 'conflict');
   end if;
+  -- la reserva de espacio del trabajo es una fila (se cierra sola cuando el trabajo termina; caduca en 24 h)
+  if p_storage_bytes > 0 then
+    insert into public.marketing_storage_reservations (tenant_id, reservation_key, kind, bytes, expires_at)
+    values (p_tenant, 'job:' || p_job::text, 'generation', p_storage_bytes, now() + interval '24 hours')
+    on conflict (tenant_id, reservation_key) do nothing;
+  end if;
   insert into public.marketing_generation_job_events (tenant_id, job_id, action, from_status, to_status, detail,
                                                       actor_id, actor_role)
   values (p_tenant, p_job, 'approve', 'awaiting_generation_approval', 'queued',

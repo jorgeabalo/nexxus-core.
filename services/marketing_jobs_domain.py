@@ -45,7 +45,8 @@ SCENE_ORIGINS = ("client_original", "client_ai_adapted", "ai_generated")
 PUBLIC_ERRORS = ("provider_disabled", "provider_unavailable", "budget_exceeded", "no_eligible_model",
                  "privacy_blocked", "consent_revoked", "minors_excluded", "media_excluded", "media_not_ready",
                  "media_pending_deletion", "media_expired",
-                 "timeout", "moderation_rejected", "render_failed", "cancelled_by_user", "internal_error")
+                 "timeout", "moderation_rejected", "render_failed", "cancelled_by_user", "storage_quota_exceeded",
+                 "internal_error")
 
 # ---------------------------------------------------------------- límites nuevos
 # 0 = nada permitido (por defecto). None = sin límite. El tenant no puede cambiarlos (no hay ningún

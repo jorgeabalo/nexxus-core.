@@ -176,6 +176,22 @@ def test_scheduled_publication_protects_and_published_sets_30_days(lib, studio, 
     assert r["retention_status"] == "purged" and r["purge_reason"] == "publication_done"
 
 
+@pytest.mark.parametrize("pub_day,plan,expected", [(5, 90, 35), (75, 90, 90), (20, 30, 50), (88, 90, 90)])
+def test_publication_expiry_is_min_of_pub_plus_30_and_upload_plus_90(lib, studio, db, pub_day, plan, expected):
+    db.tables["marketing_settings"][0]["max_retention_days"] = plan
+    m = up(lib)
+    no_people(lib, m)
+    j = approved_job(studio, [m["id"]], 100, 0)
+    studio.process_job(jwt(OWNER), T1, j["id"])
+    cid = studio.send_to_approval(jwt(OWNER), T1, j["id"], "Reel")["content"]["id"]
+    next(c for c in db.tables["marketing_content"] if c["id"] == cid)["status"] = "published"
+    db.tables["marketing_publications"].append({"id": "p", "tenant_id": T1, "content_id": cid, "status": "published",
+                                                "published_at": (NOW + pub_day * DAY).isoformat()})
+    rt.RetentionRunner(db, now=NOW + pub_day * DAY).run()
+    assert row(db, m["id"])["expires_at"] == (NOW + expected * DAY).isoformat()
+    assert rt._dt(row(db, m["id"])["expires_at"]) <= NOW + 90 * DAY                  # nunca más de 90 días
+
+
 def test_published_file_expires_30_days_after_publication(lib, studio, db):
     db.tables["marketing_settings"][0]["max_retention_days"] = 90
     m = up(lib)
@@ -189,7 +205,7 @@ def test_published_file_expires_30_days_after_publication(lib, studio, db):
                                                 "published_at": (NOW + 5 * DAY).isoformat()})
     run(db, 6)
     r = row(db, m["id"])
-    assert r["publication_hold_until"] == (NOW + 35 * DAY).isoformat() and r["expires_at"] == (NOW + 90 * DAY).isoformat()
+    assert r["published_at"] == (NOW + 5 * DAY).isoformat() and r["expires_at"] == (NOW + 35 * DAY).isoformat()
     run(db, 34)
     assert row(db, m["id"])["retention_status"] != "purged"                   # se conserva hasta 30 días tras publicar
     run(db, 36)

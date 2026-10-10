@@ -7,8 +7,8 @@ Política (ningún archivo se guarda indefinidamente):
   * derivados simulados / temporales: 7 días; resultados de trabajos fallidos o cancelados: 7 días;
   * usado por un trabajo activo o una publicación programada: protegido como MÁXIMO 14 días desde que
     empieza la protección; después el trabajo se cancela (idempotente) y se solicita la purga;
-  * publicación confirmada: los archivos se conservan hasta 30 días después de publicarse
-    (publication_hold_until); nunca hay retención permanente;
+  * publicación confirmada: expires_at = mínimo(published_at + 30 días, subida + 90 días);
+    máximo absoluto del piloto: 90 días desde la subida; nunca hay retención permanente;
   * consentimiento retirado: purga prioritaria, cancelación de trabajos pendientes y bloqueo de reutilización;
   * aviso 7 días antes; nunca se extiende automáticamente.
 
@@ -23,6 +23,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from services import marketing_media_files as mf
+from services import marketing_storage as ms
 from services.marketing_domain import DomainError
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ PUBLISHED_DAYS = 30
 WARN_DAYS = 7
 PROTECTION_GRACE_DAYS = 14
 MAX_ATTEMPTS = 5
+JOB_TIMEOUT_HOURS = 24                      # igual que la caducidad de la reserva de espacio de un trabajo
 ACTIVE_JOBS = ("draft", "awaiting_generation_approval", "queued", "processing")
 PURGE_STATES = ("purge_pending", "purged", "purge_failed")
 BUCKET = "marketing-assets"
@@ -182,7 +184,25 @@ class RetentionRunner:
             out[self.process(m)] += 1
         out["derivatives"] = self._purge_derivatives(limit)
         out["outputs"] = self._purge_outputs(limit)
+        out["timed_out"] = self._time_out_jobs(limit)
+        out["reservations_expired"] = ms.expire_abandoned(self.db)      # subidas interrumpidas, etc.
         return out
+
+    def _time_out_jobs(self, limit: int) -> int:
+        """Trabajos aprobados que no terminan en JOB_TIMEOUT_HOURS: fallan con 'timeout'. Su reserva de espacio
+        se libera una sola vez al terminar (disparador marketing_job_storage_release)."""
+        cutoff = (self.now - timedelta(hours=JOB_TIMEOUT_HOURS)).isoformat()
+        n = 0
+        for j in self.db.select("marketing_generation_jobs", {"status": "in.(queued,processing)", "approved_at": f"lt.{cutoff}",
+                                                              "select": "id,tenant_id,status", "limit": str(limit)}) or []:
+            if self.db.update("marketing_generation_jobs", {"id": f"eq.{j['id']}", "tenant_id": f"eq.{j['tenant_id']}",
+                                                            "status": f"eq.{j['status']}"},
+                              {"status": "failed", "error_code": "timeout", "completed_at": self.now.isoformat()}):
+                self.db.insert("marketing_generation_job_events", {
+                    "tenant_id": j["tenant_id"], "job_id": j["id"], "action": "fail", "from_status": j["status"],
+                    "to_status": "failed", "detail": {"error_code": "timeout"}, "actor_id": None, "actor_role": "system"})
+                n += 1
+        return n
 
     def process(self, m: Dict[str, Any]) -> str:
         if m["retention_status"] in ("purge_pending", "purge_failed"):
@@ -192,12 +212,12 @@ class RetentionRunner:
         jobs = self._jobs_using(m)
         pub = self._published_at(m, jobs)
         created = _dt(m["created_at"])
-        if pub:                                    # una publicación conserva sus archivos hasta 30 días después
-            hold = min(pub + timedelta(days=PUBLISHED_DAYS), created + timedelta(days=HARD_MAX_DAYS + PUBLISHED_DAYS))
-            if m.get("publication_hold_until") != hold.isoformat():
-                self._upd(m, {"publication_hold_until": hold.isoformat()})
-                m["publication_hold_until"] = hold.isoformat()
-        effective = _dt(m["publication_hold_until"]) if pub else _dt(m["expires_at"])
+        if pub:   # publicado: expires_at = mínimo(publicación + 30 días, subida + 90 días)
+            exp = min(pub + timedelta(days=PUBLISHED_DAYS), created + timedelta(days=HARD_MAX_DAYS))
+            if exp.isoformat() != _dt(m["expires_at"]).isoformat() or not m.get("published_at"):
+                self._upd(m, {"published_at": pub.isoformat(), "expires_at": exp.isoformat()})
+                m.update({"published_at": pub.isoformat(), "expires_at": exp.isoformat()})
+        effective = _dt(m["expires_at"])
         if effective > self.now:
             if m["retention_status"] == "active" and effective - self.now <= timedelta(days=WARN_DAYS):
                 self._upd(m, {"retention_status": "expiring"})
@@ -208,7 +228,7 @@ class RetentionRunner:
         if why:                                    # un trabajo activo protege como MÁXIMO 14 días
             until = (_dt(m["protected_until"]) if m.get("protected_until")
                      else min(self.now + timedelta(days=PROTECTION_GRACE_DAYS),
-                              created + timedelta(days=HARD_MAX_DAYS + PUBLISHED_DAYS + PROTECTION_GRACE_DAYS)))
+                              created + timedelta(days=HARD_MAX_DAYS + PROTECTION_GRACE_DAYS)))
             if not m.get("protected_until"):
                 self._upd(m, {"retention_status": "protected_by_workflow", "protected_until": until.isoformat()})
                 self._event(m, "protected", {"reason": why, "until": until.isoformat()})
@@ -243,6 +263,9 @@ class RetentionRunner:
         if m.get("retention_status") != "purge_pending":
             self._upd(m, {"retention_status": "purge_pending", "purge_reason": reason,
                           "purge_requested_at": m.get("purge_requested_at") or self.now.isoformat()})
+        # Ningún trabajo sigue usando el archivo y ninguna reserva suya queda abierta (liberación idempotente).
+        cancel_jobs_for_media(self.db, m["tenant_id"], m["id"], "media_pending_deletion", self.now, actor)
+        ms.release(self.db, m["tenant_id"], f"upload:{m['id']}", consumed=False)
         # Invalidar cualquier acceso: tokens de reproducción revocados antes de borrar nada.
         self.db.update("marketing_stream_tokens", {"tenant_id": f"eq.{m['tenant_id']}", "media_id": f"eq.{m['id']}",
                                                    "revoked_at": "is.null"}, {"revoked_at": self.now.isoformat()})
