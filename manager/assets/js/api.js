@@ -42,7 +42,7 @@ export const api = {
   // ----- contexto -----
   async myMemberships(userId) {
     const rows = must(await sb.from('tenant_users')
-      .select('role, staff_id, tenant:tenants(id, slug, name, vertical, timezone, branding, modules)')
+      .select('role, staff_id, tenant:tenants(id, slug, name, vertical, timezone, branding, modules, public_phone:settings->>public_phone, address:settings->address, role_modules:settings->role_modules)')
       .eq('user_id', userId).eq('active', true));
     return (rows || []).filter(r => r.tenant);
   },

@@ -415,8 +415,9 @@ def test_manager_navigation_includes_accounting(client):
     root = Path(__file__).resolve().parent.parent / "manager" / "assets" / "js"
     app_js = (root / "app.js").read_text()
     assert "import * as accounting from './modules/accounting.js'" in app_js
+    nav_js = (root / "nav.js").read_text()      # catálogo de módulos (orden, rutas, permisos)
     for key in ("dashboard", "members", "schedule", "claudia", "payments", "team", "accounting"):
-        assert f"key: '{key}'" in app_js
+        assert f"key: '{key}'" in nav_js
     r = client.get("/manager/assets/js/modules/accounting.js")
     assert r.status_code == 200 and "export async function render" in r.text
     assert client.get("/m").status_code == 200                         # el portal del socio sigue igual

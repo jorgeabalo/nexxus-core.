@@ -58,6 +58,17 @@ export function icon(name, size = 20) {
   return svg;
 }
 
+// Símbolo de la plataforma Nexxus: hexágono dorado con una "N" (SVG propio).
+export function nexxusMark(size = 32) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  for (const [k, v] of Object.entries({ viewBox: '0 0 40 40', width: size, height: size, 'aria-hidden': 'true', class: 'nx-mark' })) svg.setAttribute(k, v);
+  const add = (tag, attrs) => { const n = document.createElementNS(ns, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); svg.appendChild(n); };
+  add('path', { d: 'M20 2 36 11v18L20 38 4 29V11z', class: 'nx-hex' });
+  add('path', { d: 'M13 28V12l14 16V12', class: 'nx-n' });
+  return svg;
+}
+
 // ---------- formato (zona horaria y moneda del tenant) ----------
 let TZ = 'America/Chicago';
 let LOCALE = 'en-US';

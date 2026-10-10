@@ -376,3 +376,50 @@ h3.m0 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color
   .tp-row { grid-template-columns: 56px 1fr; }
   .tp-row-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; }
 }
+
+/* ---------- Nexxus Manager: identidad de plataforma + empresa activa ---------- */
+.nx-mark { flex: none; display: block; }
+.nx-mark .nx-hex { fill: var(--brand-primary); stroke: var(--brand-accent); stroke-width: 2.2; stroke-linejoin: round; }
+.nx-mark .nx-n { fill: none; stroke: var(--brand-accent); stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; }
+.auth-mark { display: flex; justify-content: center; margin-bottom: 10px; }
+.auth-brand .wordmark { font-size: 20px; }
+
+.sb-brand { display: grid; gap: 14px; }
+.nx-brand { display: flex; align-items: center; gap: 10px; }
+.nx-brand .wordmark { font-size: 15px; letter-spacing: .16em; line-height: 1.1; }
+.nx-brand .wordmark span { display: block; color: var(--brand-accent); font-size: 11px; letter-spacing: .22em; font-weight: 600; }
+.sb-company { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: var(--radius-sm); background: rgba(255,255,255,.05); border: 1px solid rgba(201,162,39,.25); }
+.co-logo { width: 36px; height: 36px; border-radius: 50%; flex: none; object-fit: cover; }
+.co-initials { display: grid; place-items: center; background: var(--brand-accent); color: var(--brand-primary); font-weight: 700; font-size: 13px; letter-spacing: .04em; }
+.co-text { min-width: 0; }
+.co-name { color: #fff; font-weight: 600; font-size: 14px; line-height: 1.25; }
+.co-meta { color: #93A3BA; font-size: 12px; margin-top: 2px; }
+
+.topbar .t-brand { display: flex; align-items: center; gap: 8px; letter-spacing: .06em; }
+.topbar .t-sub { color: #7A5E0A; font-weight: 600; }
+.sys-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3); white-space: nowrap; }
+.sys-status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+.sys-status.ok .dot { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-bg); }
+.sys-status.degraded .dot { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-bg); }
+.sys-status.offline .dot { background: var(--bad); box-shadow: 0 0 0 3px var(--bad-bg); }
+.topbar .lang-select { width: auto; min-height: 36px; padding: 4px 8px; }
+.tb-user { display: grid; text-align: right; line-height: 1.2; min-width: 0; max-width: 200px; }
+.tb-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-role { font-size: 12px; color: var(--text-3); }
+.topbar .site-link { margin-left: 0; }
+@media (max-width: 1280px) { .topbar .date { display: none; } .topbar .sys-status { margin-left: auto; } }
+@media (max-width: 1024px) { .tb-user, .tb-signout { display: none; } }
+@media (max-width: 720px) {
+  .topbar .t-brand span { font-size: 13px; }
+  .topbar .t-sub { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46vw; }
+  .sys-status .label { display: none; }
+  .topbar .site-link { display: none; }
+}
+.sb-site { display: block; margin-top: 10px; color: #93A3BA; font-size: 13px; text-decoration: none; }
+.sb-site:hover { color: #fff; }
+
+/* Selector de empresa dentro del menú lateral: solo en móvil (el del encabezado se oculta ahí). */
+.sb-tenant { display: none; }
+.sidebar select.input.sb-tenant { width: 100%; min-height: 40px; background: rgba(255,255,255,.08); color: #fff; border-color: rgba(201,162,39,.35); }
+.sidebar .sb-tenant option { color: #0F1B2D; background: #fff; }
+@media (max-width: 720px) { .sb-tenant { display: block; } }

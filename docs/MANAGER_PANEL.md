@@ -279,3 +279,36 @@ Migración: `20261006120000_accounting_basic.sql` (idempotente; no borra ni reno
 | GET | `export?format=csv\|pdf&lang=es\|en` | owner/manager |
 
 Tests: `tests/test_accounting.py` y `tests/sql/test_accounting.sql`.
+
+# Nexxus Manager (identidad y navegación multitenant)
+
+**Nexxus Manager** es la marca fija de la plataforma; la empresa activa (tenant) aporta sus datos:
+
+| Dato | Fuente en `tenants` |
+|---|---|
+| Nombre comercial | `branding.business_name` → `name` (fallback genérico: "Nexxus"; ningún cliente está fijo en el código) |
+| Logotipo | `branding.logo_url`: ruta local `/…` terminada en `.png/.jpg/.jpeg/.webp/.gif` (opcional `?versión`), solo con letras, números y `. _ - ~ /`: sin `%`, `\`, `..`, `//`, espacios ni SVG. O PNG/JPEG/WebP/GIF en `data:image/…;base64` cuyo contenido tiene la firma real del formato. Si no, iniciales |
+| Colores | `branding.color_primary`, `branding.color_accent`: solo `#RRGGBB`. Si faltan o no son válidos (p. ej. `url(…)`, `#123`, con espacios) se quita la variable y vuelve el color por defecto; nunca quedan los del tenant anterior |
+| Teléfono / dirección | `settings.public_phone`, `settings.address` (solo esos campos se leen) |
+| Zona horaria / idioma | `timezone`, `branding.language` o `branding.locale` |
+| Módulos | `modules` (un módulo con `false` no aparece ni se puede abrir) |
+
+* **Menú** (`manager/assets/js/nav.js`): Resumen, Miembros, Asistencia, Citas y servicios, Pagos,
+  Contabilidad, Personal, Inventario, Marketing, Claudia IA, Configuración. Las rutas (`#/clave`) no cambian
+  (Contabilidad sigue en `#/accounting`).
+* **Por rol:** owner ve todo lo habilitado; manager todo salvo Configuración; staff Resumen, Miembros,
+  Asistencia, Citas, Pagos, Contabilidad y Claudia (ese es el **máximo** de cada rol, `ROLE_MAX`).
+  `tenants.settings.role_modules = {"staff": [...], "manager": [...]}` solo **restringe**: lo visible es la
+  intersección de módulos habilitados en el tenant ∩ máximo del rol ∩ `role_modules`. Staff nunca ve
+  Personal ni Configuración aunque `role_modules` los incluya; el owner no se limita con `role_modules`.
+  Una ruta no permitida (también escrita a mano en la URL) muestra "Sin acceso". Esto solo controla lo que se
+  muestra: RLS y el backend siguen imponiendo los permisos.
+* **Cambio de empresa:** si la persona tiene más de una, selector en el encabezado y, en móvil (≤ 720 px),
+  dentro del menú lateral; al cambiar se cierra el menú y se aplican colores, idioma y módulos de la nueva.
+  Con una sola empresa no se muestra selector.
+* **Idioma:** selector ES/EN en el encabezado (`manager/assets/js/i18n.js`, compartido con Contabilidad).
+  `aita.lang` es una **preferencia global del usuario** en ese navegador: si la eligió, se mantiene al cambiar
+  de empresa. Sin preferencia, se usa el idioma de la empresa activa y, si esa empresa no define idioma, el del
+  navegador (nunca el de la empresa anterior).
+* **Estado del sistema:** punto discreto que comprueba `/api/manager/config` cada minuto.
+* Pruebas: `tests/test_nexxus_manager.py` y `node --test tests/js/nav.test.mjs tests/js/i18n.test.mjs`.

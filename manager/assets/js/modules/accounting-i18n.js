@@ -75,20 +75,17 @@ const T = {
   },
 };
 
-let lang = (() => {
-  try { const s = localStorage.getItem('aita.lang'); if (s === 'es' || s === 'en') return s; } catch (_) { /* sin storage */ }
-  return (navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en';
-})();
+// El idioma es el del panel (../i18n.js); este archivo solo aporta los textos.
+export { getLang, setLang } from '../i18n.js';
+import { getLang } from '../i18n.js';
 
-export const getLang = () => lang;
-export function setLang(l) { lang = l; try { localStorage.setItem('aita.lang', l); } catch (_) { /* opcional */ } }
-export function t(key, ...args) { const v = T[lang][key] ?? T.en[key] ?? key; return typeof v === 'function' ? v(...args) : v; }
-export function errText(e) { return T[lang].err[e?.code] || e?.message || 'Error'; }
+export function t(key, ...args) { const v = T[getLang()][key] ?? T.en[key] ?? key; return typeof v === 'function' ? v(...args) : v; }
+export function errText(e) { return T[getLang()].err[e?.code] || e?.message || 'Error'; }
 
 // Fechas "date" de Postgres (YYYY-MM-DD) en el idioma de esta pantalla.
 export function fmtDay(d) {
   if (!d) return '—';
   const [y, m, day] = String(d).slice(0, 10).split('-').map(Number);
-  return new Intl.DateTimeFormat(lang === 'es' ? 'es-US' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+  return new Intl.DateTimeFormat(getLang() === 'es' ? 'es-US' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
     .format(new Date(Date.UTC(y, m - 1, day)));
 }
