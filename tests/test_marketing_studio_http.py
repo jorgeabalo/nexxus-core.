@@ -263,3 +263,40 @@ def test_supabase_range_is_forwarded_and_trimmed_if_ignored(monkeypatch):
     sa = SupabaseAdmin(url="https://proj.supabase.co", service_key="k" * 20)
     assert b"".join(sa.storage_stream("marketing-assets", "a/b.mp4", byte_range=(150, 449))) == body[150:450]
     assert seen == ["bytes=150-449"]
+
+
+def test_supabase_storage_stream_never_leaks(monkeypatch):
+    import httpx
+    from services.supabase_admin import SupabaseAdmin
+    sent = []
+
+    class Resp:
+        def __init__(self, code):
+            self.status_code = code
+
+        def iter_bytes(self, n):
+            yield b"abc"
+
+        def close(self):
+            sent.append("closed")
+
+    class Client:
+        def __init__(self, *a, **k):
+            pass
+
+        def build_request(self, method, url, headers=None):
+            sent.append((method, url))
+            return url
+
+        def send(self, req, stream=False):
+            return Resp(200 if "/ok/" in req else 404)
+
+        def close(self):
+            pass
+    monkeypatch.setattr(httpx, "Client", Client)
+    sa = SupabaseAdmin(url="https://proj.supabase.co", service_key="service-key-123")
+    assert b"".join(sa.storage_stream("marketing-assets", "ok/b.png")) == b"abc"
+    assert sent[0] == ("GET", "https://proj.supabase.co/storage/v1/object/authenticated/marketing-assets/ok/b.png")
+    with pytest.raises(RuntimeError) as e:
+        sa.storage_stream("marketing-assets", "a/b.png")
+    assert "service-key-123" not in str(e.value) and "a/b.png" not in str(e.value)

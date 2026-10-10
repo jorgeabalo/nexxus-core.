@@ -146,7 +146,9 @@ class MarketingAIRouter:
             ok.append((cost, cost / m.reliability_score, m))
         if not ok:
             raise RouterError("no_eligible_model", 409)
-        ok.sort(key=lambda x: (x[1], LATENCY_RANK[x[2].latency_class], -x[2].reliability_score, x[2].model_id))
+        # menor costo esperado; a igualdad, procesamiento local antes que externo (prioridad económica)
+        ok.sort(key=lambda x: (x[1], x[2].external, LATENCY_RANK[x[2].latency_class], -x[2].reliability_score,
+                               x[2].model_id))
         cost, expected, best = ok[0]
         return Route(model=best, estimated_cost=cost, expected_cost=round(expected, 4),
                      fallbacks=tuple(x[2] for x in ok[1:]), excluded=excluded)

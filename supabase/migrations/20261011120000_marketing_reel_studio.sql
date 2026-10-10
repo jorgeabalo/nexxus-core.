@@ -18,7 +18,7 @@
 -- Idempotente. No borra ni renombra nada. No activa nada para ningún tenant.
 -- =====================================================================
 -- ---------- límites nuevos (los define el operador, nunca el tenant) ----------
--- 0 = nada permitido (valor por defecto: cerrado). null = sin límite. Ver docs/AITA_MARKETING_PHASE2.md.
+-- 0 = nada permitido (por defecto: cerrado). null = sin límite. Ver docs/AITA_MARKETING_PHASE2.md.
 alter table public.marketing_settings
   add column if not exists ai_generation_enabled boolean not null default false,
   add column if not exists max_upload_bytes bigint not null default 52428800
@@ -32,9 +32,8 @@ alter table public.marketing_settings
   add column if not exists monthly_generated_image_limit integer default 0
       check (monthly_generated_image_limit is null or monthly_generated_image_limit between 0 and 100000),
   add column if not exists monthly_generated_video_seconds_limit integer default 0
-      check (monthly_generated_video_seconds_limit is null or monthly_generated_video_seconds_limit between 0 and 1000000),
-  add column if not exists monthly_ai_cost_limit numeric(10,2) default 0
-      check (monthly_ai_cost_limit is null or monthly_ai_cost_limit between 0 and 100000);
+      check (monthly_generated_video_seconds_limit is null or monthly_generated_video_seconds_limit between 0 and 1000000);
+-- El coste de IA se controla con el presupuesto global por tenant (20261011140000_aita_cost_control.sql).
 -- ---------- Biblioteca: originales ----------
 create table if not exists public.marketing_media (
   id                uuid primary key default gen_random_uuid(),
@@ -92,7 +91,7 @@ create table if not exists public.marketing_media (
   -- un archivo solo está listo si pasó la validación de formato
   check (processing_status not in ('ready','processing') or validation_status = 'passed'),
   -- borrado controlado: quién y cuándo
-  check ((processing_status = 'deleted') = (deleted_by is not null and deleted_at is not null))
+  constraint marketing_media_deleted_check check (processing_status <> 'deleted' or deleted_at is not null)
 );
 create index if not exists marketing_media_tenant_idx on public.marketing_media(tenant_id, processing_status, created_at desc);
 create unique index if not exists marketing_media_checksum_idx on public.marketing_media(tenant_id, checksum)
@@ -221,7 +220,9 @@ create table if not exists public.marketing_media_events (
   media_id      uuid not null,
   derivative_id uuid,
   action        text not null check (action in ('upload','classify','consent_revoke','archive','restore',
-                                                'anonymize_request','delete','storage_removed','storage_remove_failed')),
+                                                'anonymize_request','delete','storage_removed','storage_remove_failed',
+                                                'expiry_warning','retention_change','purge_requested','purged',
+                                                'purge_failed','protected','jobs_cancelled')),
   actor_id      uuid,
   actor_role    text check (actor_role is null or actor_role in ('owner','manager','system')),
   detail        jsonb not null default '{}'::jsonb,
@@ -468,7 +469,6 @@ drop trigger if exists marketing_generation_outputs_no_delete on public.marketin
 create trigger marketing_generation_outputs_no_delete before delete on public.marketing_generation_outputs
   for each row execute function private.marketing_no_delete();
 
--- Las funciones de los triggers no las ejecuta nadie directamente.
 revoke all on function private.marketing_media_guard(), private.marketing_derivative_guard(), private.marketing_job_transition(),
   private.marketing_no_delete(), private.marketing_input_guard(), private.marketing_append_only() from public, anon, authenticated;
 -- ---------- RLS y mínimo privilegio (mismo patrón que Fase 1) ----------

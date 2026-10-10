@@ -42,17 +42,19 @@ SCENE_ORIGINS = ("client_original", "client_ai_adapted", "ai_generated")
 # Códigos de error públicos (seguros para mostrar; nunca detalles del proveedor).
 PUBLIC_ERRORS = ("provider_disabled", "provider_unavailable", "budget_exceeded", "no_eligible_model",
                  "privacy_blocked", "consent_revoked", "minors_excluded", "media_excluded", "media_not_ready",
+                 "media_pending_deletion", "media_expired",
                  "timeout", "moderation_rejected", "render_failed", "cancelled_by_user", "internal_error")
 
 # ---------------------------------------------------------------- límites nuevos
 # 0 = nada permitido (por defecto). None = sin límite. El tenant no puede cambiarlos (no hay ningún
 # endpoint que escriba marketing_settings y RLS/privilegios lo impiden).
 GEN_LIMIT_KEYS = ("monthly_generation_job_limit", "monthly_regeneration_limit", "monthly_generated_image_limit",
-                  "monthly_generated_video_seconds_limit", "monthly_ai_cost_limit")
+                  "monthly_generated_video_seconds_limit")
 # La Biblioteca no consume generación: tiene su propio límite de almacenamiento, que fija el operador.
 # 0 = Biblioteca no habilitada (por defecto: ninguna empresa recibe espacio automáticamente); null = sin límite.
 GEN_DEFAULTS: Dict[str, Any] = {"ai_generation_enabled": False, "max_upload_bytes": 52428800,
-                                "library_storage_limit_bytes": 0, **{k: 0 for k in GEN_LIMIT_KEYS}}
+                                "library_storage_limit_bytes": 0, "max_retention_days": 30,
+                                **{k: 0 for k in GEN_LIMIT_KEYS}}
 
 
 def check_media_transition(current: str, target: str) -> None:
@@ -85,9 +87,10 @@ def limit_left(limit: Optional[float], used: float) -> Optional[float]:
 
 
 def check_generation_limits(settings: Dict[str, Any], usage: Dict[str, float], *, regeneration: bool,
-                            images: int, video_seconds: int, max_cost: float) -> None:
+                            images: int, video_seconds: int) -> None:
     """Se comprueba al APROBAR un trabajo (antes de cualquier gasto, también para el mock). Cuenta el mes
-    del tenant. Interruptor apagado o límite principal en 0 = "generación no habilitada en este plan"."""
+    del tenant. Interruptor apagado o límite principal en 0 = "generación no habilitada en este plan".
+    El COSTO se controla aparte con la reserva atómica del presupuesto global (services/aita_cost_budget.py)."""
     if not generation_enabled(settings):
         raise DomainError("generation_disabled", 403)
     checks = (
@@ -95,7 +98,6 @@ def check_generation_limits(settings: Dict[str, Any], usage: Dict[str, float], *
         ("monthly_regeneration_limit", usage.get("regenerations", 0), 1 if regeneration else 0),
         ("monthly_generated_image_limit", usage.get("images", 0), images),
         ("monthly_generated_video_seconds_limit", usage.get("video_seconds", 0), video_seconds),
-        ("monthly_ai_cost_limit", usage.get("cost", 0), max_cost),
     )
     for key, used, needed in checks:
         if needed <= 0:
@@ -111,7 +113,7 @@ def check_generation_limits(settings: Dict[str, Any], usage: Dict[str, float], *
 def generation_enabled(settings: Dict[str, Any]) -> bool:
     """Para la interfaz: ¿el plan permite generar algo (real o simulado)?"""
     return (settings.get("ai_generation_enabled") is True and settings.get("monthly_generation_job_limit", 0) != 0
-            and settings.get("monthly_ai_cost_limit", 0) != 0)     # presupuesto 0 = nada, ni siquiera el mock
+            and settings.get("monthly_marketing_ai_cost_limit_cents", 0) != 0)   # presupuesto IA 0 = nada, ni el mock
 
 
 def library_state(limit: Optional[int], used: int) -> str:

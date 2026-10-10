@@ -21,6 +21,7 @@ from typing import Any, Dict, Optional
 
 from services import marketing_jobs_domain as jd
 from services import marketing_privacy as pv
+from services.aita_cost_budget import CostBudget, to_cents
 from services.marketing import _guard
 from services.marketing_ai_router import MarketingAIRouter, default_adapters
 from services.marketing_library import media_for_job
@@ -37,12 +38,33 @@ JOB_COLS = ("id,tenant_id,content_id,created_by,task_type,status,real_media_perc
             "result_metadata,error_code,created_at,updated_at,approved_at,completed_at")
 
 
+def public_job(j: Dict[str, Any]) -> Dict[str, Any]:
+    """Lo que ve el tenant: sin proveedores, modelos, costos unitarios ni fuentes de precio (datos internos)."""
+    if not isinstance(j, dict):
+        return j
+    out = {k: v for k, v in j.items() if k not in ("selected_provider", "selected_model", "provider_job_id")}
+    meta = dict(out.get("request_metadata") or {})
+    est = meta.get("estimate")
+    if isinstance(est, dict):
+        meta["estimate"] = {"estimated_cost": est.get("estimated_cost"), "currency": est.get("currency"),
+                            "plan": est.get("plan"), "full_ai": est.get("full_ai"),
+                            "production_methods": est.get("production_methods"),
+                            "catalog_version": est.get("catalog_version"),
+                            "generated_video_seconds": est.get("generated_video_seconds"),
+                            "subtasks": [{"task_type": t.get("task_type"), "external": t.get("external"),
+                                          "privacy_class": t.get("privacy_class"), "units": t.get("units")}
+                                         for t in est.get("subtasks") or []]}
+    out["request_metadata"] = meta
+    return out
+
+
 class StudioService(StudioBase):
     def __init__(self, db, now=None, providers=None, router: Optional[MarketingAIRouter] = None,
                  adapters: Optional[Dict[str, Any]] = None):
         super().__init__(db, now=now, providers=providers)
         self.router = router or MarketingAIRouter()
         self.adapters = adapters or default_adapters()
+        self.budget = CostBudget(self.db)
 
     # ------------------------------------------------------------------ helpers
     def _job_event(self, c, job_id: str, action: str, frm: Optional[str], to: str, detail: Optional[Dict] = None):
@@ -69,7 +91,7 @@ class StudioService(StudioBase):
             "tenant_id": f"eq.{c.tenant_id}", "and": f"(approved_at.gte.{start},approved_at.lt.{end})",
             "select": "status,regeneration_of,actual_cost,estimated_cost,provider_job_id,request_metadata",
             "limit": "10000"}) or []
-        u = {"jobs": 0, "regenerations": 0, "images": 0, "video_seconds": 0, "cost": 0.0}
+        u = {"jobs": 0, "regenerations": 0, "images": 0, "video_seconds": 0}
         for r in rows:
             free = r["status"] in ("cancelled", "failed") and not r.get("provider_job_id") and not r.get("actual_cost")
             if free:
@@ -79,7 +101,6 @@ class StudioService(StudioBase):
             u["regenerations"] += 1 if r.get("regeneration_of") else 0
             u["images"] += int(est.get("generated_images") or 0)
             u["video_seconds"] += int(est.get("generated_video_seconds") or 0)
-            u["cost"] += float(r["actual_cost"] if r.get("actual_cost") is not None else (r.get("estimated_cost") or 0))
         return u
 
     def _job(self, c, job_id: Any) -> Dict[str, Any]:
@@ -94,9 +115,10 @@ class StudioService(StudioBase):
                                                    "limit": "1000"}) or []
         usable = sum(1 for m in media if pv.usable_media(m) is None and pv.original_class(m) in pv.EXTERNAL_OK)
         return {"limits": {k: c.settings.get(k) for k in ("ai_generation_enabled", *jd.GEN_LIMIT_KEYS)},
+                "budget": self.budget.summary(c.tenant_id),
                 "generation_enabled": jd.generation_enabled(c.settings),
                 "usage": self._gen_usage(c), "suggestion": suggest_mix(len(media), usable),
-                "catalog": self.router.catalog.public(), "presets": [list(p) for p in ((100, 0), (75, 25), (50, 50),
+                "catalog": {"catalog_version": self.router.catalog.version}, "presets": [list(p) for p in ((100, 0), (75, 25), (50, 50),
                                                                                       (25, 75), (0, 100))],
                 "providers": {"omniroute_enabled": bool(self.adapters["omniroute"].enabled()), "mock": True}}
 
@@ -214,10 +236,17 @@ class StudioService(StudioBase):
         est = (j["request_metadata"] or {}).get("estimate") or {}
         jd.check_generation_limits(c.settings, self._gen_usage(c), regeneration=bool(j.get("regeneration_of")),
                                    images=int(est.get("generated_images") or 0),
-                                   video_seconds=int(est.get("generated_video_seconds") or 0),
-                                   max_cost=float(j["estimated_cost"] or 0))
-        return self._move(c, j, "queued", "approve", {"approved_at": c.now.isoformat(), "approved_by": c.user["id"]},
-                          approved=True, detail={"estimated_cost": j["estimated_cost"]})
+                                   video_seconds=int(est.get("generated_video_seconds") or 0))
+        # Presupuesto global: reserva atómica del costo máximo estimado ANTES de entrar en cola.
+        cents = to_cents(j.get("estimated_cost"))
+        key = f"job:{j['id']}"
+        self.budget.reserve(c.tenant_id, "marketing_ai", "router", None, "reel_generation", cents, key)
+        try:
+            return self._move(c, j, "queued", "approve", {"approved_at": c.now.isoformat(), "approved_by": c.user["id"]},
+                              approved=True, detail={"estimated_cost": j["estimated_cost"], "reserved_cents": cents})
+        except PortalError:
+            self.budget.release(c.tenant_id, key)          # no quedó aprobado: se libera la reserva
+            raise
 
     @_guard
     def reopen_job(self, jwt: str, tenant_id: str, job_id: str) -> Dict[str, Any]:
@@ -230,8 +259,11 @@ class StudioService(StudioBase):
         c = self.ctx(jwt, tenant_id)
         self._writable(c)
         j = self._job(c, job_id)
-        return self._move(c, j, "cancelled", "cancel", {"error_code": "cancelled_by_user",
-                                                        "completed_at": c.now.isoformat()})
+        out = self._move(c, j, "cancelled", "cancel", {"error_code": "cancelled_by_user",
+                                                       "completed_at": c.now.isoformat()})
+        if j["status"] == "queued":
+            self.budget.release(c.tenant_id, f"job:{j['id']}")   # nada se gastó: se libera todo
+        return out
 
     @_guard
     def process_job(self, jwt: str, tenant_id: str, job_id: str) -> Dict[str, Any]:
@@ -261,6 +293,9 @@ class StudioService(StudioBase):
             raise PortalError("job_not_succeeded", 409)
         if j.get("content_id"):
             raise PortalError("already_sent", 409)
+        why = recheck_inputs(self.db, c.tenant_id, j["id"])
+        if why:
+            raise PortalError(why, 409)            # p. ej. consentimiento retirado: el resultado no se reutiliza
         brief = (j["request_metadata"] or {}).get("brief") or {}
         script = brief.get("script") or {}
         item = self.create_content(jwt, c.tenant_id, {

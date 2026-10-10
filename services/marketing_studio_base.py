@@ -28,9 +28,14 @@ def uid(v: Any, code: str = "not_found", status: int = 404) -> str:
 class StudioBase(MarketingService):
     def _settings(self, tenant_id: str) -> Dict[str, Any]:
         row = (self.db.select("marketing_settings", {"tenant_id": f"eq.{tenant_id}", "select": "*", "limit": "1"}) or [None])[0]
-        out = {**d.DEFAULT_SETTINGS, **jd.GEN_DEFAULTS}
+        out = {**d.DEFAULT_SETTINGS, **jd.GEN_DEFAULTS, "monthly_marketing_ai_cost_limit_cents": 0}
         if row:
             out.update({k: row.get(k) for k in out if k in row})
+        # Presupuesto global de costos (lo fija el operador). Sin fila → 0: generación no habilitada.
+        budget = (self.db.select("aita_cost_budgets", {"tenant_id": f"eq.{tenant_id}",
+                                                       "select": "monthly_marketing_ai_cost_limit_cents",
+                                                       "limit": "1"}) or [{}])[0]
+        out["monthly_marketing_ai_cost_limit_cents"] = int(budget.get("monthly_marketing_ai_cost_limit_cents") or 0)
         return out
 
     def _writable(self, c) -> None:

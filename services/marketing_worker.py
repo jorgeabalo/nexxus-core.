@@ -11,16 +11,18 @@ AITA Marketing (Fase 2) — ejecución de trabajos de generación (preparada par
   desplegado: la petición HTTP solo puede ejecutar trabajos 100 % simulados (rápidos, sin red).
 """
 from types import SimpleNamespace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from services import marketing_jobs_domain as jd
 from services import marketing_privacy as pv
+from services.aita_cost_budget import CostBudget, to_cents
 from services.marketing_ai_router import RouteRequest
 
-JOB_COLS = ("id,tenant_id,content_id,status,quality_tier,maximum_cost,currency,approved_at,approved_by,"
+JOB_COLS = ("id,tenant_id,content_id,status,quality_tier,maximum_cost,estimated_cost,currency,approved_at,approved_by,"
             "request_metadata,result_metadata,real_media_percent,ai_media_percent")
-MEDIA_CHECK = "id,processing_status,validation_status,contains_people,contains_minors,people_policy,consent_status"
+MEDIA_CHECK = ("id,processing_status,validation_status,contains_people,contains_minors,people_policy,consent_status,"
+               "retention_status")
 
 
 class WorkerError(Exception):
@@ -58,6 +60,7 @@ def all_mock(est: Dict[str, Any]) -> bool:
 class JobRunner:
     def __init__(self, db, router, adapters: Dict[str, Any], now: Optional[datetime] = None):
         self.db, self.router, self.adapters, self._now = db, router, adapters, now
+        self.budget = CostBudget(db)
 
     def _c(self, tenant_id: str):
         return SimpleNamespace(tenant_id=tenant_id, now=self._now or datetime.now(timezone.utc))
@@ -78,8 +81,11 @@ class JobRunner:
         return rows[0]
 
     def _fail(self, c, j, code: str, cost: float):
-        return self._move(c, j, "failed", "fail", {"error_code": jd.public_error(code), "actual_cost": round(cost, 4),
-                                                   "completed_at": c.now.isoformat()}, detail={"error_code": code})
+        out = self._move(c, j, "failed", "fail", {"error_code": jd.public_error(code), "actual_cost": round(cost, 4),
+                                                  "completed_at": c.now.isoformat()}, detail={"error_code": code})
+        spent = to_cents(cost) or 0                       # se registra lo gastado; el resto de la reserva se libera
+        self.budget.reconcile(c.tenant_id, f"job:{j['id']}", spent, release=spent == 0)
+        return out
 
     def run(self, tenant_id: str, job_id: str) -> Dict[str, Any]:
         c = self._c(tenant_id)
@@ -113,8 +119,8 @@ class JobRunner:
             if res.status != "succeeded":
                 return self._fail(c, j, jd.public_error(res.error_code), total)
             cost = float(res.actual_cost or 0)
-            if total + cost > float(j["maximum_cost"]):
-                return self._fail(c, j, "budget_exceeded", total)
+            if total + cost > min(float(j["maximum_cost"]), float(j.get("estimated_cost") or 0)):
+                return self._fail(c, j, "budget_exceeded", total)      # nunca más que lo aprobado y reservado
             total += cost
             n += 1
             first = first or (st["provider"], st["model_id"], res.provider_job_id)
@@ -127,6 +133,7 @@ class JobRunner:
         mock = all_mock(est)
         self._outputs(c, j, est, mock)
         prov, model_id, pjid = first or ("mock", None, None)
+        self.budget.reconcile(tenant_id, f"job:{j['id']}", to_cents(round(total, 4)) or 0)   # costo real; libera el resto
         return self._move(c, j, "succeeded", "succeed", {
             "actual_cost": round(total, 4), "selected_provider": prov, "selected_model": model_id,
             "provider_job_id": pjid, "completed_at": c.now.isoformat(),
@@ -134,7 +141,9 @@ class JobRunner:
 
     def _outputs(self, c, j, est: Dict[str, Any], mock: bool) -> None:
         brief = (j["request_metadata"] or {}).get("brief") or {}
-        base = {"tenant_id": c.tenant_id, "job_id": j["id"]}
+        # Resultados temporales: simulados 7 días, reales 30 (después los purga el RetentionRunner).
+        expires = (c.now + timedelta(days=7 if mock else 30)).isoformat()
+        base = {"tenant_id": c.tenant_id, "job_id": j["id"], "expires_at": expires}
         self.db.insert("marketing_generation_outputs", {**base, "kind": "script",
                                                         "metadata": {"script": brief.get("script"), "mock": mock}})
         for p in (est.get("plan") or {}).get("plan") or []:

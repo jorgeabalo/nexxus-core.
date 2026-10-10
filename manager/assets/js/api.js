@@ -274,6 +274,7 @@ export const api = {
     async previewBlob(tenantId, mediaId, derivativeId) {
       return blob(`/api/manager/marketing/library/${encodeURIComponent(mediaId)}/content?${qs({ tenant_id: tenantId, derivative_id: derivativeId })}`);
     },
+    setRetention(tenantId, id, days) { return backend('POST', `/api/manager/marketing/library/${encodeURIComponent(id)}/retention`, { tenant_id: tenantId, days }); },
     revokeConsent(tenantId, id) { return backend('POST', `/api/manager/marketing/library/${encodeURIComponent(id)}/revoke-consent`, { tenant_id: tenantId }); },
     deleteMedia(tenantId, id, reason) {
       return backend('POST', `/api/manager/marketing/library/${encodeURIComponent(id)}/delete`, { tenant_id: tenantId, reason, confirm: true });

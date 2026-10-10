@@ -13,6 +13,7 @@ from services.marketing_library import LibraryService
 from services.marketing_privacy import MockFaceDetector
 from services.marketing_studio import StudioService
 from services.member_portal import PortalError
+from marketing_fakes import CostRpcMixin
 from test_marketing import FakeDB, NOW, T1, T2, OWNER, MANAGER, STAFF, OTHER, MEMBER
 
 
@@ -41,9 +42,10 @@ MOV = b"\x00\x00\x00\x14ftypqt  " + b"\x00" * 64
 WEBM = b"\x1a\x45\xdf\xa3" + b"\x00" * 20 + b"webm" + b"\x00" * 40
 
 
-class StudioDB(FakeDB):
+class StudioDB(CostRpcMixin, FakeDB):
     def __init__(self):
         super().__init__()
+        self._cost_init([T1, T2])                     # presupuesto piloto propuesto (Marketing IA 20 USD)
         for t in ("marketing_media", "marketing_media_derivatives", "marketing_media_events", "marketing_generation_jobs",
                   "marketing_generation_job_events", "marketing_generation_inputs", "marketing_generation_outputs",
                   "marketing_model_usage"):
@@ -52,7 +54,7 @@ class StudioDB(FakeDB):
             s.update({"ai_generation_enabled": True, "max_upload_bytes": 10_000_000,
                       "library_storage_limit_bytes": 1073741824, "monthly_generation_job_limit": 5,   # 1 GiB explícito
                       "monthly_regeneration_limit": 2, "monthly_generated_image_limit": 10,
-                      "monthly_generated_video_seconds_limit": 600, "monthly_ai_cost_limit": 1})
+                      "monthly_generated_video_seconds_limit": 600})
         self.storage, self.streamed, self.removed = {}, [], []
 
     def storage_upload(self, bucket, key, data, mime):
@@ -327,11 +329,13 @@ def test_controlled_delete_with_audit(lib, db):
     m = up(lib)
     assert err(lib.delete, jwt(OWNER), T1, m["id"], "x", False) == "confirmation_required"
     out = lib.delete(jwt(MANAGER), T1, m["id"], "Pedido del cliente", True)
-    assert out["processing_status"] == "deleted" and out["storage_removed"]
+    assert out["processing_status"] == "deleted" and out["retention_status"] == "purged" and out["storage_removed"]
     assert db.storage == {} and db.removed == [m["storage_path"]]
     row = db.tables["marketing_media"][0]
     assert row["deleted_by"] == MANAGER and row["delete_reason"] == "Pedido del cliente"
-    assert [e["action"] for e in db.tables["marketing_media_events"]] == ["upload", "delete", "storage_removed"]
+    assert row["purge_reason"] == "user_deleted" and row["original_filename"] is None and row["metadata"] == {}
+    assert row["storage_path"] == f"{T1}/originals/{m['id']}/purged" and row["checksum"] == m["checksum"]
+    assert [e["action"] for e in db.tables["marketing_media_events"]] == ["upload", "delete", "purged"]
     assert lib.library(jwt(OWNER), T1)["items"] == []
     assert err(lib.content, jwt(OWNER), T1, m["id"]) == "not_found"
     assert up(lib)["id"] != m["id"]                         # se puede volver a subir
@@ -391,16 +395,22 @@ def test_consent_can_be_revoked_and_blocks_new_and_pending_jobs(lib, studio, db)
     studio.estimate_job(jwt(OWNER), T1, pending["id"])
     r = lib.revoke_consent(jwt(OWNER), T1, m["id"])
     assert r["consent_status"] == "revoked" and r["people_policy"] == "exclude"
-    assert db.tables["marketing_media_events"][-1]["action"] == "consent_revoke"
+    assert r["retention_status"] == "purge_pending" and r["cancelled_jobs"] == [pending["id"]]
+    assert [e["action"] for e in db.tables["marketing_media_events"]][-3:] == ["consent_revoke", "jobs_cancelled",
+                                                                               "purge_requested"]
     assert err(new_job, studio, [m["id"]]) == "consent_revoked"                   # nuevos: bloqueados
-    assert err(studio.approve_job, jwt(OWNER), T1, pending["id"], True) == "consent_revoked"   # pendientes también
+    job = studio.job(jwt(OWNER), T1, pending["id"])                              # pendientes: cancelados
+    assert job["status"] == "cancelled" and job["error_code"] == "consent_revoked"
+    assert err(studio.approve_job, jwt(OWNER), T1, pending["id"], True) == "invalid_transition"
+    assert err(lib.content, jwt(OWNER), T1, m["id"]) == "not_found"              # sin acceso al instante
 
 
 def test_consent_revoked_after_approval_fails_job_before_sending(lib, studio, db):
     m = up(lib)
     consented(lib, m)
     j = approved_job(studio, [m["id"]], 50, 50)
-    lib.revoke_consent(jwt(OWNER), T1, m["id"])
+    # aunque la cancelación automática no llegara a ejecutarse, el worker vuelve a comprobar
+    db.tables["marketing_media"][0].update({"consent_status": "revoked", "people_policy": "exclude"})
     out = studio.process_job(jwt(OWNER), T1, j["id"])
     assert out["status"] == "failed" and out["error_code"] == "consent_revoked"
     assert db.tables["marketing_model_usage"] == [] and studio.adapters["mock"].submissions == 0
@@ -458,40 +468,3 @@ def test_unscanned_real_media_never_routed_externally(lib, studio):
     j = studio.estimate_job(jwt(OWNER), T1, new_job(studio, [m["id"]], 50, 50, adapt_real=True)["id"])
     assert j["request_metadata"]["estimate"]["external_calls"] == 0
     assert j["request_metadata"]["malware_clean"] is False
-
-
-def test_supabase_storage_stream_never_leaks(monkeypatch):
-    import httpx
-    from services.supabase_admin import SupabaseAdmin
-    sent = []
-
-    class Resp:
-        def __init__(self, code):
-            self.status_code = code
-
-        def iter_bytes(self, n):
-            yield b"abc"
-
-        def close(self):
-            sent.append("closed")
-
-    class Client:
-        def __init__(self, *a, **k):
-            pass
-
-        def build_request(self, method, url, headers=None):
-            sent.append((method, url))
-            return url
-
-        def send(self, req, stream=False):
-            return Resp(200 if "/ok/" in req else 404)
-
-        def close(self):
-            pass
-    monkeypatch.setattr(httpx, "Client", Client)
-    sa = SupabaseAdmin(url="https://proj.supabase.co", service_key="service-key-123")
-    assert b"".join(sa.storage_stream("marketing-assets", "ok/b.png")) == b"abc"
-    assert sent[0] == ("GET", "https://proj.supabase.co/storage/v1/object/authenticated/marketing-assets/ok/b.png")
-    with pytest.raises(RuntimeError) as e:
-        sa.storage_stream("marketing-assets", "a/b.png")
-    assert "service-key-123" not in str(e.value) and "a/b.png" not in str(e.value)

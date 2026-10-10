@@ -16,7 +16,7 @@ const jobBadge = (st) => badge(st, s(`js_${st}`));
 export async function studioView(ctx, goJobs) {
   const [ov, lib] = await Promise.all([M.studio(ctx.tenantId), M.library(ctx.tenantId)]);
   const usable = lib.items.filter(usableAsSource);
-  const w = { step: 0, objective: 'new_members', audience: 'general', audience_notes: '', mixReal: 50, scenes: 6,
+  const w = { step: 0, objective: 'new_members', audience: 'general', audience_notes: '', mixReal: ov.suggestion.real_media_percent, scenes: 6,
     adapt_real: false, media: new Set(), style: 'energetic', duration: 30, subtitles: true, targets: new Set(['instagram']),
     cover: 0, hook: '', body: '', cta: '', quality: 'draft', maxCost: '1.00', key: newIdempotencyKey() };
   const root = el('div', { class: 'mk-studio' });
@@ -81,7 +81,7 @@ export async function studioView(ctx, goJobs) {
     cost: () => el('div', { class: 'form-grid' },
       field(s('quality'), select(opts(QUALITY, 'q_', w.quality), { onchange: e => { w.quality = e.target.value; } })),
       field(s('maxCost'), input({ type: 'number', min: '0', max: '10000', step: '0.01', value: w.maxCost, oninput: e => { w.maxCost = e.target.value; } })),
-      el('p', { class: 'hint full' }, `${s('catalogV')}: ${ov.catalog.catalog_version} · ${ov.catalog.price_source}`)),
+      el('p', { class: 'hint full' }, `${s('catalogV')}: ${ov.catalog.catalog_version}`)),
     review: () => {
       const a = approxScenes(w.mixReal, w.scenes, w.duration, w.adapt_real);
       return el('dl', { class: 'mk-summary' },
@@ -144,9 +144,10 @@ function jobDetail(ctx, id, reload, genEnabled = true) {
       j.error_code ? el('p', { class: 'error-box' }, sErr({ code: j.error_code })) : null,
       (j.result_metadata || {}).mock ? el('p', { class: 'mk-note' }, `${s('mock')}: ${sErr({ code: 'mock_content_not_publishable' })}`) : null,
       est ? el('div', {}, el('p', {}, `${s('estimated')}: ${fmtCost(est.estimated_cost, est.currency)} · ${s('catalogV')} ${est.catalog_version}`),
-        table([{ label: s('subtasks'), key: 'task_type' }, { label: s('provider'), render: r => `${r.provider} (${r.external ? s('external') : s('local')})` },
-          { label: s('privacy'), render: r => privacyBadge(r.privacy_class) }, { label: s('cost'), num: true, render: r => fmtCost(r.estimated_cost, est.currency) }],
-        est.subtasks)) : null,
+        est.full_ai ? el('p', { class: 'mk-note' }, s('fullAiNote')) : null,
+        // Sin proveedores ni costos unitarios: son datos internos. Solo el método y la privacidad.
+        table([{ label: s('subtasks'), key: 'task_type' }, { label: s('method'), render: r => (r.external ? s('external') : s('local')) },
+          { label: s('privacy'), render: r => privacyBadge(r.privacy_class) }], est.subtasks)) : null,
       scenes.length ? el('div', {}, el('h3', {}, s('byOrigin')), el('ul', {}, Object.entries(by).map(([k, v]) =>
         el('li', {}, `${s(`or_${k}`)}: ${v.n} · ${Math.round(v.ms / 1000)}${s('seconds')}`)))) : null,
       el('div', { class: 'btn-row mk-job-actions' },
@@ -166,6 +167,24 @@ function jobDetail(ctx, id, reload, genEnabled = true) {
   draw();
 }
 
+// Presupuesto mensual de Marketing IA y total del tenant: consumido, reservado, disponible y avisos 25/10/0 %.
+function budgetCard(b) {
+  if (!b) return null;
+  const usd = (c) => fmtCost((c || 0) / 100, 'USD');
+  const row = (label, x) => {
+    const fill = el('span');
+    fill.style.width = `${x.limit_cents ? Math.min(100, 100 * (x.consumed_cents + x.reserved_cents) / x.limit_cents) : 100}%`;
+    return el('div', { class: 'mk-usage' },
+      el('div', { class: 'mk-usage-head' }, el('span', {}, label), el('span', {}, `${usd(x.available_cents)} ${s('available')}`)),
+      el('div', { class: `mk-meter${x.warning && x.warning !== 'low' ? ' full' : ''}`, role: 'progressbar',
+        'aria-valuemin': '0', 'aria-valuemax': String(x.limit_cents), 'aria-valuenow': String(x.consumed_cents + x.reserved_cents) }, fill),
+      el('p', { class: 'hint' }, `${s('monthlyBudget')}: ${usd(x.limit_cents)} · ${s('consumed')}: ${usd(x.consumed_cents)} · ${s('reserved')}: ${usd(x.reserved_cents)}`),
+      x.warning ? el('p', { class: `mk-budget-warn mk-bw-${x.warning}`, role: 'status', dataset: { warning: x.warning } }, s(`bw_${x.warning}`)) : null);
+  };
+  return card(s('budgetTitle'), el('div', { class: 'card-body' }, row(s('budgetMarketing'), b.marketing_ai), row(s('budgetTotal'), b.total),
+    el('p', { class: 'hint' }, s('budgetAdsNote'))));
+}
+
 export async function jobsView(ctx, reload, openId) {
   const [list, ov] = await Promise.all([M.jobs(ctx.tenantId), M.studio(ctx.tenantId)]);
   const u = ov.usage, l = ov.limits;
@@ -179,7 +198,8 @@ export async function jobsView(ctx, reload, openId) {
       kpi(s('l_regenerations'), `${u.regenerations} / ${lim(l.monthly_regeneration_limit)}`),
       kpi(s('l_images'), `${u.images} / ${lim(l.monthly_generated_image_limit)}`),
       kpi(s('l_video_seconds'), `${u.video_seconds} / ${lim(l.monthly_generated_video_seconds_limit)}`),
-      kpi(s('l_cost'), `${fmtCost(u.cost)} / ${lim(l.monthly_ai_cost_limit)}`)),
+      ),
+    budgetCard(ov.budget),
     card(s('tab_jobs'), table([
       { label: s('created_at'), render: j => fmtDateTime(j.created_at) },
       { label: s('status'), render: j => jobBadge(j.status) },
@@ -188,9 +208,5 @@ export async function jobsView(ctx, reload, openId) {
       { label: s('quality'), render: j => s(`q_${j.quality_tier}`) },
       { label: s('cost'), num: true, render: j => fmtCost(j.actual_cost ?? j.estimated_cost, j.currency) },
     ], list.items, { onRowClick: j => jobDetail(ctx, j.id, reload, gen), emptyText: s('noJobs') })),
-    card(s('admin'), table([
-      { label: s('provider'), key: 'provider' }, { label: s('model'), key: 'model_id' },
-      { label: s('status'), render: m => (m.enabled ? s('enabled') : s('disabled')) + (m.price_verified ? '' : ` · ${s('priceUnverified')}`) },
-      { label: s('cost'), render: m => (m.estimated_cost === null ? '—' : `${m.estimated_cost} / ${m.billing_unit}`) },
-    ], ov.catalog.models)));
+    );
 }

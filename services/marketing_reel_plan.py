@@ -12,6 +12,7 @@ una. Si la suma supera el coste máximo aprobado → budget_exceeded (nunca se s
 import re
 from typing import Any, Dict, List
 
+from services.aita_cost_budget import PRODUCTION_PRIORITY
 from services.marketing_ai_router import MarketingAIRouter, RouteRequest, RouterError
 from services.marketing_domain import DomainError
 from services.marketing_mix import plan_scenes
@@ -21,6 +22,9 @@ AUDIENCES = ("general", "seniors_60_plus", "beginners", "athletes", "parents", "
 STYLES = ("energetic", "calm", "professional", "cinematic", "educational")
 DURATIONS = (15, 30, 45, 60)
 FUTURE_TARGETS = ("instagram", "facebook", "tiktok", "youtube_shorts")
+PRIORITY_OF = {"final_render": "templates_ffmpeg", "subtitles": "templates_ffmpeg", "face_anonymization": "local_processing",
+               "storyboard": "small_models", "moderation": "small_models", "image_generation": "image_generation",
+               "image_edit": "image_generation", "image_to_video": "image_to_video", "text_to_video": "text_to_video"}
 ASPECT_RATIO, OUTPUT_FORMAT = "9:16", "mp4"
 # Prohibido en adaptaciones y guiones (también se comprueba con moderación cuando exista proveedor).
 FORBIDDEN_CLAIMS = re.compile(r"(?i)(antes\s*y\s*despu[eé]s|before\s*(and|&)\s*after|garantizad|guaranteed|"
@@ -115,4 +119,9 @@ def estimate(router: MarketingAIRouter, *, tenant_id: str, job_key: str, brief: 
     return {"plan": plan, "subtasks": rows, "estimated_cost": total, "currency": router.catalog.currency,
             "catalog_version": router.catalog.version, "price_source": router.catalog.price_source,
             "generated_images": images, "generated_video_seconds": video_seconds,
-            "external_calls": sum(1 for r in rows if r["external"])}
+            "external_calls": sum(1 for r in rows if r["external"]),
+            # Reel 100 % IA: se muestra su costo máximo, consume Marketing IA y puede ofrecerse como add-on.
+            "full_ai": mix["ai_media_percent"] == 100,
+            "production_methods": sorted({PRIORITY_OF.get(r["task_type"], "small_models") for r in rows}
+                                         | ({"client_material"} if mix["real_media_percent"] else set()),
+                                         key=PRODUCTION_PRIORITY.index)}

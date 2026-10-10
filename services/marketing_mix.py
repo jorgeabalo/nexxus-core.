@@ -79,15 +79,14 @@ def plan_scenes(real: int, ai: int, scenes: int, duration_s: int, adapt_real: bo
 
 
 def suggest_mix(real_assets: int, consented_or_clean: int) -> Dict[str, Any]:
-    """Sugerencia determinista (no vinculante) según cuánto material utilizable hay."""
+    """Sugerencia determinista (no vinculante). Prioridad económica: primero el material del cliente
+    con render local; la IA completa solo si no hay material utilizable."""
     if real_assets <= 0 or consented_or_clean <= 0:
         r = 0
-    elif consented_or_clean >= 6:
-        r = 75
     elif consented_or_clean >= 3:
-        r = 50
+        r = 100
     else:
-        r = 25
+        r = 75
     return {"real_media_percent": r, "ai_media_percent": 100 - r, "is_suggestion": True,
             "requires_confirmation": True}
 

@@ -112,6 +112,25 @@ function derivativeRow(ctx, m, d, reload) {
     d.status === 'mock_only' ? el('button', { class: 'btn btn-sm', type: 'button', onclick: () => act(false) }, s('rejectDer')) : null);
 }
 
+// Vencimiento: fecha exacta, aviso 7 días antes y cambio de duración SOLO dentro del máximo del plan.
+// Nunca se extiende automáticamente ni existe la opción "permanente".
+function retentionCell(ctx, m, plan, reload) {
+  const r = m.retention || {};
+  const choices = (plan && plan.choices) || [];
+  const sel = select([{ value: '', label: s('changeRetention') },
+    ...choices.map(d => ({ value: String(d), label: s('retentionDays', d) }))], { 'aria-label': s('changeRetention'),
+    onchange: async (e) => {
+      if (!e.target.value) return;
+      try { await M.setRetention(ctx.tenantId, m.id, Number(e.target.value)); toast(s('retentionSaved')); reload(); }
+      catch (x) { toast(sErr(x), 'error'); e.target.value = ''; }
+    } });
+  return el('div', { class: `mk-ret${r.warning ? ' mk-ret-warn' : ''}` },
+    el('span', {}, r.expires_at ? fmtDateTime(r.expires_at) : '—'),
+    r.warning ? el('span', { class: 'badge mk-s-review' }, s('expiresIn', r.days_left)) : null,
+    m.retention_status === 'protected_by_workflow' ? el('span', { class: 'hint' }, s('protectedByWorkflow')) : null,
+    sel, el('span', { class: 'hint' }, s('retentionMax', plan ? plan.max_days : 30)));
+}
+
 export async function libraryView(ctx, reload) {
   const data = await M.library(ctx.tenantId);
   const fileInput = el('input', { type: 'file', accept: ACCEPT, class: 'sr-only', id: `mk-up-${Date.now()}` });
@@ -159,6 +178,7 @@ export async function libraryView(ctx, reload) {
     { label: s('scan'), render: m => el('span', { class: 'mk-scan' }, m.validation_status === 'passed' ? `${s('formatOk')} · ` : '',
       s(`scan_${m.malware_scan_status || 'not_scanned'}`)) },
     { label: s('created_at'), render: m => fmtDateTime(m.created_at) },
+    { label: s('expires'), render: m => retentionCell(ctx, m, data.retention, reload) },
     { label: s('actions'), render: m => el('div', { class: 'btn-row mk-lib-actions' },
       el('button', { class: 'btn btn-sm', type: 'button', onclick: () => showPreview(ctx, m) }, s('preview')),
       m.processing_status === 'archived' ? null

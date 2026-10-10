@@ -16,11 +16,13 @@ AITA Marketing (Fase 2) — Biblioteca multimedia privada.
 """
 import logging
 import uuid
+from datetime import timedelta
 from typing import Any, Dict, Optional
 
 from services import marketing_jobs_domain as jd
 from services import marketing_media_files as mf
 from services import marketing_privacy as pv
+from services import marketing_retention as rt
 from services.marketing import _guard
 from services.marketing_studio_base import BUCKET, StudioBase, uid
 from services.member_portal import PortalError
@@ -28,7 +30,8 @@ from services.member_portal import PortalError
 logger = logging.getLogger(__name__)
 MEDIA_COLS = ("id,tenant_id,storage_path,original_filename,media_type,mime_type,byte_size,width,height,duration_ms,"
               "checksum,uploaded_by,created_at,updated_at,validation_status,malware_scan_status,contains_people,"
-              "contains_minors,people_policy,consent_status,consent_updated_at,processing_status,deleted_at,metadata")
+              "contains_minors,people_policy,consent_status,consent_updated_at,processing_status,deleted_at,metadata,"
+              "retention_days,expires_at,retention_status,protected_until,purge_reason")
 DER_COLS = ("id,tenant_id,media_id,kind,method,storage_path,mime_type,status,is_mock,detection_confidence,"
             "review_required,reviewed_by,reviewed_at,created_by,created_at,metadata")
 ACTIVE_JOBS = ("draft", "awaiting_generation_approval", "queued", "processing")
@@ -85,6 +88,7 @@ class LibraryService(StudioBase):
         ders = self.db.select("marketing_media_derivatives", {"tenant_id": f"eq.{c.tenant_id}", "status": "neq.deleted",
                                                               "select": DER_COLS, "limit": "2000"}) or []
         for m in items:
+            m["retention"] = rt.info(m, c.now)
             m["privacy_class"] = pv.original_class(m)
             m["usable"] = pv.usable_media(m) is None and m["privacy_class"] != "restricted"
             m["derivatives"] = [x for x in ders if x["media_id"] == m["id"]]
@@ -95,6 +99,7 @@ class LibraryService(StudioBase):
                 "warnings": list(pv.WARNINGS), "enabled": st["marketing_enabled"],
                 "can_upload": bool(st["marketing_enabled"]) and state in ("enabled", "unlimited"),
                 "generation_enabled": jd.generation_enabled(st), "malware_scanner": self.scanner.name,
+                "retention": {"max_days": rt.plan_max(st), "choices": rt.allowed_choices(st)},
                 "anonymization": "simulated"}
 
     def content(self, jwt: str, tenant_id: str, media_id: str, derivative_id: str = "",
@@ -105,8 +110,9 @@ class LibraryService(StudioBase):
         Devuelve {status, headers, chunks}; chunks es None en HEAD y en 416. Nunca carga el archivo entero."""
         c = self.ctx(jwt, tenant_id)
         m = self._media(c, media_id)
-        if m.get("validation_status") != "passed" or m["processing_status"] in ("rejected", "deleted"):
-            raise PortalError("not_found", 404)
+        if (m.get("validation_status") != "passed" or m["processing_status"] in ("rejected", "deleted")
+                or m.get("retention_status") in rt.PURGE_STATES):
+            raise PortalError("not_found", 404)                    # pendiente de purga o purgado: sin acceso
         path, mime, size = m["storage_path"], m["mime_type"], m.get("byte_size")
         if derivative_id:
             der = self._one(c, "marketing_media_derivatives", derivative_id, DER_COLS + ",byte_size")
@@ -182,7 +188,9 @@ class LibraryService(StudioBase):
             "height": info["height"], "duration_ms": info["duration_ms"], "checksum": info["checksum"],
             "uploaded_by": c.user["id"], "validation_status": "passed", "malware_scan_status": scan,
             "contains_people": None, "contains_minors": None, "people_policy": "exclude",
-            "consent_status": "unknown", "processing_status": "uploaded", "metadata": {}})
+            "consent_status": "unknown", "processing_status": "uploaded", "metadata": {},
+            "retention_days": rt.default_days(c.settings), "retention_status": "active",
+            "expires_at": (c.now + timedelta(days=rt.default_days(c.settings))).isoformat()})
         self._media_event(c, media_id, "upload", {"mime_type": info["mime_type"], "byte_size": info["byte_size"],
                                                   "malware_scan_status": scan})
         # Formato validado: queda listo, pero excluido hasta que owner/manager clasifique personas y menores.
@@ -197,7 +205,7 @@ class LibraryService(StudioBase):
         c = self.ctx(jwt, tenant_id)
         self._writable(c)
         m = self._media(c, media_id)
-        if m["processing_status"] in ("archived", "rejected"):
+        if m["processing_status"] in ("archived", "rejected") or m.get("retention_status") in rt.PURGE_STATES:
             raise PortalError("not_editable", 409)
         tri = lambda v: v if v in (True, False) else None   # noqa: E731
         out = pv.classify(tri(body.get("contains_people")), str(body.get("people_policy") or "exclude"),
@@ -223,9 +231,19 @@ class LibraryService(StudioBase):
         c = self.ctx(jwt, tenant_id)
         self._writable(c)
         m = self._media(c, media_id)
-        return self.classify(jwt, tenant_id, m["id"], {"contains_people": m.get("contains_people"),
-                                                       "contains_minors": m.get("contains_minors"),
-                                                       "people_policy": "exclude", "consent_status": "revoked"})
+        out = self.classify(jwt, tenant_id, m["id"], {"contains_people": m.get("contains_people"),
+                                                      "contains_minors": m.get("contains_minors"),
+                                                      "people_policy": "exclude", "consent_status": "revoked"})
+        # Cancelar trabajos pendientes, bloquear resultados que lo usen y pedir la purga prioritaria.
+        # (Si algún día hay trabajos externos, aquí se pediría también su cancelación al proveedor.)
+        jobs = rt.cancel_jobs_for_media(self.db, c.tenant_id, m["id"], "consent_revoked", c.now, (c.user["id"], c.role))
+        self._media_event(c, m["id"], "jobs_cancelled", {"reason": "consent_revoked", "jobs": len(jobs)})
+        self.db.update("marketing_media", {"id": f"eq.{m['id']}", "tenant_id": f"eq.{c.tenant_id}",
+                                           "processing_status": "neq.deleted"},
+                       {"retention_status": "purge_pending", "purge_reason": "consent_revoked",
+                        "purge_requested_at": c.now.isoformat()})
+        self._media_event(c, m["id"], "purge_requested", {"reason": "consent_revoked"})
+        return {**out, "retention_status": "purge_pending", "cancelled_jobs": jobs}
 
     @_guard
     def set_archived(self, jwt: str, tenant_id: str, media_id: str, archived: bool) -> Dict[str, Any]:
@@ -259,28 +277,40 @@ class LibraryService(StudioBase):
                                                             "status": f"in.({','.join(ACTIVE_JOBS)})",
                                                             "select": "id", "limit": "1"}):
                 raise PortalError("media_in_use", 409)
-        ders = self.db.select("marketing_media_derivatives", {"tenant_id": f"eq.{c.tenant_id}", "media_id": f"eq.{m['id']}",
-                                                              "status": "neq.deleted", "select": DER_COLS, "limit": "200"}) or []
         reason = str(reason or "").strip()[:300] or None
         self._media_event(c, m["id"], "delete", {"reason": reason, "checksum": m["checksum"], "byte_size": m["byte_size"]})
+        if reason:
+            self.db.update("marketing_media", {"id": f"eq.{m['id']}", "tenant_id": f"eq.{c.tenant_id}"}, {"delete_reason": reason})
+        # Misma purga que el worker: bloquea el acceso, borra original y derivados, conserva auditoría mínima.
+        full = self._one(c, "marketing_media", m["id"])
+        result = rt.RetentionRunner(self.db, now=c.now).purge(full, "user_deleted", actor=(c.user["id"], c.role))
+        return {"id": m["id"], "retention_status": "purged" if result == "purged" else "purge_failed",
+                "processing_status": "deleted" if result == "purged" else m["processing_status"],
+                "storage_removed": result == "purged"}
+
+    # ------------------------------------------------------------------ retención
+    @_guard
+    def set_retention(self, jwt: str, tenant_id: str, media_id: str, days: Any) -> Dict[str, Any]:
+        """Owner/manager eligen 7/30/60/90 días desde la subida, nunca por encima del máximo del plan.
+        Sirve para acortar o para extender dentro del máximo; nunca se extiende automáticamente."""
+        c = self.ctx(jwt, tenant_id)
+        self._writable(c)
+        m = self._media(c, media_id)
+        if m.get("retention_status") in rt.PURGE_STATES:
+            raise PortalError("media_pending_deletion", 409)
+        d = rt.check_choice(c.settings, days)
+        exp = rt._dt(m["created_at"]) + timedelta(days=d)
+        if exp <= c.now:
+            raise PortalError("retention_too_short", 409)
+        status = m["retention_status"]
+        if status in ("active", "expiring"):
+            status = "expiring" if exp - c.now <= timedelta(days=rt.WARN_DAYS) else "active"
         rows = self.db.update("marketing_media", {"id": f"eq.{m['id']}", "tenant_id": f"eq.{c.tenant_id}",
-                                                  "processing_status": f"eq.{m['processing_status']}"},
-                              {"processing_status": "deleted", "deleted_by": c.user["id"],
-                               "deleted_at": c.now.isoformat(), "delete_reason": reason})
-        if not rows:
-            raise PortalError("conflict", 409)
-        removed = True
-        for path in [m["storage_path"]] + [d["storage_path"] for d in ders if d.get("storage_path")]:
-            try:
-                self.db.storage_remove(BUCKET, self._path(c, path))
-            except Exception as e:
-                removed = False
-                logger.error(f"MARKETING_REMOVE_ERROR {type(e).__name__}")
-        for d in ders:
-            self.db.update("marketing_media_derivatives", {"id": f"eq.{d['id']}", "tenant_id": f"eq.{c.tenant_id}"},
-                           {"status": "deleted"})
-        self._media_event(c, m["id"], "storage_removed" if removed else "storage_remove_failed")
-        return {"id": m["id"], "processing_status": "deleted", "storage_removed": removed}
+                                                  "processing_status": "neq.deleted"},
+                              {"retention_days": d, "expires_at": exp.isoformat(), "retention_status": status})
+        self._media_event(c, m["id"], "retention_change", {"days": d, "expires_at": exp.isoformat()})
+        row = rows[0] if rows else {**m, "retention_days": d, "expires_at": exp.isoformat()}
+        return {**row, "retention": rt.info(row, c.now)}
 
     # ------------------------------------------------------------------ anonimizar (simulado)
     @_guard
@@ -345,6 +375,8 @@ def media_for_job(svc: StudioBase, c, media_ids, derivative_ids=None) -> Dict[st
         why = pv.usable_media(m)
         if why:
             raise PortalError(why, 409)
+        if rt._dt(m["expires_at"]) <= c.now:
+            raise PortalError("media_expired", 409)
         der = None
         if m.get("people_policy") == "anonymize":
             cands = [x for x in (svc.db.select("marketing_media_derivatives", {

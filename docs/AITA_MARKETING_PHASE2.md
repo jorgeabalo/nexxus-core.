@@ -106,8 +106,8 @@ fijos), no que no pueda eliminarse. Eliminar (owner/manager, con confirmación y
 1. se comprueba que ningún trabajo activo (`draft`, `awaiting_generation_approval`, `queued`, `processing`) lo
    use → si no, `media_in_use` (también lo impone el trigger);
 2. se registra `delete` en `marketing_media_events` (solo inserción) con motivo, checksum y tamaño;
-3. la fila pasa a `deleted` con `deleted_by`/`deleted_at` (la tabla los exige) y ya no puede cambiar;
-4. se eliminan el original y sus derivados de Storage (`storage_removed` o `storage_remove_failed` en la auditoría).
+3. se ejecuta la **misma purga** que la retención automática (ver 4e): bloquea el acceso, borra original y
+   derivados de Storage y deja la fila como registro mínimo (`deleted` + `purged`, con `deleted_by`).
 
 La fila queda como registro (los trabajos terminados que la usaron siguen siendo auditables); un `DELETE` directo
 está prohibido. El mismo archivo puede volver a subirse después.
@@ -130,11 +130,73 @@ está prohibido. El mismo archivo puede volver a subirse después.
 
 ## 4d. Vista previa y CSP
 
-La vista previa **no** usa URLs firmadas: `GET /api/manager/marketing/library/{id}/content` comprueba sesión, rol,
-tenant y ruta, y entrega el archivo **en trozos desde el backend** (mismo origen, `nosniff`, `no-store`). El
-navegador lo descarga con `fetch` (cabecera Authorization), crea un `blob:` en memoria y lo libera al cerrar.
+La vista previa **no** usa URLs firmadas: `GET|HEAD /api/manager/marketing/library/{id}/content` comprueba sesión,
+rol, módulo, tenant, estado del archivo (validado, no eliminado ni pendiente de purga) y ruta **en cada petición**
+(también en HEAD y en cada Range), y entrega el archivo **en trozos desde el backend** (mismo origen, `nosniff`,
+`no-store`). Soporta `Range: bytes=a-b`, `a-` y `-n` (206 + `Content-Range` + `Content-Length`), `Accept-Ranges:
+bytes`, HEAD sin cuerpo (no toca Storage) y 416 para rangos imposibles; varios rangos → se envía completo
+(RFC 9110). El rango se pide así a Storage y, si Storage lo ignorara, se recorta al transmitir: nunca se carga el
+vídeo entero en memoria. El navegador lo descarga con `fetch` (cabecera Authorization), crea un `blob:` en
+memoria y lo libera al cerrar.
 Por eso basta `media-src 'self' blob:` y `img-src` sigue igual: la CSP no se abre a Supabase ni a ningún otro
 dominio, y ninguna URL de Storage llega al navegador ni a los logs. Hay pruebas que fijan las directivas exactas.
+
+## 4e. Retención y eliminación automática
+
+Ningún archivo se guarda indefinidamente (`expires_at` obligatorio, máximo absoluto 90 días desde la subida).
+
+| Caso | Retención |
+|---|---|
+| archivo sin usar | 30 días (o el máximo del plan si es menor) |
+| derivado simulado / temporal | 7 días |
+| resultados de trabajos simulados, fallidos o cancelados | 7 días |
+| usado por un trabajo activo o una publicación programada | protegido hasta que termine, con un límite de seguridad de 14 días tras el vencimiento: si sigue atascado, el trabajo se cancela/falla (`timeout`) y se purga (`workflow_timeout`) |
+| publicación confirmada (`published`) | se elimina 30 días después, sin superar el máximo del plan |
+| consentimiento retirado | purga prioritaria; trabajos pendientes cancelados (reservas liberadas); resultados bloqueados para reutilización |
+
+* El operador fija `max_retention_days` (7–90, por defecto 30). Owner/manager eligen 7, 30, 60 o 90 días desde la
+  subida, nunca por encima del máximo y nunca "permanente" (también lo impone el trigger).
+* Aviso 7 días antes (`expiring` + evento `expiry_warning`, una sola vez); la interfaz muestra la fecha exacta.
+  Nunca se extiende automáticamente.
+* Purga (`services/marketing_retention.py`, `RetentionRunner`): idempotente, aislada por tenant, reintentable
+  (hasta 5 intentos; después queda `purge_failed` para el operador), segura si el objeto ya no existe (404),
+  auditada (`purged`, `purge_failed`) e incapaz de borrar una ruta que no sea `{tenant}/…/{asset}/…` de ese archivo.
+  Al empezar bloquea el acceso (`purge_pending`); al terminar borra original, derivados y resultados temporales y
+  deja solo: id, tenant, hash, tipo, tamaño, quién subió, fechas y motivo (sin nombre, metadatos ni ruta real).
+* **No hay tarea programada en este PR**: `RetentionRunner.run()` está listo para un worker, pero nada lo invoca
+  en producción (lo comprueba una prueba). La única eliminación real posible es la que pide un owner/manager.
+
+## 4f. Control global de costos (< 80 USD/mes por tenant)
+
+Migración `20261011140000_aita_cost_control.sql` + `services/aita_cost_budget.py`.
+
+* `aita_cost_budgets` (solo el operador): `monthly_total_cost_limit_cents` (techo 8000, no se puede superar) y
+  subpresupuestos `monthly_voice_cost_limit_cents` (voz + IA de Claudia), `monthly_marketing_ai_cost_limit_cents`,
+  `monthly_storage_cost_limit_cents`, `monthly_infrastructure_allocation_cents` y `monthly_reserve_cents`, que no
+  pueden sumar más que el total. Por defecto: total 8000 y subpresupuestos **0** (cerrados).
+  Propuesta para el piloto (a aplicar por el operador, no en este PR): voz 3500, Marketing IA 2000, almacenamiento
+  750 + infraestructura 750, reserva 1000.
+* No incluye la inversión publicitaria del cliente (Google Ads, Meta Ads…), que va completamente aparte.
+* `aita_cost_ledger`: registro inmutable (`tenant_id, service_category, provider, model, operation,
+  estimated/reserved/actual_cost_cents, currency, idempotency_key, status, created_at, reconciled_at`); solo una
+  conciliación `reserved → committed/released`; sin borrados.
+* Orden para cualquier operación facturable: estimar el máximo (si no se puede: `cost_not_estimable`, no se
+  ejecuta) → aprobación owner/manager → `aita_cost_reserve` (atómica: `SELECT … FOR UPDATE` sobre el presupuesto
+  del tenant; rechaza si supera el subpresupuesto o el total sin la reserva) → ejecutar con idempotencia →
+  `aita_cost_reconcile` con el costo real (la diferencia queda libre) o liberación si se cancela/falla sin gasto.
+* Reintentos: la clave `job:{id}` nunca reserva ni cobra dos veces.
+* Concurrencia: dos trabajos simultáneos no pueden reservar el mismo saldo. En Python se prueba con hilos reales
+  contra un doble que reproduce el bloqueo; en SQL se prueba la lógica y que la función usa `FOR UPDATE`.
+  **Limitación**: PGlite es de una sola conexión, así que el bloqueo entre conexiones reales de PostgreSQL no se
+  ha ejecutado en este entorno; conviene repetir la prueba de concurrencia en staging.
+* Interfaz: presupuesto mensual, consumido, reservado, disponible y avisos al 25 %, 10 % y 0 %; costo estimado
+  del trabajo. No se muestran proveedores, modelos, costos unitarios ni datos de otros tenants (la API los quita).
+* Prioridad económica: material del cliente → procesamiento local → plantillas/FFmpeg → modelos pequeños →
+  imagen → imagen-a-vídeo → texto-a-vídeo completo como último recurso. La sugerencia por defecto usa el material
+  del cliente; un Reel 100 % IA se marca, muestra su costo máximo, necesita aprobación, se bloquea si amenaza el
+  presupuesto y puede ofrecerse como add-on. Con mocks el costo real es 0.
+* **Voz (Twilio + Claudia) todavía no reserva presupuesto**: el esquema y la categoría existen, pero conectar la
+  reserva al flujo de llamadas en vivo cambia producción y requiere un PR aparte y autorización.
 
 ## 5. Mezcla real / IA
 
@@ -279,6 +341,8 @@ Para activar un proveedor real (cada paso con autorización explícita):
   y los límites en 0; las tablas nuevas pueden quedarse vacías. Borrarlas exige una migración nueva y revisada
   (los historiales son de solo inserción a propósito).
 * Bucket: la migración solo **añade** `video/webm` a los tipos permitidos.
+* Las migraciones de retención y de costos también son aditivas; sin presupuesto configurado la generación queda
+  bloqueada (subpresupuestos en 0).
 * Si las tablas nuevas faltan, los endpoints responden 503 `marketing_unavailable` (sin detalles).
 
 ## 12. Pruebas
@@ -289,7 +353,8 @@ Para activar un proveedor real (cada paso con autorización explícita):
   y `tests/test_marketing_ai_router.py` (catálogo, router, mezcla, sincronía Python↔SQL, endpoints, puerta).
 * JS: `tests/js/marketing-studio.test.mjs` (mezcla, privacidad, etapas, textos ES/EN, sin claves).
 * SQL (PGlite): `tests/sql/marketing_studio.mjs` (RLS, mínimo privilegio, inmutabilidad, trabajos, aislamiento,
-  límites por defecto, bucket, atomicidad).
+  límites por defecto, bucket, atomicidad), `tests/sql/marketing_retention.mjs` y `tests/sql/aita_cost_control.mjs`.
+* Retención y costos: `tests/test_marketing_retention.py` (reloj controlado) y `tests/test_aita_cost_budget.py`.
 * Ejecutar: `PGLITE_NODE_PATH=/ruta/node_modules python3 -m pytest -q tests/test_marketing*.py`.
 
 ## 13. Riesgos y pendientes

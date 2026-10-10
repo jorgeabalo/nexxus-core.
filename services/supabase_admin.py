@@ -91,6 +91,11 @@ class SupabaseAdmin:
     def update(self, table: str, filters: Dict[str, str], values: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
         return self._request("PATCH", table, params=filters, json=values, prefer="return=representation")
 
+    def rpc(self, fn: str, args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Llama a una función de PostgreSQL expuesta por PostgREST (/rest/v1/rpc/<fn>)."""
+        rows = self._request("POST", f"rpc/{fn}", json=args)
+        return rows[0] if rows else None
+
     def delete(self, table: str, filters: Dict[str, str]) -> Optional[List[Dict[str, Any]]]:
         if not filters:
             raise ValueError("delete sin filtros")  # nunca borrar una tabla entera

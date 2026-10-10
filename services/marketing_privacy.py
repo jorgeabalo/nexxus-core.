@@ -73,10 +73,12 @@ def original_class(media: Dict[str, Any]) -> str:
 
 def usable_media(media: Dict[str, Any]) -> Optional[str]:
     """None si el original puede usarse en un trabajo; si no, el código del motivo."""
-    if media.get("processing_status") != "ready" or media.get("validation_status") != "passed":
-        return "media_not_ready"
     if media.get("consent_status") == "revoked":
         return "consent_revoked"
+    if media.get("retention_status") in ("purge_pending", "purged", "purge_failed"):
+        return "media_pending_deletion"
+    if media.get("processing_status") != "ready" or media.get("validation_status") != "passed":
+        return "media_not_ready"
     if media.get("contains_people") is not False and media.get("contains_minors") is not False:
         return "minors_excluded"
     if media.get("people_policy") == "exclude" and media.get("contains_people") is not False:

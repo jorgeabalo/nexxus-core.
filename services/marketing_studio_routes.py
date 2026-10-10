@@ -13,7 +13,7 @@ from starlette.concurrency import run_in_threadpool
 
 from services.marketing_domain import DomainError
 from services.marketing_library import LibraryService
-from services.marketing_studio import StudioService
+from services.marketing_studio import StudioService, public_job
 from services.member_portal import PortalError
 
 logger = logging.getLogger(__name__)
@@ -113,6 +113,11 @@ def build_router(get_db: Callable) -> APIRouter:
         b = await body(request)
         return await call(lambda: lib().set_archived(bearer(request), tid(b), media_id, b.get("archived") is not False))
 
+    @r.post(f"{P}/library/{{media_id}}/retention")
+    async def retention(request: Request, media_id: str):
+        b = await body(request)
+        return await call(lambda: lib().set_retention(bearer(request), tid(b), media_id, b.get("days")))
+
     @r.post(f"{P}/library/{{media_id}}/revoke-consent")
     async def revoke_consent(request: Request, media_id: str):
         b = await body(request)
@@ -147,16 +152,22 @@ def build_router(get_db: Callable) -> APIRouter:
 
     @r.get(f"{P}/jobs")
     async def jobs(request: Request, tenant_id: str = ""):
-        return await call(lambda: studio().jobs(bearer(request), tenant_id))
+        res = await call(lambda: studio().jobs(bearer(request), tenant_id))
+        return {"items": [public_job(j) for j in res["items"]]} if isinstance(res, dict) else res
 
     @r.post(f"{P}/jobs")
     async def create_job(request: Request):
         b = await body(request)
-        return await call(lambda: studio().create_job(bearer(request), tid(b), b))
+        res = await call(lambda: studio().create_job(bearer(request), tid(b), b))
+        return public_job(res) if isinstance(res, dict) else res
 
     @r.get(f"{P}/jobs/{{job_id}}")
     async def job(request: Request, job_id: str, tenant_id: str = ""):
-        return await call(lambda: studio().job(bearer(request), tenant_id, job_id))
+        res = await call(lambda: studio().job(bearer(request), tenant_id, job_id))
+        if not isinstance(res, dict):
+            return res
+        res.pop("usage", None)                                   # costos por modelo: solo internos
+        return public_job(res)
 
     @r.post(f"{P}/jobs/{{job_id}}/{{action}}")
     async def job_action(request: Request, job_id: str, action: str):
@@ -172,6 +183,7 @@ def build_router(get_db: Callable) -> APIRouter:
         }
         if action not in actions:
             return JSONResponse({"error": "not_found"}, status_code=404)
-        return await call(lambda: actions[action](studio()))
+        res = await call(lambda: actions[action](studio()))
+        return public_job(res) if isinstance(res, dict) and "status" in res else res
 
     return r

@@ -35,3 +35,6 @@
 .mk-gen-off { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .modal:has(.mk-job-detail) { max-width: 760px; }
 .mk-job-detail table.data td, .mk-job-detail table.data th { white-space: nowrap; }
+.mk-ret { display: grid; gap: 4px; font-size: 13px; }
+.mk-ret select.input { min-height: 32px; font-size: 13px; }
+.mk-ret-warn > span:first-child { color: var(--warn); font-weight: 600; }
