@@ -13,7 +13,7 @@ from services.marketing_library import LibraryService
 from services.marketing_privacy import MockFaceDetector
 from services.marketing_studio import StudioService
 from services.member_portal import PortalError
-from marketing_fakes import CostRpcMixin
+from marketing_fakes import MarketingRpcMixin
 from test_marketing import FakeDB, NOW, T1, T2, OWNER, MANAGER, STAFF, OTHER, MEMBER
 
 
@@ -42,10 +42,10 @@ MOV = b"\x00\x00\x00\x14ftypqt  " + b"\x00" * 64
 WEBM = b"\x1a\x45\xdf\xa3" + b"\x00" * 20 + b"webm" + b"\x00" * 40
 
 
-class StudioDB(CostRpcMixin, FakeDB):
+class StudioDB(MarketingRpcMixin, FakeDB):
     def __init__(self):
         super().__init__()
-        self._cost_init([T1, T2])                     # presupuesto piloto propuesto (Marketing IA 20 USD)
+        self._rpc_init(NOW.isoformat())
         for t in ("marketing_media", "marketing_media_derivatives", "marketing_media_events", "marketing_generation_jobs",
                   "marketing_generation_job_events", "marketing_generation_inputs", "marketing_generation_outputs",
                   "marketing_model_usage"):
@@ -54,7 +54,7 @@ class StudioDB(CostRpcMixin, FakeDB):
             s.update({"ai_generation_enabled": True, "max_upload_bytes": 10_000_000,
                       "library_storage_limit_bytes": 1073741824, "monthly_generation_job_limit": 5,   # 1 GiB explícito
                       "monthly_regeneration_limit": 2, "monthly_generated_image_limit": 10,
-                      "monthly_generated_video_seconds_limit": 600})
+                      "monthly_generated_video_seconds_limit": 600, "monthly_ai_cost_limit": 20})
         self.storage, self.streamed, self.removed = {}, [], []
 
     def storage_upload(self, bucket, key, data, mime):

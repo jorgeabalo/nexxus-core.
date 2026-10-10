@@ -12,9 +12,9 @@ una. Si la suma supera el coste máximo aprobado → budget_exceeded (nunca se s
 import re
 from typing import Any, Dict, List
 
-from services.aita_cost_budget import PRODUCTION_PRIORITY
 from services.marketing_ai_router import MarketingAIRouter, RouteRequest, RouterError
 from services.marketing_domain import DomainError
+from services.marketing_jobs_domain import PRODUCTION_PRIORITY
 from services.marketing_mix import plan_scenes
 
 OBJECTIVES = ("new_members", "class_promo", "event", "offer", "brand", "education")

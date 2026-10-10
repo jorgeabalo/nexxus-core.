@@ -167,22 +167,19 @@ function jobDetail(ctx, id, reload, genEnabled = true) {
   draw();
 }
 
-// Presupuesto mensual de Marketing IA y total del tenant: consumido, reservado, disponible y avisos 25/10/0 %.
+// Presupuesto mensual de IA de Marketing (lo fija el operador): consumido, reservado, disponible y avisos 25/10/0 %.
 function budgetCard(b) {
   if (!b) return null;
-  const usd = (c) => fmtCost((c || 0) / 100, 'USD');
-  const row = (label, x) => {
-    const fill = el('span');
-    fill.style.width = `${x.limit_cents ? Math.min(100, 100 * (x.consumed_cents + x.reserved_cents) / x.limit_cents) : 100}%`;
-    return el('div', { class: 'mk-usage' },
-      el('div', { class: 'mk-usage-head' }, el('span', {}, label), el('span', {}, `${usd(x.available_cents)} ${s('available')}`)),
-      el('div', { class: `mk-meter${x.warning && x.warning !== 'low' ? ' full' : ''}`, role: 'progressbar',
-        'aria-valuemin': '0', 'aria-valuemax': String(x.limit_cents), 'aria-valuenow': String(x.consumed_cents + x.reserved_cents) }, fill),
-      el('p', { class: 'hint' }, `${s('monthlyBudget')}: ${usd(x.limit_cents)} · ${s('consumed')}: ${usd(x.consumed_cents)} · ${s('reserved')}: ${usd(x.reserved_cents)}`),
-      x.warning ? el('p', { class: `mk-budget-warn mk-bw-${x.warning}`, role: 'status', dataset: { warning: x.warning } }, s(`bw_${x.warning}`)) : null);
-  };
-  return card(s('budgetTitle'), el('div', { class: 'card-body' }, row(s('budgetMarketing'), b.marketing_ai), row(s('budgetTotal'), b.total),
-    el('p', { class: 'hint' }, s('budgetAdsNote'))));
+  const usd = (v) => (v === null || v === undefined ? s('noLimit') : fmtCost(v, 'USD'));
+  const fill = el('span');
+  fill.style.width = `${b.limit ? Math.min(100, 100 * (b.consumed + b.reserved) / b.limit) : 100}%`;
+  return card(s('budgetTitle'), el('div', { class: 'card-body' },
+    el('div', { class: 'mk-usage' },
+      el('div', { class: 'mk-usage-head' }, el('span', {}, s('budgetMarketing')), el('span', {}, `${usd(b.available)} ${s('available')}`)),
+      b.limit === null ? null : el('div', { class: `mk-meter${b.warning && b.warning !== 'low' ? ' full' : ''}`, role: 'progressbar',
+        'aria-valuemin': '0', 'aria-valuemax': String(b.limit), 'aria-valuenow': String(b.consumed + b.reserved) }, fill),
+      el('p', { class: 'hint' }, `${s('monthlyBudget')}: ${usd(b.limit)} · ${s('consumed')}: ${usd(b.consumed)} · ${s('reserved')}: ${usd(b.reserved)}`),
+      b.warning ? el('p', { class: `mk-budget-warn mk-bw-${b.warning}`, role: 'status', dataset: { warning: b.warning } }, s(`bw_${b.warning}`)) : null)));
 }
 
 export async function jobsView(ctx, reload, openId) {

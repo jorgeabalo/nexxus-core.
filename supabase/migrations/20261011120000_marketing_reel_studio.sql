@@ -33,7 +33,7 @@ alter table public.marketing_settings
       check (monthly_generated_image_limit is null or monthly_generated_image_limit between 0 and 100000),
   add column if not exists monthly_generated_video_seconds_limit integer default 0
       check (monthly_generated_video_seconds_limit is null or monthly_generated_video_seconds_limit between 0 and 1000000);
--- El coste de IA se controla con el presupuesto global por tenant (20261011140000_aita_cost_control.sql).
+-- El coste de IA de Marketing: monthly_ai_cost_limit y reserva atómica (20261011140000_marketing_generation_budget.sql).
 -- ---------- Biblioteca: originales ----------
 create table if not exists public.marketing_media (
   id                uuid primary key default gen_random_uuid(),

@@ -24,7 +24,7 @@ def marketing_module_enabled(tenant: Any) -> bool:
 
 # PostgREST responde 404 con PGRST205 (o 42P01 en versiones anteriores) cuando la tabla no existe.
 _MISSING_TABLE = re.compile(r"-> 404:.*(PGRST205|PGRST202|42P01|42883)", re.S)
-_GUARDED = ("marketing_", "aita_cost_", "rpc/aita_cost_")
+_GUARDED = ("marketing_", "rpc/marketing_")
 
 
 class MarketingTablesGuard:

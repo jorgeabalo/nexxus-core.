@@ -166,37 +166,30 @@ Ningún archivo se guarda indefinidamente (`expires_at` obligatorio, máximo abs
 * **No hay tarea programada en este PR**: `RetentionRunner.run()` está listo para un worker, pero nada lo invoca
   en producción (lo comprueba una prueba). La única eliminación real posible es la que pide un owner/manager.
 
-## 4f. Control global de costos (< 80 USD/mes por tenant)
+## 4f. Costo de los trabajos de Marketing
 
-Migración `20261011140000_aita_cost_control.sql` + `services/aita_cost_budget.py`.
+Migración `20261011140000_marketing_generation_budget.sql`. Solo Marketing: el presupuesto global de voz y
+facturación irá en otro PR.
 
-* `aita_cost_budgets` (solo el operador): `monthly_total_cost_limit_cents` (techo 8000, no se puede superar) y
-  subpresupuestos `monthly_voice_cost_limit_cents` (voz + IA de Claudia), `monthly_marketing_ai_cost_limit_cents`,
-  `monthly_storage_cost_limit_cents`, `monthly_infrastructure_allocation_cents` y `monthly_reserve_cents`, que no
-  pueden sumar más que el total. Por defecto: total 8000 y subpresupuestos **0** (cerrados).
-  Propuesta para el piloto (a aplicar por el operador, no en este PR): voz 3500, Marketing IA 2000, almacenamiento
-  750 + infraestructura 750, reserva 1000.
-* No incluye la inversión publicitaria del cliente (Google Ads, Meta Ads…), que va completamente aparte.
-* `aita_cost_ledger`: registro inmutable (`tenant_id, service_category, provider, model, operation,
-  estimated/reserved/actual_cost_cents, currency, idempotency_key, status, created_at, reconciled_at`); solo una
-  conciliación `reserved → committed/released`; sin borrados.
-* Orden para cualquier operación facturable: estimar el máximo (si no se puede: `cost_not_estimable`, no se
-  ejecuta) → aprobación owner/manager → `aita_cost_reserve` (atómica: `SELECT … FOR UPDATE` sobre el presupuesto
-  del tenant; rechaza si supera el subpresupuesto o el total sin la reserva) → ejecutar con idempotencia →
-  `aita_cost_reconcile` con el costo real (la diferencia queda libre) o liberación si se cancela/falla sin gasto.
-* Reintentos: la clave `job:{id}` nunca reserva ni cobra dos veces.
-* Concurrencia: dos trabajos simultáneos no pueden reservar el mismo saldo. En Python se prueba con hilos reales
-  contra un doble que reproduce el bloqueo; en SQL se prueba la lógica y que la función usa `FOR UPDATE`.
-  **Limitación**: PGlite es de una sola conexión, así que el bloqueo entre conexiones reales de PostgreSQL no se
-  ha ejecutado en este entorno; conviene repetir la prueba de concurrencia en staging.
-* Interfaz: presupuesto mensual, consumido, reservado, disponible y avisos al 25 %, 10 % y 0 %; costo estimado
-  del trabajo. No se muestran proveedores, modelos, costos unitarios ni datos de otros tenants (la API los quita).
-* Prioridad económica: material del cliente → procesamiento local → plantillas/FFmpeg → modelos pequeños →
-  imagen → imagen-a-vídeo → texto-a-vídeo completo como último recurso. La sugerencia por defecto usa el material
-  del cliente; un Reel 100 % IA se marca, muestra su costo máximo, necesita aprobación, se bloquea si amenaza el
-  presupuesto y puede ofrecerse como add-on. Con mocks el costo real es 0.
-* **Voz (Twilio + Claudia) todavía no reserva presupuesto**: el esquema y la categoría existen, pero conectar la
-  reserva al flujo de llamadas en vivo cambia producción y requiere un PR aparte y autorización.
+* `marketing_settings.monthly_ai_cost_limit` (USD/mes) lo fija **solo el operador**; `0` por defecto = ninguna
+  generación, ni siquiera simulada; `null` = sin límite. El tenant no puede cambiarlo (sin endpoint; SELECT only).
+* Cada trabajo conserva: costo máximo estimado (`estimated_cost`), costo reservado (`reserved_cost`, inmutable
+  tras aprobar), costo real (`actual_cost`), proveedor/modelo (`selected_provider`, `selected_model` y, por
+  subtarea, `marketing_model_usage`) e idempotencia (`idempotency_key` del trabajo y de cada subtarea).
+* Aprobar y reservar es **una sola operación atómica** (`public.marketing_approve_generation`, solo service_role):
+  bloquea la fila de configuración del tenant (`SELECT … FOR UPDATE`) y el trabajo, comprueba el estado, calcula el
+  consumo del mes (reservado de los trabajos en cola/procesando + costo real de los terminados) y rechaza con
+  `budget_exceeded` si el nuevo costo máximo no cabe. Sin costo estimable → `cost_not_estimable`, no se ejecuta.
+  Al cancelar o fallar sin gasto, lo reservado deja de contar automáticamente.
+* El worker nunca gasta más que lo reservado ni que el máximo aprobado (`budget_exceeded`).
+* Con proveedores reales apagados y mocks, el costo real es 0 y no hay red.
+* Un Reel 100 % IA se marca (`full_ai`), muestra su costo estimado y nunca se inicia sin aprobación explícita.
+  Prioridad económica: material del cliente → local → plantillas/FFmpeg → modelos pequeños → imagen →
+  imagen-a-vídeo → texto-a-vídeo como último recurso; la sugerencia por defecto usa el material del cliente.
+* Interfaz: presupuesto de IA del mes, consumido, reservado, disponible y avisos al 25 %, 10 % y 0 %. La API no
+  expone al tenant proveedores, modelos ni costos unitarios.
+* Concurrencia: probada con hilos reales contra un doble que reproduce el bloqueo, y en SQL la lógica y el
+  `FOR UPDATE`. PGlite es de una sola conexión: conviene repetir la prueba entre conexiones reales en staging.
 
 ## 5. Mezcla real / IA
 
@@ -341,8 +334,8 @@ Para activar un proveedor real (cada paso con autorización explícita):
   y los límites en 0; las tablas nuevas pueden quedarse vacías. Borrarlas exige una migración nueva y revisada
   (los historiales son de solo inserción a propósito).
 * Bucket: la migración solo **añade** `video/webm` a los tipos permitidos.
-* Las migraciones de retención y de costos también son aditivas; sin presupuesto configurado la generación queda
-  bloqueada (subpresupuestos en 0).
+* Las migraciones de retención y de costo de Marketing también son aditivas; con `monthly_ai_cost_limit = 0`
+  (por defecto) la generación queda bloqueada.
 * Si las tablas nuevas faltan, los endpoints responden 503 `marketing_unavailable` (sin detalles).
 
 ## 12. Pruebas
@@ -353,8 +346,9 @@ Para activar un proveedor real (cada paso con autorización explícita):
   y `tests/test_marketing_ai_router.py` (catálogo, router, mezcla, sincronía Python↔SQL, endpoints, puerta).
 * JS: `tests/js/marketing-studio.test.mjs` (mezcla, privacidad, etapas, textos ES/EN, sin claves).
 * SQL (PGlite): `tests/sql/marketing_studio.mjs` (RLS, mínimo privilegio, inmutabilidad, trabajos, aislamiento,
-  límites por defecto, bucket, atomicidad), `tests/sql/marketing_retention.mjs` y `tests/sql/aita_cost_control.mjs`.
-* Retención y costos: `tests/test_marketing_retention.py` (reloj controlado) y `tests/test_aita_cost_budget.py`.
+  límites por defecto, bucket, atomicidad), `tests/sql/marketing_retention.mjs` y
+  `tests/sql/marketing_generation_budget.mjs`.
+* Retención y costos: `tests/test_marketing_retention.py` (reloj controlado) y `tests/test_marketing_generation_cost.py`.
 * Ejecutar: `PGLITE_NODE_PATH=/ruta/node_modules python3 -m pytest -q tests/test_marketing*.py`.
 
 ## 13. Riesgos y pendientes

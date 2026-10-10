@@ -96,12 +96,6 @@ def cancel_jobs_for_media(db, tenant_id: str, media_id: str, code: str, now: dat
                 "from_status": j["status"], "to_status": to, "detail": {"error_code": code},
                 "actor_id": actor[0] if actor else None, "actor_role": actor[1] if actor else "system"})
             done.append(j["id"])
-            if j["status"] in ("queued", "processing"):           # liberar la reserva de presupuesto
-                try:
-                    db.rpc("aita_cost_reconcile", {"p_tenant": tenant_id, "p_idempotency_key": f"job:{j['id']}",
-                                                   "p_actual_cents": 0, "p_release": True})
-                except Exception:
-                    logger.error("MARKETING_BUDGET_RELEASE_ERROR")
     # Ningún resultado que contenga ese material puede reutilizarse.
     for jid in ids:
         db.update("marketing_generation_outputs", {"tenant_id": f"eq.{tenant_id}", "job_id": f"eq.{jid}"},

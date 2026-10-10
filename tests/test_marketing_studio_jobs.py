@@ -120,10 +120,7 @@ def test_cancel_and_fail_keep_evidence(lib, studio, db):
                                     {"monthly_generated_video_seconds_limit": 0}, {"budget": 0}])
 def test_zero_limits_block_all_generation_including_mock(lib, studio, db, change):
     j = studio.estimate_job(jwt(OWNER), T1, new_job(studio, [], 0, 100)["id"])
-    if "budget" in change:
-        db.tables["aita_cost_budgets"][0]["monthly_marketing_ai_cost_limit_cents"] = 0
-    else:
-        db.tables["marketing_settings"][0].update(change)
+    db.tables["marketing_settings"][0].update({"monthly_ai_cost_limit": 0} if "budget" in change else change)
     assert err(studio.approve_job, jwt(OWNER), T1, j["id"], True) == "generation_disabled"
     assert db.tables["marketing_model_usage"] == [] and studio.adapters["mock"].submissions == 0
 
@@ -132,7 +129,6 @@ def test_golden_age_defaults_block_generation_but_library_works(db):
     """Valores por defecto de la migración para un tenant sin configurar (como Golden Age)."""
     s = db.tables["marketing_settings"][0]
     s.update(jd.GEN_DEFAULTS)
-    db.tables["aita_cost_budgets"][0]["monthly_marketing_ai_cost_limit_cents"] = 0     # subpresupuestos cerrados
     lib = LibraryService(db, now=NOW)
     studio = StudioService(db, now=NOW, router=MarketingAIRouter(env={}))
     assert err(up, lib) == "library_disabled"                  # ni siquiera la Biblioteca está habilitada
@@ -144,10 +140,9 @@ def test_golden_age_defaults_block_generation_but_library_works(db):
     assert err(studio.approve_job, jwt(OWNER), T1, j["id"], True) == "generation_disabled"
 
 
-@pytest.mark.parametrize("key", ["ai_generation_enabled", "monthly_generation_job_limit",
-                                 "monthly_marketing_ai_cost_limit_cents"])
+@pytest.mark.parametrize("key", ["ai_generation_enabled", "monthly_generation_job_limit", "monthly_ai_cost_limit"])
 def test_each_switch_alone_disables_generation(key):
-    on = {"ai_generation_enabled": True, "monthly_generation_job_limit": 5, "monthly_marketing_ai_cost_limit_cents": 2000}
+    on = {"ai_generation_enabled": True, "monthly_generation_job_limit": 5, "monthly_ai_cost_limit": 20}
     assert jd.generation_enabled(on) is True
     assert jd.generation_enabled({**on, key: False if key == "ai_generation_enabled" else 0}) is False
     assert jd.generation_enabled({**on, "monthly_generation_job_limit": None}) is True      # null = sin límite
@@ -226,4 +221,4 @@ def test_approval_rechecks_inputs_even_without_automatic_cancellation(lib, studi
     j = studio.estimate_job(jwt(OWNER), T1, new_job(studio, [m["id"]])["id"])
     db.tables["marketing_media"][0].update({"consent_status": "revoked", "people_policy": "exclude"})   # sin pasar por revoke
     assert err(studio.approve_job, jwt(OWNER), T1, j["id"], True) == "consent_revoked"
-    assert db.tables["aita_cost_ledger"] == []
+    assert db.rpc_calls == []                                    # ni siquiera llega a reservar

@@ -3,9 +3,8 @@ import { getLang } from '../i18n.js';
 
 const T = {
   es: {
-    budgetTitle: 'Presupuesto de este mes', budgetMarketing: 'Marketing IA', budgetTotal: 'Total de AITA (voz, IA, almacenamiento…)',
+    budgetTitle: 'Presupuesto de IA de este mes', budgetMarketing: 'Marketing IA',
     monthlyBudget: 'Presupuesto mensual', consumed: 'Consumido', reserved: 'Reservado', available: 'disponible', method: 'Método',
-    budgetAdsNote: 'No incluye tu inversión en anuncios (Google Ads, Meta Ads…), que se gestiona aparte.',
     bw_low: 'Queda menos del 25 % del presupuesto.', bw_critical: 'Queda menos del 10 % del presupuesto.',
     bw_exhausted: 'Presupuesto agotado: no se iniciarán nuevas operaciones con costo.', bw_not_enabled: 'Presupuesto no habilitado en este plan.',
     fullAiNote: 'Reel 100 % IA: muestra su costo máximo, consume el presupuesto de Marketing IA y necesita tu aprobación. Si excede el plan, puede ofrecerse como add-on.',
@@ -87,7 +86,7 @@ const T = {
     admin: 'Catálogo técnico de modelos (sin claves)', enabled: 'activo', disabled: 'apagado', priceUnverified: 'precio sin verificar',
     err: {
       library_disabled: 'Biblioteca no habilitada en este plan.',
-      budget_not_configured: 'El presupuesto de costos aún no está configurado.', cost_not_estimable: 'No se puede estimar el costo máximo: no se ejecuta.',
+      cost_not_estimable: 'No se puede estimar el costo máximo: no se ejecuta.',
       retention_exceeds_plan: 'Esa duración supera el máximo de tu plan.', invalid_retention: 'Duración no válida (7, 30, 60 o 90 días).',
       retention_too_short: 'Con esa duración el archivo ya habría vencido.', media_pending_deletion: 'El archivo está pendiente de eliminación.',
       media_expired: 'El archivo ya venció.',
@@ -127,9 +126,8 @@ const T = {
     },
   },
   en: {
-    budgetTitle: 'This month\'s budget', budgetMarketing: 'Marketing AI', budgetTotal: 'AITA total (voice, AI, storage…)',
+    budgetTitle: 'This month\'s AI budget', budgetMarketing: 'Marketing AI',
     monthlyBudget: 'Monthly budget', consumed: 'Consumed', reserved: 'Reserved', available: 'available', method: 'Method',
-    budgetAdsNote: 'Does not include your ad spend (Google Ads, Meta Ads…), which is managed separately.',
     bw_low: 'Less than 25% of the budget remains.', bw_critical: 'Less than 10% of the budget remains.',
     bw_exhausted: 'Budget exhausted: no new paid operations will start.', bw_not_enabled: 'Budget not enabled on this plan.',
     fullAiNote: '100% AI Reel: shows its maximum cost, uses the Marketing AI budget and needs your approval. If it exceeds the plan, it can be offered as an add-on.',
@@ -210,7 +208,7 @@ const T = {
     admin: 'Technical model catalog (no keys)', enabled: 'on', disabled: 'off', priceUnverified: 'price not verified',
     err: {
       library_disabled: 'Library not enabled on this plan.',
-      budget_not_configured: 'The cost budget is not configured yet.', cost_not_estimable: 'The maximum cost cannot be estimated: it will not run.',
+      cost_not_estimable: 'The maximum cost cannot be estimated: it will not run.',
       retention_exceeds_plan: 'That duration exceeds your plan maximum.', invalid_retention: 'Invalid duration (7, 30, 60 or 90 days).',
       retention_too_short: 'With that duration the file would already have expired.', media_pending_deletion: 'The file is pending deletion.',
       media_expired: 'The file has expired.',

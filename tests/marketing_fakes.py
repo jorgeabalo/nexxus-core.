@@ -1,89 +1,50 @@
 """
-Doble de pruebas del presupuesto global (aita_cost_*): emula las funciones SQL de reserva y conciliación
-con un candado, como hace SELECT … FOR UPDATE en PostgreSQL. La lógica real vive en
-supabase/migrations/20261011140000_aita_cost_control.sql y se prueba en tests/sql/aita_cost_control.mjs.
+Doble de pruebas de public.marketing_approve_generation (20261011140000_marketing_generation_budget.sql):
+aprueba y reserva el costo máximo bajo un candado, como hace SELECT … FOR UPDATE en PostgreSQL.
+La función SQL real se prueba en tests/sql/marketing_generation_budget.mjs.
 """
 import threading
 import time
-import uuid
-
-GROUPS = {"voice": ("voice", "claudia_ai"), "claudia_ai": ("voice", "claudia_ai"), "marketing_ai": ("marketing_ai",),
-          "storage": ("storage",)}
-LIMIT_COL = {"voice": "monthly_voice_cost_limit_cents", "claudia_ai": "monthly_voice_cost_limit_cents",
-             "marketing_ai": "monthly_marketing_ai_cost_limit_cents", "storage": "monthly_storage_cost_limit_cents"}
-PILOT = {"monthly_total_cost_limit_cents": 8000, "monthly_voice_cost_limit_cents": 3500,
-         "monthly_marketing_ai_cost_limit_cents": 2000, "monthly_storage_cost_limit_cents": 750,
-         "monthly_infrastructure_allocation_cents": 750, "monthly_reserve_cents": 1000}
 
 
-class CostRpcMixin:
-    """Requiere self.tables (FakeDB). Añade aita_cost_budgets / aita_cost_ledger y rpc()."""
-    rpc_delay = 0.0                                   # para forzar carreras en las pruebas de concurrencia
+class MarketingRpcMixin:
+    """Requiere self.tables (FakeDB) y self.rpc_now (fecha ISO de "ahora")."""
+    rpc_delay = 0.0                                   # agranda la ventana de carrera en las pruebas de concurrencia
 
-    def _cost_init(self, tenants):
-        self._cost_lock = threading.Lock()
-        self.tables["aita_cost_budgets"] = [{"tenant_id": t, **PILOT} for t in tenants]
-        self.tables["aita_cost_ledger"] = []
+    def _rpc_init(self, now_iso):
+        self._rpc_lock = threading.Lock()
+        self.rpc_now = now_iso
         self.rpc_calls = []
-
-    def _used(self, tenant, cats=None):
-        return sum((e["actual_cost_cents"] if e["actual_cost_cents"] is not None else e["reserved_cost_cents"])
-                   for e in self.tables["aita_cost_ledger"]
-                   if e["tenant_id"] == tenant and e["status"] != "released" and (cats is None or e["service_category"] in cats))
 
     def rpc(self, fn, a):
         self.rpc_calls.append(fn)
-        with self._cost_lock:                          # = FOR UPDATE sobre el presupuesto del tenant
+        with self._rpc_lock:
             return getattr(self, f"_rpc_{fn}")(a)
 
-    def _rpc_aita_cost_reserve(self, a):
-        est = a["p_estimated_cents"]
-        if est is None or est < 0:
+    def _rpc_marketing_approve_generation(self, a):
+        reserved = a["p_reserved"]
+        if reserved is None or reserved < 0:
             return {"status": "rejected", "reason": "cost_not_estimable"}
-        b = next((x for x in self.tables["aita_cost_budgets"] if x["tenant_id"] == a["p_tenant"]), None)
-        if not b:
-            return {"status": "rejected", "reason": "budget_not_configured"}
-        dup = next((e for e in self.tables["aita_cost_ledger"]
-                    if e["tenant_id"] == a["p_tenant"] and e["idempotency_key"] == a["p_idempotency_key"]), None)
-        if dup:
-            return {"status": "duplicate", "ledger_id": dup["id"], "ledger_status": dup["status"]}
-        cat = a["p_category"]
-        cats = GROUPS.get(cat, ("processing", "infrastructure", "publishing"))
-        limit = b[LIMIT_COL.get(cat, "monthly_infrastructure_allocation_cents")]
-        used_cat, used = self._used(a["p_tenant"], cats), self._used(a["p_tenant"])
+        s = next((x for x in self.tables["marketing_settings"] if x["tenant_id"] == a["p_tenant"]), None)
+        limit = (s or {}).get("monthly_ai_cost_limit", 0)
+        if not s or s.get("ai_generation_enabled") is not True or limit == 0:
+            return {"status": "rejected", "reason": "generation_disabled"}
+        job = next((j for j in self.tables["marketing_generation_jobs"]
+                    if j["id"] == a["p_job"] and j["tenant_id"] == a["p_tenant"]
+                    and j["status"] == "awaiting_generation_approval"), None)
+        if not job:
+            return {"status": "rejected", "reason": "conflict"}
+        used = sum(float(j.get("reserved_cost") or 0) if j["status"] in ("queued", "processing")
+                   else float(j.get("actual_cost") or 0)
+                   for j in self.tables["marketing_generation_jobs"]
+                   if j["tenant_id"] == a["p_tenant"] and j.get("approved_at"))
         if self.rpc_delay:
             time.sleep(self.rpc_delay)
-        if used_cat + est > limit:
-            return {"status": "rejected", "reason": "category_budget_exceeded"}
-        if used + est > b["monthly_total_cost_limit_cents"] - b["monthly_reserve_cents"]:
-            return {"status": "rejected", "reason": "total_budget_exceeded"}
-        e = {"id": str(uuid.uuid4()), "tenant_id": a["p_tenant"], "service_category": cat, "provider": a["p_provider"],
-             "model": a["p_model"], "operation": a["p_operation"], "estimated_cost_cents": est, "reserved_cost_cents": est,
-             "actual_cost_cents": None, "currency": "USD", "idempotency_key": a["p_idempotency_key"],
-             "status": "reserved", "reconciled_at": None}
-        self.tables["aita_cost_ledger"].append(e)
-        return {"status": "reserved", "ledger_id": e["id"]}
-
-    def _rpc_aita_cost_reconcile(self, a):
-        e = next((x for x in self.tables["aita_cost_ledger"]
-                  if x["tenant_id"] == a["p_tenant"] and x["idempotency_key"] == a["p_idempotency_key"]), None)
-        if not e:
-            return {"status": "not_found"}
-        if e["status"] != "reserved":
-            return {"status": e["status"], "duplicate": True}
-        e["status"] = "released" if a.get("p_release") and a["p_actual_cents"] == 0 else "committed"
-        e["actual_cost_cents"], e["reconciled_at"] = a["p_actual_cents"], "now"
-        return {"status": e["status"]}
-
-    def _rpc_aita_cost_summary(self, a):
-        b = next((x for x in self.tables["aita_cost_budgets"] if x["tenant_id"] == a["p_tenant"]), None)
-        led = [e for e in self.tables["aita_cost_ledger"] if e["tenant_id"] == a["p_tenant"]]
-
-        def s(status, field, cat=None):
-            return sum(e[field] or 0 for e in led if e["status"] == status and (cat is None or e["service_category"] == cat))
-        return {"configured": bool(b),
-                "total_limit_cents": b["monthly_total_cost_limit_cents"] - b["monthly_reserve_cents"] if b else None,
-                "marketing_ai_limit_cents": b["monthly_marketing_ai_cost_limit_cents"] if b else None,
-                "consumed_cents": s("committed", "actual_cost_cents"), "reserved_cents": s("reserved", "reserved_cost_cents"),
-                "marketing_ai_consumed_cents": s("committed", "actual_cost_cents", "marketing_ai"),
-                "marketing_ai_reserved_cents": s("reserved", "reserved_cost_cents", "marketing_ai")}
+        if limit is not None and used + reserved > float(limit):
+            return {"status": "rejected", "reason": "budget_exceeded", "available": max(float(limit) - used, 0)}
+        job.update({"status": "queued", "approved_at": self.rpc_now, "approved_by": a["p_user"], "reserved_cost": reserved})
+        self.tables["marketing_generation_job_events"].append({
+            "tenant_id": a["p_tenant"], "job_id": job["id"], "action": "approve", "from_status": "awaiting_generation_approval",
+            "to_status": "queued", "detail": {"reserved_cost": reserved}, "actor_id": a["p_user"], "actor_role": "owner",
+            "created_at": self.rpc_now})
+        return {"status": "approved", "job": dict(job)}
