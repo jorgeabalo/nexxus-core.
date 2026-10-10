@@ -105,3 +105,31 @@ def test_mobile_tenant_switcher():
     css = (ROOT / "manager" / "assets" / "css" / "manager.css").read_text()
     assert ".sb-tenant { display: none;" in css
     assert css.index(".sb-tenant { display: none;") < css.index("@media (max-width: 720px) { .sb-tenant { display: block; } }")
+
+
+def test_back_to_website_link_in_sidebar_and_login():
+    """'Volver al sitio web' / 'Back to website': enlace a / en la misma pestaña, fuera de los módulos."""
+    app = (JS / "app.js").read_text()
+    fn = app[app.index("function websiteLink("):app.index("function renderLogin(")]
+    assert "href: '/'" in fn and "target" not in fn            # misma pestaña
+    assert "tr('websiteTitle')" in fn and "icon('back')" in fn
+    shell = app[app.index("function renderShell()"):app.index("// Indicador discreto")]
+    # en el menú lateral, justo después de la lista de módulos y antes del pie (escritorio y móvil)
+    assert shell.index("    nav,\n") < shell.index("websiteLink('sb-link sb-website', closeNav)") < shell.index("class: 'sb-foot'")
+    # pantalla de acceso: traducido, ya no fijo en inglés
+    assert "websiteLink('auth-site')" in app and "'← Back to website'" not in app
+    # no es un módulo: no está en el catálogo ni depende de permisos
+    nav = (JS / "nav.js").read_text()
+    assert "website" not in nav
+
+
+def test_back_to_website_link_visible_on_mobile():
+    css = (ROOT / "manager" / "assets" / "css" / "manager.css").read_text()
+    assert ".sb-exit {" in css and ".sb-website" in css
+    import re
+    for block in re.findall(r"@media[^{]*\{(.*?)\n\}", css, re.S):
+        assert not re.search(r"\.sb-(exit|website)[^{]*\{[^}]*display:\s*none", block)
+
+
+def test_back_to_website_target_exists(client):
+    assert client.get("/").status_code == 200
