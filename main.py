@@ -583,45 +583,6 @@ if MEDIA_DIR.is_dir():
 async def root():
     return FileResponse(Path(__file__).parent / "index.html", media_type="text/html")
 
-@app.post("/api/iniciar")
-async def iniciar(request: Request):
-    try:
-        data = await request.json()
-        sesion_id = data.get("sesion_id", "default")
-        if recepcionista:
-            return recepcionista.iniciar_sesion(sesion_id)
-        return {"error": "Recepcionista no disponible"}
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.post("/api/mensaje")
-async def mensaje(request: Request):
-    try:
-        data = await request.json()
-        sesion_id = data.get("sesion_id")
-        mensaje_texto = data.get("mensaje")
-        
-        if not sesion_id or not mensaje_texto:
-            return {"error": "sesion_id y mensaje requeridos"}
-        
-        if recepcionista:
-            respuesta = recepcionista.procesar_mensaje(sesion_id, mensaje_texto)
-            return {"respuesta": respuesta}
-        return {"error": "Recepcionista no disponible"}
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.post("/api/finalizar")
-async def finalizar(request: Request):
-    try:
-        data = await request.json()
-        sesion_id = data.get("sesion_id")
-        if recepcionista:
-            return recepcionista.finalizar_sesion(sesion_id)
-        return {"error": "Recepcionista no disponible"}
-    except Exception as e:
-        return {"error": str(e)}
-
 _HTTPS_BASE = re.compile(r"https://[A-Za-z0-9.-]+(:\d+)?")
 
 

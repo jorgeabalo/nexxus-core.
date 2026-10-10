@@ -310,15 +310,33 @@ def test_manager_shell_contains_no_business_data(client):
 # ---------------------------------------------------------------------------
 # 5. Endpoints existentes siguen respondiendo
 # ---------------------------------------------------------------------------
-def test_existing_endpoints_still_respond(client, monkeypatch):
-    recep = make_recepcionista("Hola, ¿en qué te ayudo?")
+def test_public_pages_still_respond(client):
+    for path in ("/", "/manager", "/m"):
+        r = client.get(path)
+        assert r.status_code == 200 and r.headers["content-type"].startswith("text/html"), path
+
+
+LEGACY_CHAT = ("/api/iniciar", "/api/mensaje", "/api/finalizar")
+
+
+@pytest.mark.parametrize("path", LEGACY_CHAT)
+def test_legacy_web_chat_endpoints_removed(client, monkeypatch, path):
+    """El chat web antiguo (sin autenticación) ya no existe: 404 exacto y Claude nunca se invoca."""
+    recep = make_recepcionista("no debería usarse")
     use(monkeypatch, CallLogger(client=FakeSupabase()), recep)
-    root = client.get("/")
-    assert root.status_code == 200 and root.headers["content-type"].startswith("text/html")
-    assert client.post("/api/iniciar", json={"sesion_id": "web1"}).status_code == 200
-    r = client.post("/api/mensaje", json={"sesion_id": "web1", "mensaje": "hola"})
-    assert r.status_code == 200 and r.json()["respuesta"] == "Hola, ¿en qué te ayudo?"
-    assert client.post("/api/finalizar", json={"sesion_id": "web1"}).status_code == 200
+    bodies = [{"sesion_id": "web1"}, {"sesion_id": "web1", "mensaje": "hola"}, {}]
+    for body in bodies:
+        assert client.post(path, json=body).status_code == 404
+    assert client.post(path, data={"sesion_id": "web1", "mensaje": "hola"}).status_code == 404
+    for method in ("get", "put", "delete"):
+        assert getattr(client, method)(path).status_code == 404
+    assert recep.client.models_used == [], "Claude no debe ser invocado"
+    assert recep.sesiones == {}
+
+
+def test_legacy_web_chat_routes_not_registered():
+    paths = {getattr(r, "path", "") for r in main.app.routes}
+    assert not paths & set(LEGACY_CHAT)
 
 
 # ---------------------------------------------------------------------------
