@@ -9,7 +9,9 @@
 -- * marketing_approval_events  — historial inmutable de cambios de estado.
 -- * marketing_publications     — cola de publicación por canal (con idempotency_key).
 --
--- Permisos (RLS):
+-- Permisos (RLS + privilegios mínimos):
+--   PUBLIC / anon → ningún privilegio. authenticated → solo SELECT. service_role → SELECT,
+--   INSERT, UPDATE, DELETE (sin TRUNCATE, REFERENCES, TRIGGER ni MAINTAIN).
 --   owner / manager → LEEN los datos de su tenant.
 --   staff / socios / otros tenants / anon → nada.
 --   Escritura: solo el backend (service role) después de comprobar rol, tenant
@@ -284,10 +286,14 @@ begin
     -- leer: solo owner/manager del mismo tenant (staff podrá recibir acceso en el futuro)
     execute format($p$create policy %I on public.%I for select to authenticated
                      using (private.has_tenant_role(tenant_id, array['owner','manager']))$p$, t || '_select', t);
-    -- escribir: solo el backend (service role) tras validar rol y reglas de dominio
-    execute format('revoke all on public.%I from anon', t);
-    execute format('revoke insert, update, delete, truncate on public.%I from authenticated', t);
+    -- Mínimo privilegio. Supabase concede por defecto TODO (incl. REFERENCES, TRIGGER y, en
+    -- PostgreSQL 17, MAINTAIN) a anon/authenticated/service_role en tablas nuevas de public:
+    -- se revoca todo y se concede solo lo necesario.
+    execute format('revoke all privileges on public.%I from public, anon, authenticated, service_role', t);
+    -- leer: authenticated solo SELECT (y RLS limita a owner/manager de su tenant)
     execute format('grant select on public.%I to authenticated', t);
+    -- escribir: solo el backend (service role) tras validar rol y reglas de dominio
+    execute format('grant select, insert, update, delete on public.%I to service_role', t);
   end loop;
 end $$;
 
