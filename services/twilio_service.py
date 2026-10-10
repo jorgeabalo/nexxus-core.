@@ -83,11 +83,14 @@ class TwilioSignatureValidator:
 
     def __init__(self):
         """Inicializa el validador con la clave de autenticación de Twilio"""
-        self.auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-        self.validator = RequestValidator(self.auth_token) if self.auth_token else None
+        # Falla cerrado: sin token (ausente, vacío o solo espacios) no se acepta
+        # ningún webhook, porque sin él no se puede comprobar que venga de Twilio.
+        token = (os.getenv("TWILIO_AUTH_TOKEN") or "").strip()
+        self.auth_token = token or None
+        self.validator = RequestValidator(token) if token else None
 
-        if not self.auth_token:
-            logger.warning("TWILIO_AUTH_TOKEN no configurado. Validación de firma deshabilitada.")
+        if not token:
+            logger.error("TWILIO_AUTH_TOKEN no configurado: se rechazarán todos los webhooks de Twilio.")
 
     def validate(self, url: str, data: Dict[str, Any], signature: str) -> bool:
         """
@@ -99,11 +102,14 @@ class TwilioSignatureValidator:
             signature: Valor del header X-Twilio-Signature
 
         Returns:
-            True si es válido, False si no
+            True solo si hay token y la firma es válida; False en cualquier otro caso.
         """
         if not self.validator:
-            logger.warning("Validador no disponible. Request aceptado sin validación.")
-            return True
+            logger.warning("Webhook de Twilio rechazado: falta TWILIO_AUTH_TOKEN.")
+            return False
+        if not signature:
+            logger.warning("Webhook de Twilio rechazado: falta X-Twilio-Signature.")
+            return False
 
         try:
             is_valid = self.validator.validate(url, data, signature)

@@ -129,7 +129,23 @@ POST /api/recepcionista/finalizar
 - `GET /admin-recepcionista` - Panel de admin *(requiere autenticación admin)*
 
 ### Salud
-- `GET /health` - Verifica estado del servidor
+- `GET /health` - Verifica que el servidor responde. Devuelve solo `{"status": "ok"}`: no consulta
+  Supabase, Twilio ni Anthropic y no expone configuración ni secretos (liveness).
+
+#### Healthcheck en Railway (servicio `nexxus-core.`)
+1. Railway → proyecto **nexxus-core** → servicio **nexxus-core.** → **Settings** → **Deploy** →
+   **Healthcheck Path**: `/health` (timeout por defecto, 300 s, es suficiente).
+2. Con el healthcheck activo, Railway solo pasa el tráfico al nuevo deploy cuando `/health` responde 200;
+   si no responde, el deploy falla y sigue sirviendo el anterior.
+3. Comprobar después de configurarlo: `curl -s https://nexxus-core-production.up.railway.app/health`
+   → `{"status":"ok"}`.
+
+### Webhooks de Twilio (seguridad)
+`/webhooks/twilio/voice`, `/webhooks/twilio/status`, `/webhooks/twilio/sms-status` y `/api/twilio/mensaje`
+**fallan cerrados**: responden 403 si `TWILIO_AUTH_TOKEN` falta, está vacío o la cabecera
+`X-Twilio-Signature` no es válida para la URL pública exacta (incluida la query) y los parámetros recibidos.
+Ninguna petición rechazada llega a Claude ni se registra. El token debe estar configurado en el servicio
+que recibe las llamadas; sin él, Claudia no atenderá ninguna llamada.
 
 ## 💰 Modelo de Costo
 

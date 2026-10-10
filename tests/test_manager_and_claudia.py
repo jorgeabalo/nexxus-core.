@@ -112,13 +112,28 @@ def make_recepcionista(reply):
     return r
 
 
+TWILIO_TEST_TOKEN = "test-twilio-token"
+
+
+class TwilioSignedClient(TestClient):
+    """Firma las peticiones a los webhooks de Twilio igual que Twilio (X-Twilio-Signature)."""
+
+    def post(self, url, *args, data=None, headers=None, **kwargs):
+        if url.startswith(("/webhooks/twilio/", "/api/twilio/")) and data is not None:
+            from twilio.request_validator import RequestValidator
+            sig = RequestValidator(TWILIO_TEST_TOKEN).compute_signature(f"https://testserver{url}", data)
+            headers = {**(headers or {}), "X-Twilio-Signature": sig}
+        return super().post(url, *args, data=data, headers=headers, **kwargs)
+
+
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.delenv("TWILIO_AUTH_TOKEN", raising=False)  # sin validación de firma en tests
+    monkeypatch.setenv("TWILIO_AUTH_TOKEN", TWILIO_TEST_TOKEN)   # la firma se valida también en tests
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)        # URL firmada = https://testserver
     main.twilio_handler = main.TwilioWebhookHandler()
     main._llamadas_cerradas.clear()
     main._sms_despedida_enviados.clear()
-    return TestClient(main.app)
+    return TwilioSignedClient(main.app)
 
 
 def use(monkeypatch, logger, recep=None):

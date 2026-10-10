@@ -622,6 +622,45 @@ async def finalizar(request: Request):
     except Exception as e:
         return {"error": str(e)}
 
+_HTTPS_BASE = re.compile(r"https://[A-Za-z0-9.-]+(:\d+)?")
+
+
+def _twilio_url(request: Request) -> str:
+    """URL pública exacta que Twilio firmó: https + dominio + ruta + query.
+
+    Fuente principal: PUBLIC_BASE_URL (configurada en el servidor; no la controla
+    quien hace la petición). Solo si no existe se reconstruye con las cabeceras del
+    proxy (X-Forwarded-*), como hasta ahora. Si existe pero no es https://dominio
+    válido se devuelve "" y la firma se rechaza (falla cerrado).
+    """
+    env = (os.getenv("PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    if env:
+        if not _HTTPS_BASE.fullmatch(env):
+            logger.error("PUBLIC_BASE_URL no es https://dominio válido: webhooks de Twilio rechazados")
+            return ""
+        base = env
+    else:
+        scheme = (request.headers.get("X-Forwarded-Proto") or "https").split(",")[0].strip()
+        host = (request.headers.get("X-Forwarded-Host") or request.url.netloc).split(",")[0].strip()
+        base = f"{scheme}://{host}"
+    query = f"?{request.url.query}" if request.url.query else ""
+    return f"{base}{request.url.path}{query}"
+
+
+def _twilio_firma_valida(request: Request, data: dict) -> bool:
+    """Falla cerrado: sin handler, sin token, sin URL válida o con firma inválida => False."""
+    url = _twilio_url(request)
+    if not twilio_handler or not url:
+        return False
+    return twilio_handler.signature_validator.validate(url, data, request.headers.get("X-Twilio-Signature", ""))
+
+
+@app.get("/health")
+async def health():
+    """Healthcheck de Railway (liveness): no consulta servicios externos ni expone configuración."""
+    return {"status": "ok"}
+
+
 @app.post("/webhooks/twilio/voice")
 async def twilio_voice_webhook(request: Request):
     """
@@ -635,11 +674,8 @@ async def twilio_voice_webhook(request: Request):
         call_data = dict(form_data)
         
         signature = request.headers.get("X-Twilio-Signature", "")
-        
-        scheme = request.headers.get("X-Forwarded-Proto", "https")
-        host = request.headers.get("X-Forwarded-Host") or request.url.netloc
-        request_url = f"{scheme}://{host}{request.url.path}"
-        
+        request_url = _twilio_url(request)
+
         logger.info(f"Webhook Twilio recibido: {request_url}")
         logger.debug(f"CallSid={call_data.get('CallSid')}, From={call_data.get('From')}, To={call_data.get('To')}")
         
@@ -697,12 +733,8 @@ async def twilio_status_callback(request: Request):
         call_sid = call_data.get("CallSid", "")
         estado = call_data.get("CallStatus", "")
 
-        # Validar que la petición viene de Twilio
-        signature = request.headers.get("X-Twilio-Signature", "")
-        scheme = request.headers.get("X-Forwarded-Proto", "https")
-        host = request.headers.get("X-Forwarded-Host") or request.url.netloc
-        request_url = f"{scheme}://{host}{request.url.path}"
-        if twilio_handler and not twilio_handler.signature_validator.validate(request_url, call_data, signature):
+        # Validar que la petición viene de Twilio (falla cerrado)
+        if not _twilio_firma_valida(request, call_data):
             logger.warning(f"[{call_sid}] Status callback con firma inválida, ignorado")
             return Response(status_code=403)
 
@@ -749,6 +781,10 @@ async def twilio_mensaje_callback(request: Request):
         call_data = dict(form_data)
 
         call_sid = call_data.get("CallSid", "UNKNOWN")
+        # Solo Twilio puede llegar aquí: este endpoint llama a Claude (coste) y registra leads.
+        if not _twilio_firma_valida(request, call_data):
+            logger.warning(f"[{call_sid}] Gather con firma inválida o sin TWILIO_AUTH_TOKEN, rechazado")
+            return Response(status_code=403)
         logger.info(f"[{call_sid}] CALLBACK GATHER - Parámetros: {list(call_data.keys())}")
         logger.debug(f"[{call_sid}] Datos completos de Twilio: {call_data}")
 
