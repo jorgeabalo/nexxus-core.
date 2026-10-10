@@ -73,7 +73,14 @@ function authCard(subtitle, ...content) {
         el('div', { class: 'rule' }),
         el('p', {}, subtitle)),
       ...content,
-      el('div', { class: 'auth-foot' }, el('a', { href: '/' }, '← Back to website'))));
+      el('div', { class: 'auth-foot' }, websiteLink('auth-site'))));
+}
+
+// Enlace "Volver al sitio web": web pública (/) en la misma pestaña, traducido y
+// accesible (la flecha es decorativa). Igual en escritorio y en el menú móvil.
+function websiteLink(cls, onclick = null) {
+  return el('a', { class: cls, href: '/', onclick },
+    icon('back'), el('span', {}, tr('websiteTitle')));
 }
 
 function renderLogin(message = '') {
@@ -230,11 +237,12 @@ function renderShell() {
           profile.phone ? el('div', { class: 'co-meta' }, profile.phone) : null)),
       tenantPicker('sb-tenant')),
     nav,
+    // Fuera de la lista de módulos: no es un módulo ni depende de permisos.
+    el('div', { class: 'sb-exit' }, websiteLink('sb-link sb-website', closeNav)),
     el('div', { class: 'sb-foot' },
       el('div', { class: 'sb-user', title: user.email }, userName),
       el('div', { class: 'sb-role' }, roleLabel),
-      el('button', { class: 'btn btn-sm', type: 'button', onclick: () => state.sb.auth.signOut() }, tr('signOut')),
-      el('a', { class: 'sb-site', href: '/' }, `← ${tr('websiteTitle')}`)));
+      el('button', { class: 'btn btn-sm', type: 'button', onclick: () => state.sb.auth.signOut() }, tr('signOut'))));
 
 
   const langSelect = el('select', { class: 'input lang-select', 'aria-label': tr('language'), onchange: (e) => setLang(e.target.value) },
@@ -256,7 +264,8 @@ function renderShell() {
     langSelect,
     el('div', { class: 'tb-user' }, el('span', { class: 'tb-name', title: user.email }, userName), el('span', { class: 'tb-role' }, roleLabel)),
     el('button', { class: 'btn btn-sm tb-signout', type: 'button', onclick: () => state.sb.auth.signOut() }, tr('signOut')),
-    el('a', { class: 'btn btn-sm site-link', href: '/', title: tr('websiteTitle') }, `← ${tr('website')}`));
+    el('a', { class: 'btn btn-sm site-link', href: '/', title: tr('websiteTitle'), 'aria-label': tr('websiteTitle') },
+      el('span', { 'aria-hidden': 'true' }, '← '), tr('website')));
 
   const shell = el('div', { class: 'shell' }, sidebar, el('div', { class: 'scrim', onclick: closeNav }),
     el('div', { class: 'main' }, topbar, content));

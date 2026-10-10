@@ -415,8 +415,13 @@ h3.m0 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color
   .sys-status .label { display: none; }
   .topbar .site-link { display: none; }
 }
-.sb-site { display: block; margin-top: 10px; color: #93A3BA; font-size: 13px; text-decoration: none; }
-.sb-site:hover { color: #fff; }
+/* "Volver al sitio web": mismo aspecto que un enlace del menú, separado de los módulos. */
+.sb-exit { padding: 8px 10px; border-top: 1px solid rgba(255,255,255,.08); }
+.sb-website { width: 100%; }
+.sb-website:focus-visible { outline: 2px solid var(--brand-accent); outline-offset: 2px; }
+.auth-site { display: inline-flex; align-items: center; gap: 6px; color: var(--info); text-decoration: none; }
+.auth-site svg { width: 16px; height: 16px; }
+.auth-site:hover span { text-decoration: underline; }
 
 /* Selector de empresa dentro del menú lateral: solo en móvil (el del encabezado se oculta ahí). */
 .sb-tenant { display: none; }

@@ -37,7 +37,7 @@ export function setLang(l) {
 
 const T = {
   es: {
-    platform: 'Nexxus Manager', signOut: 'Cerrar sesión', website: 'Web', websiteTitle: 'Volver a la web',
+    platform: 'Nexxus Manager', signOut: 'Cerrar sesión', website: 'Web', websiteTitle: 'Volver al sitio web',
     openMenu: 'Abrir menú', language: 'Idioma', business: 'Empresa', mainNav: 'Menú principal', soon: 'Pronto',
     status_ok: 'Sistema en línea', status_degraded: 'Conexión limitada', status_offline: 'Sin conexión', status_checking: 'Comprobando…',
     role_owner: 'Propietario', role_manager: 'Gerente', role_staff: 'Personal',

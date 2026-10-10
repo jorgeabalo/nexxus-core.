@@ -8,7 +8,7 @@ const store = new Map();
 globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) };
 globalThis.window = new EventTarget();
 Object.defineProperty(globalThis, 'navigator', { value: { language: 'en-US' }, configurable: true });
-const { getLang, setLang, useTenantDefault } = await import('../../manager/assets/js/i18n.js');
+const { getLang, setLang, useTenantDefault, tr } = await import('../../manager/assets/js/i18n.js');
 
 test('sin preferencia: manda el idioma de la empresa activa', () => {
   useTenantDefault('es');
@@ -38,4 +38,12 @@ test('preferencia elegida por el usuario: es global y se mantiene al cambiar de 
   }
   setLang('xx');                                   // idiomas no soportados se ignoran
   assert.equal(getLang(), 'es');
+});
+
+test('"Volver al sitio web" / "Back to website" traducido en ES y EN', () => {
+  setLang('es');
+  assert.equal(tr('websiteTitle'), 'Volver al sitio web');
+  setLang('en');
+  assert.equal(tr('websiteTitle'), 'Back to website');
+  setLang('es');
 });
