@@ -346,8 +346,6 @@ table.cmp tr.changed td { background: rgba(184,150,15,.12); }
 
 .bar-fill { background: linear-gradient(180deg, #c9a830, #8b6f0a); }
 .spark-dot { fill: var(--brand-primary); }
-#figfill stop:first-child { stop-color: #c9a830; }
-#figfill stop:last-child { stop-color: #6b5508; }
 .fig-dot { stroke: #000; }
 
 /* Escritorio: la navegación inferior pasa a ser una barra lateral fija */
@@ -411,3 +409,54 @@ table.cmp tr.changed td { background: rgba(184,150,15,.12); }
   .ex { grid-template-columns: 96px 1fr; gap: 10px; }
   .day { font-size: 12px; }
 }
+
+/* ================= Fondo blanco con marco negro + dorado =================
+   La barra superior, la navegación y la pantalla de acceso siguen en negro y dorado.
+   El área de contenido (main), las tarjetas y las ventanas son claras; los colores se
+   redefinen ahí para que todo lo que contienen se adapte sin tocar app.js. */
+main, .card, .kpi, .login, .modal {
+  --surface: #FFFFFF;
+  --surface-2: #FAF7EE;
+  --muted-bg: #F3EEE0;
+  --border: rgba(139, 111, 10, .22);
+  --text: #1A1A1A;
+  --text-2: #4A4536;
+  --text-3: #7A6F55;
+  --ok: #127A4B;   --ok-bg: #E4F4EC;
+  --warn: #9A6400; --warn-bg: #FDF1D8;
+  --bad: #B42318;  --bad-bg: #FDE7E5;
+  --info: #1F5FAD; --info-bg: #E5EEFA;
+  color: var(--text);
+}
+body { background: #F7F4EC; }
+.top { box-shadow: 0 6px 18px rgba(0, 0, 0, .18); }
+.card, .kpi { background: #FFFFFF; border: 1px solid rgba(201, 168, 48, .35); box-shadow: 0 2px 10px rgba(26, 20, 4, .06); }
+.login { background: #FFFFFF; border: 2px solid var(--brand-accent); }
+.modal { background: #FFFFFF; }
+.card h2, .section-title, .kpi .v, .login .brand, .login h1 { color: var(--gold-dark); }
+.card .btn, .kpi .btn, .login .btn, .modal .btn, main > .btn { background: #FFFFFF; color: var(--text); border-color: rgba(139, 111, 10, .35); }
+.card .btn:hover:not(:disabled), .modal .btn:hover:not(:disabled) { background: #FBF6E6; border-color: var(--brand-accent); }
+.card .btn-primary, .login .btn-primary, .modal .btn-primary, main .btn-primary { background: linear-gradient(135deg, #c9a830, #b8960f); color: #000; border-color: var(--brand-accent); }
+.card .input, .login .input, .modal .input { background: #FFFFFF; color: var(--text); }
+main a, main .link-btn, .login .link-btn, .modal .link-btn { color: var(--gold-dark); }
+.card .chip-btn, .modal .chip-btn { background: #FBF6E6; color: var(--text); border-color: rgba(139, 111, 10, .35); }
+.ind, .subcard, .opt, .sex-ask { background: #FBF8F0; }
+.badge.gold { background: #F6EFD6; color: #7A5E0B; }
+.modal-head .icon-btn { color: var(--text-2); }
+@media (min-width: 1024px) { #app:has(> .nav) { background: #F7F4EC; } }
+
+/* Figura anatómica: piel cálida, luz desde arriba a la izquierda y sombras suaves */
+.fig-body { opacity: 1; }
+.fig-skin { stroke: none; }
+.fig-skin-a { stop-color: #FBEFD9; }
+.fig-skin-b { stop-color: #EBCFA3; }
+.fig-skin-c { stop-color: #CFA56C; }
+.fig-light { mix-blend-mode: soft-light; }
+.fig-light-a { stop-color: #FFFFFF; stop-opacity: .55; }
+.fig-light-b { stop-color: #FFFFFF; stop-opacity: 0; }
+.fig-shade { fill: #8A5A24; opacity: .10; }
+.fig-detail { fill: none; stroke: #8A5A24; stroke-opacity: .32; stroke-width: 1.1; stroke-linecap: round; }
+.fig-outline { fill: #9C7240; stroke: #9C7240; stroke-width: 2.6; stroke-linejoin: round; }
+.fig-ground { fill: #1A1404; opacity: .08; }
+.fig-dot { fill: var(--brand-accent); stroke: #FFFFFF; stroke-width: 2; }
+.fig-leader { stroke: var(--gold-dark); }
