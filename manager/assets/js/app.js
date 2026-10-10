@@ -202,6 +202,16 @@ function renderShell() {
   const userName = (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.name)) || user.email;
   const roleLabel = tr(`role_${role}`);
 
+  // Selector de empresa: solo si la persona tiene más de una. Hay dos copias: la del
+  // encabezado (escritorio) y la del menú lateral (móvil, donde el encabezado no cabe).
+  const tenantPicker = (cls) => (state.memberships.length > 1
+    ? el('select', {
+      class: `input ${cls}`, 'aria-label': tr('business'),
+      onchange: (e) => switchTenant(e.target.value),
+    }, state.memberships.map(m => { const o = el('option', { value: m.tenant.id }, tenantProfile(m.tenant).name); if (m.tenant.id === tenant.id) o.selected = true; return o; }))
+    : null);
+  const tenantSelect = tenantPicker('tenant-select');
+
   const nav = el('nav', { class: 'sb-nav', 'aria-label': tr('mainNav') });
   for (const mod of visibleModules(tenant, role)) {
     nav.appendChild(el('a', { class: 'sb-link', href: `#/${mod.key}`, dataset: { key: mod.key }, onclick: closeNav },
@@ -217,7 +227,8 @@ function renderShell() {
       el('div', { class: 'nx-brand' }, nexxusMark(30), el('div', { class: 'wordmark' }, 'NEXXUS', el('span', {}, 'MANAGER'))),
       el('div', { class: 'sb-company' }, companyLogo,
         el('div', { class: 'co-text' }, el('div', { class: 'co-name' }, profile.name),
-          profile.phone ? el('div', { class: 'co-meta' }, profile.phone) : null))),
+          profile.phone ? el('div', { class: 'co-meta' }, profile.phone) : null)),
+      tenantPicker('sb-tenant')),
     nav,
     el('div', { class: 'sb-foot' },
       el('div', { class: 'sb-user', title: user.email }, userName),
@@ -225,12 +236,6 @@ function renderShell() {
       el('button', { class: 'btn btn-sm', type: 'button', onclick: () => state.sb.auth.signOut() }, tr('signOut')),
       el('a', { class: 'sb-site', href: '/' }, `← ${tr('websiteTitle')}`)));
 
-  const tenantSelect = state.memberships.length > 1
-    ? el('select', {
-      class: 'input tenant-select', 'aria-label': tr('business'),
-      onchange: (e) => { const m = state.memberships.find(x => x.tenant.id === e.target.value); setTenant(m); renderShell(); route(); },
-    }, state.memberships.map(m => { const o = el('option', { value: m.tenant.id }, tenantProfile(m.tenant).name); if (m.tenant.id === tenant.id) o.selected = true; return o; }))
-    : null;
 
   const langSelect = el('select', { class: 'input lang-select', 'aria-label': tr('language'), onchange: (e) => setLang(e.target.value) },
     [['es', 'ES'], ['en', 'EN']].map(([v, l]) => { const o = el('option', { value: v }, l); if (v === getLang()) o.selected = true; return o; }));
@@ -291,6 +296,17 @@ window.addEventListener('aita:lang', () => {
   renderShell();
   route();
 });
+
+// Cambio de empresa desde el encabezado o desde el menú móvil: se cierra el menú,
+// se aplica la empresa nueva (colores, idioma, módulos) y se redibuja todo.
+function switchTenant(tenantId) {
+  const m = state.memberships.find(x => x.tenant.id === tenantId);
+  if (!m) return;
+  closeNav();
+  setTenant(m);
+  renderShell();
+  route();
+}
 
 function toggleNav() { shellRefs.shell.classList.toggle('nav-open'); }
 function closeNav() { shellRefs && shellRefs.shell.classList.remove('nav-open'); }

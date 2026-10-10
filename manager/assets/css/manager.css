@@ -417,3 +417,9 @@ h3.m0 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color
 }
 .sb-site { display: block; margin-top: 10px; color: #93A3BA; font-size: 13px; text-decoration: none; }
 .sb-site:hover { color: #fff; }
+
+/* Selector de empresa dentro del menú lateral: solo en móvil (el del encabezado se oculta ahí). */
+.sb-tenant { display: none; }
+.sidebar select.input.sb-tenant { width: 100%; min-height: 40px; background: rgba(255,255,255,.08); color: #fff; border-color: rgba(201,162,39,.35); }
+.sidebar .sb-tenant option { color: #0F1B2D; background: #fff; }
+@media (max-width: 720px) { .sb-tenant { display: block; } }

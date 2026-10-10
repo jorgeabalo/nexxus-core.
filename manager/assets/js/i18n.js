@@ -1,6 +1,12 @@
 // Idioma del Manager Panel (español / inglés), compartido por el encabezado,
-// el menú y los módulos bilingües. Se guarda en este navegador (aita.lang);
-// si no hay preferencia, se usa el idioma del tenant y luego el del navegador.
+// el menú y los módulos bilingües.
+//
+// Regla (sin ambigüedad):
+//  * aita.lang es una PREFERENCIA GLOBAL DEL USUARIO en este navegador: si la
+//    persona eligió un idioma, se mantiene al cambiar de empresa.
+//  * Sin preferencia guardada, manda el idioma de la empresa activa
+//    (branding.language / branding.locale); si esa empresa no define idioma, el
+//    del navegador. Nunca se arrastra el idioma por defecto de la empresa anterior.
 // Cambiar el idioma emite el evento "aita:lang" para que el panel se redibuje.
 const KEY = 'aita.lang';
 const OK = new Set(['es', 'en']);
@@ -8,14 +14,18 @@ const OK = new Set(['es', 'en']);
 function stored() {
   try { const s = localStorage.getItem(KEY); return OK.has(s) ? s : null; } catch (_) { return null; }
 }
-let lang = stored() || ((navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en');
+function browserLang() {
+  const n = (typeof navigator !== 'undefined' && navigator.language) || 'en';
+  return n.toLowerCase().startsWith('es') ? 'es' : 'en';
+}
+let lang = stored() || browserLang();
 
 export const getLang = () => lang;
 
-// Idioma por defecto del tenant (branding.language o branding.locale), solo si
-// la persona no eligió uno en este navegador.
+// Se llama en cada cambio de empresa (setTenant).
 export function useTenantDefault(tenantLang) {
-  if (!stored() && OK.has(tenantLang)) lang = tenantLang;
+  if (stored()) return;                                   // preferencia global del usuario
+  lang = OK.has(tenantLang) ? tenantLang : browserLang(); // empresa activa, o navegador
 }
 
 export function setLang(l) {

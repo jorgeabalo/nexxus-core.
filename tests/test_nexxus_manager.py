@@ -23,7 +23,8 @@ def client():
 
 @pytest.mark.skipif(not shutil.which("node"), reason="Node.js no disponible")
 def test_navigation_logic_js():
-    r = subprocess.run(["node", "--test", str(ROOT / "tests" / "js" / "nav.test.mjs")],
+    r = subprocess.run(["node", "--test", str(ROOT / "tests" / "js" / "nav.test.mjs"),
+                        str(ROOT / "tests" / "js" / "i18n.test.mjs")],
                        capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
 
@@ -53,10 +54,11 @@ def test_routes_unchanged():
 
 
 def test_branding_not_hardcoded():
-    """Golden Age solo aparece como fallback del piloto, no repartido por el panel."""
-    hits = [p.name for p in JS.rglob("*.js") if "Golden Age" in p.read_text() and p.name != "nav.js"]
+    """Ningún cliente concreto (Golden Age) aparece en la infraestructura multitenant del panel."""
+    hits = [p.name for p in JS.rglob("*.js") if "Golden Age" in p.read_text() or "golden_age" in p.read_text()]
     assert hits == []
-    assert "PILOT_NAME = 'Golden Age Fitness'" in (JS / "nav.js").read_text()
+    nav = (JS / "nav.js").read_text()
+    assert "PILOT_NAME" not in nav and "FALLBACK_NAME = 'Nexxus'" in nav
 
 
 def test_only_safe_tenant_settings_requested():
@@ -91,3 +93,15 @@ def test_set_tenant_resets_brand_colors():
     body = app[app.index("function setTenant(m) {"):app.index("let shellRefs = null;")]
     assert "applyBrandColors(document.documentElement.style, profile)" in body
     assert "setProperty('--brand-" not in body
+
+
+def test_mobile_tenant_switcher():
+    """Con más de una empresa hay selector también en el menú lateral (móvil); al cambiar se cierra el menú."""
+    app = (JS / "app.js").read_text()
+    assert "state.memberships.length > 1" in app                      # con una sola empresa no hay selector
+    assert "tenantPicker('tenant-select')" in app and "tenantPicker('sb-tenant')" in app
+    body = app[app.index("function switchTenant(tenantId) {"):app.index("function toggleNav()")]
+    assert body.index("closeNav()") < body.index("setTenant(m)") < body.index("renderShell()") < body.index("route()")
+    css = (ROOT / "manager" / "assets" / "css" / "manager.css").read_text()
+    assert ".sb-tenant { display: none;" in css
+    assert css.index(".sb-tenant { display: none;") < css.index("@media (max-width: 720px) { .sb-tenant { display: block; } }")
