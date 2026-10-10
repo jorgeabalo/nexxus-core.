@@ -1,7 +1,7 @@
 """
-Doble de pruebas de public.marketing_approve_generation (20261011140000_marketing_generation_budget.sql):
-aprueba y reserva el costo máximo bajo un candado, como hace SELECT … FOR UPDATE en PostgreSQL.
-La función SQL real se prueba en tests/sql/marketing_generation_budget.mjs.
+Doble de pruebas de las funciones atómicas de Marketing (aprobación con reserva de costo y de bytes,
+reserva/liberación de almacenamiento y uso total), bajo un candado como SELECT … FOR UPDATE.
+Las funciones SQL reales se prueban en tests/sql/marketing_generation_budget.mjs y marketing_retention.mjs.
 """
 import threading
 import time
@@ -15,6 +15,8 @@ class MarketingRpcMixin:
         self._rpc_lock = threading.Lock()
         self.rpc_now = now_iso
         self.rpc_calls = []
+        self.tables.setdefault("marketing_storage_reservations", [])
+        self.tables.setdefault("marketing_stream_tokens", [])
 
     def rpc(self, fn, a):
         self.rpc_calls.append(fn)
@@ -42,9 +44,61 @@ class MarketingRpcMixin:
             time.sleep(self.rpc_delay)
         if limit is not None and used + reserved > float(limit):
             return {"status": "rejected", "reason": "budget_exceeded", "available": max(float(limit) - used, 0)}
-        job.update({"status": "queued", "approved_at": self.rpc_now, "approved_by": a["p_user"], "reserved_cost": reserved})
+        sb = a.get("p_storage_bytes")
+        if sb is None or sb < 0:
+            return {"status": "rejected", "reason": "storage_not_estimable"}
+        if sb > 0:
+            lim = s.get("library_storage_limit_bytes", 0)
+            if lim == 0:
+                return {"status": "rejected", "reason": "library_disabled"}
+            if lim is not None and self._rpc_marketing_storage_used({"p_tenant": a["p_tenant"]}) + sb > lim:
+                return {"status": "rejected", "reason": "limit_library_storage"}
+        job.update({"status": "queued", "approved_at": self.rpc_now, "approved_by": a["p_user"], "reserved_cost": reserved,
+                    "reserved_storage_bytes": sb})
         self.tables["marketing_generation_job_events"].append({
             "tenant_id": a["p_tenant"], "job_id": job["id"], "action": "approve", "from_status": "awaiting_generation_approval",
             "to_status": "queued", "detail": {"reserved_cost": reserved}, "actor_id": a["p_user"], "actor_role": "owner",
             "created_at": self.rpc_now})
         return {"status": "approved", "job": dict(job)}
+
+    def _rpc_marketing_storage_used(self, a):
+        t = a["p_tenant"]
+        T = self.tables
+        return int(sum(int(m.get("byte_size") or 0) for m in T["marketing_media"]
+                       if m["tenant_id"] == t and m.get("processing_status") != "deleted")
+                   + sum(int(d.get("byte_size") or 0) for d in T["marketing_media_derivatives"]
+                         if d["tenant_id"] == t and d.get("status") != "deleted")
+                   + sum(int(o.get("byte_size") or 0) for o in T["marketing_generation_outputs"]
+                         if o["tenant_id"] == t and not o.get("purged_at"))
+                   + sum(int(r["bytes"]) for r in T["marketing_storage_reservations"]
+                         if r["tenant_id"] == t and r["status"] == "reserved"
+                         and not any(r["reservation_key"] == f"upload:{m['id']}" for m in T["marketing_media"]
+                                     if m["tenant_id"] == t))
+                   + sum(int(j.get("reserved_storage_bytes") or 0) for j in T["marketing_generation_jobs"]
+                         if j["tenant_id"] == t and j["status"] in ("queued", "processing")))
+
+    def _rpc_marketing_reserve_storage(self, a):
+        if not a["p_bytes"] or a["p_bytes"] <= 0:
+            return {"status": "rejected", "reason": "invalid_size"}
+        s = next((x for x in self.tables["marketing_settings"] if x["tenant_id"] == a["p_tenant"]), None)
+        lim = (s or {}).get("library_storage_limit_bytes", 0)
+        if not s or lim == 0:
+            return {"status": "rejected", "reason": "library_disabled"}
+        if any(r["tenant_id"] == a["p_tenant"] and r["reservation_key"] == a["p_key"]
+               for r in self.tables["marketing_storage_reservations"]):
+            return {"status": "duplicate"}
+        used = self._rpc_marketing_storage_used({"p_tenant": a["p_tenant"]})
+        if self.rpc_delay:
+            time.sleep(self.rpc_delay)
+        if lim is not None and used + a["p_bytes"] > lim:
+            return {"status": "rejected", "reason": "limit_library_storage", "available": max(lim - used, 0)}
+        self.tables["marketing_storage_reservations"].append({"tenant_id": a["p_tenant"], "reservation_key": a["p_key"],
+                                                               "kind": a["p_kind"], "bytes": a["p_bytes"], "status": "reserved"})
+        return {"status": "reserved"}
+
+    def _rpc_marketing_release_storage(self, a):
+        for r in self.tables["marketing_storage_reservations"]:
+            if r["tenant_id"] == a["p_tenant"] and r["reservation_key"] == a["p_key"] and r["status"] == "reserved":
+                r["status"] = "consumed" if a["p_consumed"] else "released"
+                return {"status": r["status"]}
+        return None

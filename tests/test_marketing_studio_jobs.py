@@ -221,4 +221,4 @@ def test_approval_rechecks_inputs_even_without_automatic_cancellation(lib, studi
     j = studio.estimate_job(jwt(OWNER), T1, new_job(studio, [m["id"]])["id"])
     db.tables["marketing_media"][0].update({"consent_status": "revoked", "people_policy": "exclude"})   # sin pasar por revoke
     assert err(studio.approve_job, jwt(OWNER), T1, j["id"], True) == "consent_revoked"
-    assert db.rpc_calls == []                                    # ni siquiera llega a reservar
+    assert "marketing_approve_generation" not in db.rpc_calls                                    # ni siquiera llega a reservar

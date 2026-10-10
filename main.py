@@ -101,7 +101,6 @@ def _manager_csp() -> str:
         "style-src 'self' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data: blob:; "
-        "media-src 'self' blob:; "          # vista previa de vídeos de la Biblioteca (blob local)
         f"connect-src 'self' {supa} {ws}; "
         "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
     )

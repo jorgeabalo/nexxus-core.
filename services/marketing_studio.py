@@ -37,11 +37,17 @@ JOB_COLS = ("id,tenant_id,content_id,created_by,task_type,status,real_media_perc
             "result_metadata,error_code,created_at,updated_at,approved_at,completed_at")
 
 
+COST_CATEGORY = "marketing_ai_budget"      # solo el presupuesto de IA de Marketing, NO el global de 80 USD del tenant
+
+
 def public_job(j: Dict[str, Any]) -> Dict[str, Any]:
-    """Lo que ve el tenant: sin proveedores, modelos, costos unitarios ni fuentes de precio (datos internos)."""
+    """Lo que ve el manager: costo estimado, reservado y real y la categoría del costo. Proveedor, modelo,
+    costos unitarios y fuentes de precio son información interna y no se devuelven."""
     if not isinstance(j, dict):
         return j
     out = {k: v for k, v in j.items() if k not in ("selected_provider", "selected_model", "provider_job_id")}
+    out["cost"] = {"category": COST_CATEGORY, "currency": j.get("currency") or "USD",
+                   "estimated": j.get("estimated_cost"), "reserved": j.get("reserved_cost"), "actual": j.get("actual_cost")}
     meta = dict(out.get("request_metadata") or {})
     est = meta.get("estimate")
     if isinstance(est, dict):
@@ -245,11 +251,13 @@ class StudioService(StudioBase):
         reserved = jd.to_cost(j.get("estimated_cost"))
         if reserved is None:
             raise PortalError("cost_not_estimable", 409)             # sin costo máximo no se ejecuta
+        storage_bytes = int(est.get("estimated_output_bytes") or 0)     # también reserva espacio para el resultado
         res = self.db.rpc("marketing_approve_generation", {"p_tenant": c.tenant_id, "p_job": j["id"],
-                                                          "p_user": c.user["id"], "p_reserved": reserved}) or {}
+                                                          "p_user": c.user["id"], "p_reserved": reserved,
+                                                          "p_storage_bytes": storage_bytes}) or {}
         if res.get("status") != "approved":
             reason = res.get("reason") or "budget_exceeded"
-            raise PortalError(reason, 403 if reason == "generation_disabled" else 409)
+            raise PortalError(reason, 403 if reason in ("generation_disabled", "library_disabled") else 409)
         return res["job"]
 
     @_guard

@@ -128,30 +128,38 @@ está prohibido. El mismo archivo puede volver a subirse después.
 * Los metadatos (EXIF, GPS) del original no se leen ni se guardan; quitar EXIF de los derivados queda pendiente
   para cuando haya procesamiento real.
 
-## 4d. Vista previa y CSP
+## 4d. Vista previa, reproducción con HTTP Range y CSP
 
-La vista previa **no** usa URLs firmadas: `GET|HEAD /api/manager/marketing/library/{id}/content` comprueba sesión,
-rol, módulo, tenant, estado del archivo (validado, no eliminado ni pendiente de purga) y ruta **en cada petición**
-(también en HEAD y en cada Range), y entrega el archivo **en trozos desde el backend** (mismo origen, `nosniff`,
-`no-store`). Soporta `Range: bytes=a-b`, `a-` y `-n` (206 + `Content-Range` + `Content-Length`), `Accept-Ranges:
-bytes`, HEAD sin cuerpo (no toca Storage) y 416 para rangos imposibles; varios rangos → se envía completo
-(RFC 9110). El rango se pide así a Storage y, si Storage lo ignorara, se recorta al transmitir: nunca se carga el
-vídeo entero en memoria. El navegador lo descarga con `fetch` (cabecera Authorization), crea un `blob:` en
-memoria y lo libera al cerrar.
-Por eso basta `media-src 'self' blob:` y `img-src` sigue igual: la CSP no se abre a Supabase ni a ningún otro
-dominio, y ninguna URL de Storage llega al navegador ni a los logs. Hay pruebas que fijan las directivas exactas.
+* El `<video>` no puede enviar la cabecera Authorization, así que el panel pide una **autorización temporal
+  same-origin** (`POST …/library/{id}/stream-token`, con el JWT). Es un token aleatorio de un solo archivo, ligado a
+  tenant + usuario + archivo, que caduca en minutos (`MARKETING_STREAM_TTL`, 60–900 s, 600 por defecto) y se
+  puede revocar. En la base de datos solo se guarda su hash (`marketing_stream_tokens`, solo service_role).
+* El reproductor usa directamente `GET|HEAD /api/manager/marketing/library/stream/{token}`. El navegador pide HEAD
+  y rangos (`Range: bytes=a-b | a- | -n` → 206 + `Content-Range` + `Content-Length` + `Accept-Ranges: bytes`;
+  416 si el rango es inválido) y puede avanzar y retroceder **sin descargar el archivo completo**. El rango se pide
+  así a Storage y se transmite en trozos.
+* Cada petición (HEAD y cada Range) revalida: token vigente y no revocado, usuario todavía owner/manager activo
+  del tenant, módulo Marketing activo, archivo validado, no eliminado ni pendiente de purga, y ruta del tenant.
+* Revocación: al cerrar la vista previa, al eliminar o purgar el archivo y al retirar el consentimiento. Si el
+  token caduca durante la reproducción, el panel pide otro y continúa en el mismo segundo.
+* El token nunca aparece en los logs de acceso (filtro `RedactStreamTokens`). Las respuestas llevan `no-store`,
+  `no-referrer`, `nosniff` y `same-origin`.
+* CSP: ya no hace falta `blob:`; el vídeo queda cubierto por `default-src 'self'`, igual que en `main`.
+  `GET|HEAD …/library/{id}/content` (con JWT) sigue disponible para clientes de la API.
 
 ## 4e. Retención y eliminación automática
 
-Ningún archivo se guarda indefinidamente (`expires_at` obligatorio, máximo absoluto 90 días desde la subida).
+Ningún archivo se guarda indefinidamente: `expires_at` es obligatorio (máximo 90 días desde la subida), la
+publicación lo conserva como máximo hasta 30 días después de publicarse (tope absoluto 120 días) y la protección
+por trabajo activo añade como máximo 14 días. Nunca hay retención permanente.
 
 | Caso | Retención |
 |---|---|
 | archivo sin usar | 30 días (o el máximo del plan si es menor) |
 | derivado simulado / temporal | 7 días |
 | resultados de trabajos simulados, fallidos o cancelados | 7 días |
-| usado por un trabajo activo o una publicación programada | protegido hasta que termine, con un límite de seguridad de 14 días tras el vencimiento: si sigue atascado, el trabajo se cancela/falla (`timeout`) y se purga (`workflow_timeout`) |
-| publicación confirmada (`published`) | se elimina 30 días después, sin superar el máximo del plan |
+| usado por un trabajo activo o una publicación programada | protegido como **máximo 14 días** desde que empieza la protección (`protected_until`); después el trabajo se cancela de forma idempotente (`timeout`), se solicita la purga y se purga (`workflow_timeout`) |
+| publicación confirmada (`published`) | se conserva hasta **30 días después de publicarse** (`publication_hold_until`); luego se purga (`publication_done`) |
 | consentimiento retirado | purga prioritaria; trabajos pendientes cancelados (reservas liberadas); resultados bloqueados para reutilización |
 
 * El operador fija `max_retention_days` (7–90, por defecto 30). Owner/manager eligen 7, 30, 60 o 90 días desde la
@@ -166,10 +174,17 @@ Ningún archivo se guarda indefinidamente (`expires_at` obligatorio, máximo abs
 * **No hay tarea programada en este PR**: `RetentionRunner.run()` está listo para un worker, pero nada lo invoca
   en producción (lo comprueba una prueba). La única eliminación real posible es la que pide un owner/manager.
 
-## 4f. Costo de los trabajos de Marketing
+## 4f. "Marketing AI budget" (costo de los trabajos de Marketing)
 
-Migración `20261011140000_marketing_generation_budget.sql`. Solo Marketing: el presupuesto global de voz y
-facturación irá en otro PR.
+Migración `20261011140000_marketing_generation_budget.sql`. **El límite implementado es exclusivamente el
+"Marketing AI budget"**: limita solo el gasto de IA de los trabajos de Marketing. **No es** el presupuesto global
+de 80 USD por tenant (voz, IA de Claudia, infraestructura…), que irá en otro PR.
+
+* Cuota de almacenamiento (ver tabla de límites): `public.marketing_storage_used()` lo cuenta todo y
+  `public.marketing_reserve_storage()` reserva de forma atómica (bloquea la configuración del tenant). Las subidas
+  reservan sus bytes antes de guardar el archivo (y los liberan si falla); al aprobar un trabajo se reservan los
+  bytes estimados del resultado (`reserved_storage_bytes`), que dejan de contar al terminar. Una subida ya
+  registrada no cuenta dos veces.
 
 * `marketing_settings.monthly_ai_cost_limit` (USD/mes) lo fija **solo el operador**; `0` por defecto = ninguna
   generación, ni siquiera simulada; `null` = sin límite. El tenant no puede cambiarlo (sin endpoint; SELECT only).
@@ -186,8 +201,10 @@ facturación irá en otro PR.
 * Un Reel 100 % IA se marca (`full_ai`), muestra su costo estimado y nunca se inicia sin aprobación explícita.
   Prioridad económica: material del cliente → local → plantillas/FFmpeg → modelos pequeños → imagen →
   imagen-a-vídeo → texto-a-vídeo como último recurso; la sugerencia por defecto usa el material del cliente.
-* Interfaz: presupuesto de IA del mes, consumido, reservado, disponible y avisos al 25 %, 10 % y 0 %. La API no
-  expone al tenant proveedores, modelos ni costos unitarios.
+* Interfaz: "Marketing AI budget" del mes (consumido, reservado, disponible y avisos al 25 %, 10 % y 0 %) con la
+  aclaración de que no es el presupuesto global. En cada trabajo el manager ve **costo estimado, reservado y real y
+  la categoría del costo** (`marketing_ai_budget`). Proveedor y modelo son **información interna**: se guardan en
+  el trabajo y en `marketing_model_usage`, pero la API no los devuelve.
 * Concurrencia: probada con hilos reales contra un doble que reproduce el bloqueo, y en SQL la lógica y el
   `FOR UPDATE`. PGlite es de una sola conexión: conviene repetir la prueba entre conexiones reales en staging.
 
@@ -269,6 +286,7 @@ transporte inyectado explícitamente, `submit()` devuelve `provider_disabled`.
 | `MARKETING_AI_MOCK_ENABLED` | `true` | Proveedor simulado (sin red, coste 0) |
 | `MARKETING_LOCAL_TOOLS_ENABLED` | `false` | Herramientas locales (FFmpeg); no instaladas en producción |
 | `MARKETING_AI_CATALOG_PATH` | catálogo del repo | Otro catálogo en el servidor |
+| `MARKETING_STREAM_TTL` | 600 | Vida del token de reproducción en segundos (se limita a 60–900) |
 | `MARKETING_MAX_VIDEO_DURATION_MS` | 900000 | Duración máxima creíble de un vídeo subido (15 min) |
 | `MARKETING_HARD_MAX_UPLOAD_BYTES` | 100 MB | Tope absoluto por archivo (memoria del servidor) |
 
@@ -288,7 +306,7 @@ Columnas nuevas en `marketing_settings` (las fija el operador; el tenant no pued
 | `monthly_generated_image_limit` (0) | imágenes generadas estimadas | al aprobar | igual |
 | `monthly_generated_video_seconds_limit` (0) | segundos generados o adaptados con IA | al aprobar | igual |
 | `monthly_ai_cost_limit` (0) | coste real, o el estimado si aún no hay real | al aprobar (reserva) | cancelado/fallido cuenta solo su coste real |
-| `library_storage_limit_bytes` (0) | bytes de originales no eliminados (incluidos archivados) | al subir | 0 = Biblioteca no habilitada; eliminar libera espacio; archivar no |
+| `library_storage_limit_bytes` (0) | originales + derivados (anonimizaciones, vistas previas) + resultados/temporales + subidas en curso + bytes estimados de trabajos pendientes | al reservar (subida o aprobación), de forma atómica | 0 = Biblioteca no habilitada; eliminar/purgar libera espacio; archivar no |
 | `max_upload_bytes` (50 MB) | tamaño por archivo | al subir | — |
 
 `null` = sin límite; `0` = nada permitido. El mes es el del huso horario del tenant.

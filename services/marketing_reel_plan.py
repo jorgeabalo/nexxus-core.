@@ -16,6 +16,7 @@ from services.marketing_ai_router import MarketingAIRouter, RouteRequest, Router
 from services.marketing_domain import DomainError
 from services.marketing_jobs_domain import PRODUCTION_PRIORITY
 from services.marketing_mix import plan_scenes
+from services.marketing_storage import estimated_output_bytes
 
 OBJECTIVES = ("new_members", "class_promo", "event", "offer", "brand", "education")
 AUDIENCES = ("general", "seniors_60_plus", "beginners", "athletes", "parents", "custom")
@@ -120,6 +121,7 @@ def estimate(router: MarketingAIRouter, *, tenant_id: str, job_key: str, brief: 
             "catalog_version": router.catalog.version, "price_source": router.catalog.price_source,
             "generated_images": images, "generated_video_seconds": video_seconds,
             "external_calls": sum(1 for r in rows if r["external"]),
+            "estimated_output_bytes": estimated_output_bytes(brief["duration_seconds"]),
             # Reel 100 % IA: se muestra su costo máximo, consume Marketing IA y puede ofrecerse como add-on.
             "full_ai": mix["ai_media_percent"] == 100,
             "production_methods": sorted({PRIORITY_OF.get(r["task_type"], "small_models") for r in rows}

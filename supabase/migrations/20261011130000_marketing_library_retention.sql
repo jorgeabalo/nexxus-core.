@@ -6,6 +6,11 @@
 --
 -- * Ningún archivo se guarda indefinidamente: expires_at es obligatorio y nunca supera la retención
 --   máxima del plan (max_retention_days, 7–90; la fija el operador, el tenant no puede cambiarla).
+-- * Política unificada: un trabajo activo protege sus archivos como máximo 14 días (después se cancela
+--   y se purga); una publicación los conserva hasta 30 días después de publicarse. Nada es permanente.
+-- * Cuota: originales + derivados + resultados/temporales + reservas pendientes (subidas y trabajos),
+--   con reserva atómica (marketing_reserve_storage) para que operaciones simultáneas no la superen.
+-- * marketing_stream_tokens: autorización temporal same-origin para reproducir con HTTP Range.
 -- * Al purgar se conservan solo metadatos mínimos de auditoría (id, tenant, hash, tipo, tamaño,
 --   quién lo subió, fechas y motivo): sin nombre original, sin metadatos, ruta neutralizada.
 -- Idempotente. No borra datos.
@@ -21,6 +26,7 @@ alter table public.marketing_media
   add column if not exists retention_status   text not null default 'active'
       check (retention_status in ('active','protected_by_workflow','expiring','purge_pending','purged','purge_failed')),
   add column if not exists protected_until    timestamptz,
+  add column if not exists publication_hold_until timestamptz,
   add column if not exists purge_requested_at timestamptz,
   add column if not exists purged_at          timestamptz,
   add column if not exists purge_reason       text check (purge_reason is null or purge_reason in
@@ -35,7 +41,10 @@ alter table public.marketing_media alter column expires_at set not null;
 alter table public.marketing_media drop constraint if exists marketing_media_retention_check;
 alter table public.marketing_media add constraint marketing_media_retention_check check (
   expires_at <= created_at + interval '90 days'
-  and (protected_until is null or protected_until <= created_at + interval '104 days')   -- 90 + 14 de seguridad
+  -- publicación: hasta 30 días después de publicarse (como máximo 90 + 30)
+  and (publication_hold_until is null or publication_hold_until <= created_at + interval '120 days')
+  -- protección por un trabajo activo: 14 días como máximo (120 + 14 en el peor caso)
+  and (protected_until is null or protected_until <= created_at + interval '134 days')
   and (retention_status <> 'purged' or (purged_at is not null and processing_status = 'deleted'
                                         and original_filename is null and metadata = '{}'::jsonb))
   and (processing_status <> 'deleted' or retention_status = 'purged'));
@@ -52,7 +61,10 @@ alter table public.marketing_media_derivatives add constraint marketing_media_de
 
 alter table public.marketing_generation_outputs
   add column if not exists expires_at timestamptz,
-  add column if not exists purged_at  timestamptz;
+  add column if not exists purged_at  timestamptz,
+  add column if not exists byte_size  bigint check (byte_size is null or byte_size >= 0);
+alter table public.marketing_generation_jobs
+  add column if not exists reserved_storage_bytes bigint not null default 0 check (reserved_storage_bytes >= 0);
 
 -- El original no se sobrescribe. La purga (y solo ella) neutraliza la ruta y borra nombre y metadatos.
 create or replace function private.marketing_media_guard()
@@ -112,3 +124,96 @@ begin
   return new;
 end $$;
 revoke all on function private.marketing_media_guard() from public, anon, authenticated;
+
+-- ---------- cuota de almacenamiento: todo cuenta, y lo pendiente se reserva ----------
+create table if not exists public.marketing_storage_reservations (
+  id              uuid primary key default gen_random_uuid(),
+  tenant_id       uuid not null references public.tenants(id) on delete restrict,
+  reservation_key text not null check (length(reservation_key) between 8 and 200),
+  kind            text not null check (kind in ('upload','derivative','generation')),
+  bytes           bigint not null check (bytes > 0),
+  status          text not null default 'reserved' check (status in ('reserved','consumed','released')),
+  expires_at      timestamptz not null default (now() + interval '15 minutes'),
+  created_at      timestamptz not null default now(),
+  unique (tenant_id, reservation_key)
+);
+
+create or replace function public.marketing_storage_used(p_tenant uuid)
+returns bigint language sql stable security definer set search_path = '' as $$
+  select coalesce((select sum(byte_size) from public.marketing_media
+                    where tenant_id = p_tenant and processing_status <> 'deleted'), 0)
+       + coalesce((select sum(byte_size) from public.marketing_media_derivatives
+                    where tenant_id = p_tenant and status <> 'deleted'), 0)
+       + coalesce((select sum(byte_size) from public.marketing_generation_outputs
+                    where tenant_id = p_tenant and purged_at is null), 0)
+       + coalesce((select sum(r.bytes) from public.marketing_storage_reservations r
+                    where r.tenant_id = p_tenant and r.status = 'reserved' and r.expires_at > now()
+                      -- una subida ya registrada cuenta por su archivo, no dos veces
+                      and not exists (select 1 from public.marketing_media m where m.tenant_id = p_tenant
+                                        and r.reservation_key = 'upload:' || m.id::text)), 0)
+       + coalesce((select sum(reserved_storage_bytes) from public.marketing_generation_jobs
+                    where tenant_id = p_tenant and status in ('queued','processing')), 0)::bigint $$;
+
+-- Reserva atómica (bloquea la configuración del tenant). Idempotente por clave.
+create or replace function public.marketing_reserve_storage(p_tenant uuid, p_key text, p_kind text, p_bytes bigint)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare s public.marketing_settings; used bigint; existing public.marketing_storage_reservations;
+begin
+  if p_bytes is null or p_bytes <= 0 then
+    return jsonb_build_object('status', 'rejected', 'reason', 'invalid_size');
+  end if;
+  select * into s from public.marketing_settings where tenant_id = p_tenant for update;
+  if not found or s.library_storage_limit_bytes = 0 then
+    return jsonb_build_object('status', 'rejected', 'reason', 'library_disabled');
+  end if;
+  select * into existing from public.marketing_storage_reservations where tenant_id = p_tenant and reservation_key = p_key;
+  if found then
+    return jsonb_build_object('status', 'duplicate', 'reservation_status', existing.status);
+  end if;
+  used := public.marketing_storage_used(p_tenant);
+  if s.library_storage_limit_bytes is not null and used + p_bytes > s.library_storage_limit_bytes then
+    return jsonb_build_object('status', 'rejected', 'reason', 'limit_library_storage',
+                              'available', greatest(s.library_storage_limit_bytes - used, 0));
+  end if;
+  insert into public.marketing_storage_reservations (tenant_id, reservation_key, kind, bytes)
+  values (p_tenant, p_key, p_kind, p_bytes);
+  return jsonb_build_object('status', 'reserved');
+end $$;
+
+create or replace function public.marketing_release_storage(p_tenant uuid, p_key text, p_consumed boolean)
+returns jsonb language sql security definer set search_path = '' as $$
+  update public.marketing_storage_reservations set status = case when p_consumed then 'consumed' else 'released' end
+   where tenant_id = p_tenant and reservation_key = p_key and status = 'reserved'
+  returning jsonb_build_object('status', status) $$;
+
+-- ---------- autorización temporal para reproducir (HTTP Range desde <video>) ----------
+-- Se guarda solo el hash del token. Ligado a tenant, usuario y archivo; expira en minutos; revocable.
+create table if not exists public.marketing_stream_tokens (
+  id            uuid primary key default gen_random_uuid(),
+  tenant_id     uuid not null references public.tenants(id) on delete restrict,
+  user_id       uuid not null,
+  media_id      uuid not null,
+  derivative_id uuid,
+  token_hash    text not null unique check (token_hash ~ '^[0-9a-f]{64}$'),
+  expires_at    timestamptz not null check (expires_at <= created_at + interval '15 minutes'),
+  revoked_at    timestamptz,
+  created_at    timestamptz not null default now(),
+  constraint marketing_stream_tokens_media_fk foreign key (media_id, tenant_id)
+    references public.marketing_media(id, tenant_id) on delete restrict
+);
+create index if not exists marketing_stream_tokens_media_idx on public.marketing_stream_tokens(tenant_id, media_id);
+
+-- Solo el backend: ni el navegador ni authenticated leen tokens o reservas.
+revoke all on function public.marketing_storage_used(uuid), public.marketing_reserve_storage(uuid, text, text, bigint),
+  public.marketing_release_storage(uuid, text, boolean) from public, anon, authenticated;
+grant execute on function public.marketing_storage_used(uuid), public.marketing_reserve_storage(uuid, text, text, bigint),
+  public.marketing_release_storage(uuid, text, boolean) to service_role;
+do $$
+declare t text;
+begin
+  foreach t in array array['marketing_storage_reservations','marketing_stream_tokens'] loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('revoke all privileges on public.%I from public, anon, authenticated, service_role', t);
+    execute format('grant select, insert, update on public.%I to service_role', t);
+  end loop;
+end $$;

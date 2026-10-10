@@ -163,10 +163,12 @@ def warning_level(available: float, limit: Optional[float]) -> Optional[str]:
 
 
 def budget_summary(limit: Optional[float], usage: Dict[str, float]) -> Dict[str, Any]:
-    """Solo cifras del propio tenant: presupuesto, consumido (costo real), reservado y disponible."""
+    """"Marketing AI budget": SOLO el gasto de IA de Marketing del propio tenant (presupuesto, consumido,
+    reservado y disponible). No es el presupuesto global de 80 USD del tenant (voz, IA, infraestructura…)."""
     used, held = round(float(usage.get("consumed") or 0), 4), round(float(usage.get("reserved") or 0), 4)
     lim = None if limit is None else float(limit)
     avail = None if lim is None else max(round(lim - used - held, 4), 0.0)
-    return {"limit": lim, "consumed": used, "reserved": held, "available": avail, "currency": "USD",
+    return {"scope": "marketing_ai_budget", "limit": lim, "consumed": used, "reserved": held, "available": avail,
+            "currency": "USD",
             "warning": warning_level(avail if avail is not None else 0, lim),
             "available_pct": None if not lim else math.floor(100 * avail / lim)}

@@ -14,23 +14,46 @@ export function warnings() {
 export const privacyBadge = (cls) => el('span', { class: `badge mk-pc-${cls}` }, s(`pc_${cls}`));
 const peopleText = (v) => (v === true ? s('yes') : v === false ? s('no') : s('unknown'));
 
+// Reproducción con HTTP Range real: el panel pide una autorización temporal same-origin (ligada a tenant,
+// usuario y archivo) y el <video> pide HEAD y rangos directamente: avanza y retrocede sin descargar todo.
+// Si el token caduca durante la reproducción, se renueva y se continúa en el mismo segundo.
+// Al cerrar, el token se revoca y el elemento deja de cargar.
 async function showPreview(ctx, m, derivativeId) {
+  const root = document.getElementById('modal-root');
   const holder = el('div', { class: 'mk-preview' }, el('div', { class: 'spinner spinner-inline' }));
-  let objectUrl = null;
   const close = openModal({ title: s('preview'), closeLabel: s('close'), body: holder });
+  const isVideo = (derivativeId ? 'image' : m.media_type) === 'video';
+  let media = null;
+  let renewals = 0;
   try {
-    const blob = await M.previewBlob(ctx.tenantId, m.id, derivativeId);
-    objectUrl = URL.createObjectURL(blob);
-    const media = (derivativeId ? 'image' : m.media_type) === 'video'
-      ? el('video', { src: objectUrl, controls: true, playsinline: true, preload: 'metadata' })
-      : el('img', { src: objectUrl, alt: m.original_filename || '' });
+    const tok = await M.streamToken(ctx.tenantId, m.id, derivativeId);
+    media = isVideo
+      ? el('video', { src: tok.url, controls: true, playsinline: true, preload: 'metadata' })
+      : el('img', { src: tok.url, alt: m.original_filename || '' });
+    if (isVideo) {
+      media.addEventListener('error', async () => {
+        if (!root.contains(holder) || renewals >= 3) return;
+        renewals += 1;
+        const at = media.currentTime || 0;
+        const playing = !media.paused;
+        try {
+          const fresh = await M.streamToken(ctx.tenantId, m.id, derivativeId);
+          media.src = fresh.url;
+          media.addEventListener('loadedmetadata', () => { media.currentTime = at; if (playing) media.play().catch(() => {}); },
+            { once: true });
+        } catch (e) { clear(holder).appendChild(errorBox({ message: sErr(e) })); }
+      });
+    }
     clear(holder).appendChild(media);
   } catch (e) {
     clear(holder).appendChild(errorBox({ message: sErr(e) }));
   }
-  // El blob se libera al cerrar: no queda nada guardado en el navegador.
-  const root = document.getElementById('modal-root');
-  const obs = new MutationObserver(() => { if (!root.contains(holder)) { if (objectUrl) URL.revokeObjectURL(objectUrl); obs.disconnect(); } });
+  const obs = new MutationObserver(() => {
+    if (root.contains(holder)) return;
+    obs.disconnect();
+    if (media) { media.removeAttribute('src'); if (isVideo) media.load(); }
+    M.streamRevoke(ctx.tenantId, m.id).catch(() => {});
+  });
   obs.observe(root, { childList: true, subtree: true });
   return close;
 }

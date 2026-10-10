@@ -91,7 +91,7 @@ def test_mock_jobs_cost_nothing_and_use_no_network(lib, studio, db, monkeypatch)
 def test_cost_not_estimable_never_runs(lib, studio, db):
     j = awaiting(studio, db, None)
     assert err(studio.approve_job, jwt(OWNER), T1, j["id"], True) == "cost_not_estimable"
-    assert row(db, j["id"])["status"] == "awaiting_generation_approval" and db.rpc_calls == []
+    assert row(db, j["id"])["status"] == "awaiting_generation_approval" and "marketing_approve_generation" not in db.rpc_calls
 
 
 def test_operator_limit_blocks(lib, studio, db):
@@ -191,5 +191,10 @@ def test_http_never_exposes_internal_costs_or_providers(monkeypatch, db):
     for t in texts:
         for leak in ("mock-media-v1", "selected_provider", "provider_job_id", "price_source", "billing_unit", "model_id"):
             assert leak not in t, leak
+    job = c.get(f"/api/manager/marketing/jobs/{jid}?tenant_id={T1}", headers=H).json()
+    assert job["cost"]["category"] == "marketing_ai_budget"
+    assert set(job["cost"]) == {"category", "currency", "estimated", "reserved", "actual"}
+    assert job["cost"]["reserved"] == 0 and job["cost"]["actual"] == 0
     ov = c.get(f"/api/manager/marketing/studio?tenant_id={T1}", headers=H).json()
-    assert set(ov["budget"]) == {"limit", "consumed", "reserved", "available", "currency", "warning", "available_pct"}
+    assert set(ov["budget"]) == {"scope", "limit", "consumed", "reserved", "available", "currency", "warning", "available_pct"}
+    assert ov["budget"]["scope"] == "marketing_ai_budget"                      # NO es el presupuesto global

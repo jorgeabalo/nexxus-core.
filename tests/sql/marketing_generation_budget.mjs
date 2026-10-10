@@ -40,8 +40,8 @@ const job = async (t = TA) => (await q(`insert into marketing_generation_jobs (t
   returning id`))[0].id;
 const awaiting = async (t = TA) => { const id = await job(t);
   await q(`update marketing_generation_jobs set status = 'awaiting_generation_approval', estimated_cost = 1 where id = '${id}'`); return id; };
-const approve = async (t, id, cost) => (await q(`select public.marketing_approve_generation('${t}','${id}','${U.ownerA}',
-  ${cost === null ? 'null' : cost}) r`))[0].r;
+const approve = async (t, id, cost, bytes = 0) => (await q(`select public.marketing_approve_generation('${t}','${id}','${U.ownerA}',
+  ${cost === null ? 'null' : cost}, ${bytes === null ? 'null' : bytes}) r`))[0].r;
 
 // 1. cerrado por defecto: límite 0 e IA apagada → nada se aprueba, ni simulado
 const s = (await q(`select monthly_ai_cost_limit l, ai_generation_enabled e from marketing_settings where tenant_id = '${TA}'`))[0];
@@ -69,6 +69,19 @@ ok((await approve(TA, J2, 10)).status === 'approved', 'saldo liberado');
 const J3 = await awaiting();
 await q(`update marketing_generation_jobs set status = 'queued', approved_at = now(), approved_by = '${U.ownerA}' where id = '${J3}'`, '23514');
 
+// 2b. también reserva los bytes estimados del resultado (cuota de almacenamiento)
+const J4 = await awaiting();
+ok((await approve(TA, J4, 0, null)).reason === 'storage_not_estimable', 'sin estimación de bytes no se aprueba');
+ok((await approve(TA, J4, 0, 1000)).reason === 'library_disabled', 'Biblioteca no habilitada (0): sin espacio para el resultado');
+await q(`update marketing_settings set library_storage_limit_bytes = 1500 where tenant_id = '${TA}'`);
+r = await approve(TA, J4, 0, 1000);
+ok(r.status === 'approved' && Number(r.job.reserved_storage_bytes) === 1000, 'bytes reservados');
+ok(Number((await q(`select public.marketing_storage_used('${TA}') u`))[0].u) === 1000, 'el trabajo pendiente cuenta en la cuota');
+const J5 = await awaiting();
+ok((await approve(TA, J5, 0, 600)).reason === 'limit_library_storage', 'dos trabajos no comparten el mismo espacio');
+await q(`update marketing_generation_jobs set status = 'cancelled' where id = '${J4}'`);
+ok((await approve(TA, J5, 0, 600)).status === 'approved', 'al terminar, el espacio reservado se libera');
+
 // 3. aislamiento: el consumo de A no afecta a B (y B sigue cerrado)
 const JB = await awaiting(TB);
 ok((await approve(TB, JB, 0)).reason === 'generation_disabled', 'B cerrado por defecto');
@@ -80,10 +93,10 @@ const src = (await q(`select prosrc from pg_proc where proname = 'marketing_appr
 ok(/from public\.marketing_settings where tenant_id = p_tenant for update/i.test(src), 'bloquea la configuración del tenant (SELECT … FOR UPDATE)');
 ok(/status = 'awaiting_generation_approval' for update/i.test(src), 'bloquea también el trabajo');
 for (const role of ['anon', 'authenticated']) {
-  ok(!(await q(`select has_function_privilege('${role}', 'public.marketing_approve_generation(uuid,uuid,uuid,numeric)', 'EXECUTE') x`))[0].x,
+  ok(!(await q(`select has_function_privilege('${role}', 'public.marketing_approve_generation(uuid,uuid,uuid,numeric,bigint)', 'EXECUTE') x`))[0].x,
     `${role} no ejecuta la aprobación`);
 }
-ok((await q(`select has_function_privilege('service_role', 'public.marketing_approve_generation(uuid,uuid,uuid,numeric)', 'EXECUTE') x`))[0].x,
+ok((await q(`select has_function_privilege('service_role', 'public.marketing_approve_generation(uuid,uuid,uuid,numeric,bigint)', 'EXECUTE') x`))[0].x,
   'solo el backend');
 await db.exec(`begin; set local role authenticated`);
 await db.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: U.ownerA })]);

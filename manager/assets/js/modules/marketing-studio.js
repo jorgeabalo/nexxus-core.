@@ -142,6 +142,11 @@ function jobDetail(ctx, id, reload, genEnabled = true) {
       el('p', {}, jobBadge(j.status), ' ', el('strong', {}, `${j.real_media_percent}% ${s('real')} / ${j.ai_media_percent}% ${s('ai')}`),
         ` · ${s(`q_${j.quality_tier}`)} · ${s('maxCost')}: ${fmtCost(j.maximum_cost, j.currency)}`),
       j.error_code ? el('p', { class: 'error-box' }, sErr({ code: j.error_code })) : null,
+      j.cost ? el('dl', { class: 'mk-summary mk-job-cost' },
+        el('dt', {}, s('costCategory')), el('dd', {}, s(`cat_${j.cost.category}`)),
+        el('dt', {}, s('costEstimated')), el('dd', {}, j.cost.estimated === null || j.cost.estimated === undefined ? '—' : fmtCost(j.cost.estimated, j.cost.currency)),
+        el('dt', {}, s('costReserved')), el('dd', {}, j.cost.reserved === null || j.cost.reserved === undefined ? '—' : fmtCost(j.cost.reserved, j.cost.currency)),
+        el('dt', {}, s('costActual')), el('dd', {}, j.cost.actual === null || j.cost.actual === undefined ? '—' : fmtCost(j.cost.actual, j.cost.currency))) : null,
       (j.result_metadata || {}).mock ? el('p', { class: 'mk-note' }, `${s('mock')}: ${sErr({ code: 'mock_content_not_publishable' })}`) : null,
       est ? el('div', {}, el('p', {}, `${s('estimated')}: ${fmtCost(est.estimated_cost, est.currency)} · ${s('catalogV')} ${est.catalog_version}`),
         est.full_ai ? el('p', { class: 'mk-note' }, s('fullAiNote')) : null,
@@ -179,7 +184,8 @@ function budgetCard(b) {
       b.limit === null ? null : el('div', { class: `mk-meter${b.warning && b.warning !== 'low' ? ' full' : ''}`, role: 'progressbar',
         'aria-valuemin': '0', 'aria-valuemax': String(b.limit), 'aria-valuenow': String(b.consumed + b.reserved) }, fill),
       el('p', { class: 'hint' }, `${s('monthlyBudget')}: ${usd(b.limit)} · ${s('consumed')}: ${usd(b.consumed)} · ${s('reserved')}: ${usd(b.reserved)}`),
-      b.warning ? el('p', { class: `mk-budget-warn mk-bw-${b.warning}`, role: 'status', dataset: { warning: b.warning } }, s(`bw_${b.warning}`)) : null)));
+      b.warning ? el('p', { class: `mk-budget-warn mk-bw-${b.warning}`, role: 'status', dataset: { warning: b.warning } }, s(`bw_${b.warning}`)) : null),
+    el('p', { class: 'hint', dataset: { scope: b.scope || 'marketing_ai_budget' } }, s('budgetScopeNote'))));
 }
 
 export async function jobsView(ctx, reload, openId) {

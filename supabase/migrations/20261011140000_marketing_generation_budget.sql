@@ -1,7 +1,8 @@
 -- =====================================================================
--- AITA Marketing — Fase 2: costo de los trabajos de generación (solo Marketing).
+-- AITA Marketing — Fase 2: "Marketing AI budget" (costo de los trabajos de generación de Marketing).
 -- Migración NUEVA. No se ejecuta en producción desde este PR. No activa nada.
--- (El presupuesto global de voz / facturación irá en otro PR.)
+-- IMPORTANTE: esto NO es el presupuesto global de 80 USD por tenant (voz, IA, infraestructura…);
+-- ese presupuesto global irá en otro PR. Aquí solo se limita el gasto de IA de Marketing.
 --
 -- * marketing_settings.monthly_ai_cost_limit (USD/mes) lo fija SOLO el operador. 0 por defecto:
 --   ninguna generación, ni siquiera simulada. null = sin límite.
@@ -39,9 +40,13 @@ create trigger marketing_job_reserved_guard before update on public.marketing_ge
   for each row execute function private.marketing_job_reserved_guard();
 
 -- Aprobar + reservar en una sola transacción. Devuelve {status: approved|rejected, reason, job}.
-create or replace function public.marketing_approve_generation(p_tenant uuid, p_job uuid, p_user uuid, p_reserved numeric)
+drop function if exists public.marketing_approve_generation(uuid, uuid, uuid, numeric);
+-- Además del costo, reserva los bytes estimados de los resultados (cuenta para la cuota de almacenamiento).
+create or replace function public.marketing_approve_generation(p_tenant uuid, p_job uuid, p_user uuid, p_reserved numeric,
+  p_storage_bytes bigint)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare s public.marketing_settings; tz text; month_start timestamptz; used numeric; j public.marketing_generation_jobs;
+        used_bytes bigint;
 begin
   if p_reserved is null or p_reserved < 0 then
     return jsonb_build_object('status', 'rejected', 'reason', 'cost_not_estimable');
@@ -64,8 +69,21 @@ begin
     return jsonb_build_object('status', 'rejected', 'reason', 'budget_exceeded',
                               'available', greatest(s.monthly_ai_cost_limit - used, 0));
   end if;
+  if p_storage_bytes is null or p_storage_bytes < 0 then
+    return jsonb_build_object('status', 'rejected', 'reason', 'storage_not_estimable');
+  end if;
+  if p_storage_bytes > 0 then
+    if s.library_storage_limit_bytes = 0 then
+      return jsonb_build_object('status', 'rejected', 'reason', 'library_disabled');
+    end if;
+    used_bytes := public.marketing_storage_used(p_tenant);
+    if s.library_storage_limit_bytes is not null and used_bytes + p_storage_bytes > s.library_storage_limit_bytes then
+      return jsonb_build_object('status', 'rejected', 'reason', 'limit_library_storage');
+    end if;
+  end if;
   update public.marketing_generation_jobs
-     set status = 'queued', approved_at = now(), approved_by = p_user, reserved_cost = p_reserved
+     set status = 'queued', approved_at = now(), approved_by = p_user, reserved_cost = p_reserved,
+         reserved_storage_bytes = p_storage_bytes
    where id = p_job and tenant_id = p_tenant and status = 'awaiting_generation_approval'
   returning * into j;
   if not found then
@@ -74,10 +92,10 @@ begin
   insert into public.marketing_generation_job_events (tenant_id, job_id, action, from_status, to_status, detail,
                                                       actor_id, actor_role)
   values (p_tenant, p_job, 'approve', 'awaiting_generation_approval', 'queued',
-          jsonb_build_object('reserved_cost', p_reserved), p_user,
+          jsonb_build_object('reserved_cost', p_reserved, 'reserved_storage_bytes', p_storage_bytes), p_user,
           (select tu.role from public.tenant_users tu where tu.tenant_id = p_tenant and tu.user_id = p_user
              and tu.role in ('owner','manager') limit 1));
   return jsonb_build_object('status', 'approved', 'job', to_jsonb(j));
 end $$;
-revoke all on function public.marketing_approve_generation(uuid, uuid, uuid, numeric) from public, anon, authenticated;
-grant execute on function public.marketing_approve_generation(uuid, uuid, uuid, numeric) to service_role;
+revoke all on function public.marketing_approve_generation(uuid, uuid, uuid, numeric, bigint) from public, anon, authenticated;
+grant execute on function public.marketing_approve_generation(uuid, uuid, uuid, numeric, bigint) to service_role;

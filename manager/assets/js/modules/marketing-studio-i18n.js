@@ -3,7 +3,9 @@ import { getLang } from '../i18n.js';
 
 const T = {
   es: {
-    budgetTitle: 'Presupuesto de IA de este mes', budgetMarketing: 'Marketing IA',
+    budgetTitle: 'Marketing AI budget (este mes)', budgetMarketing: 'IA de Marketing',
+    budgetScopeNote: 'Solo limita el gasto de IA de Marketing. No es el presupuesto global de AITA (80 USD por empresa), que se gestiona aparte.',
+    costCategory: 'Categoría del costo', cat_marketing_ai_budget: 'Marketing AI budget', costEstimated: 'Estimado', costReserved: 'Reservado', costActual: 'Real',
     monthlyBudget: 'Presupuesto mensual', consumed: 'Consumido', reserved: 'Reservado', available: 'disponible', method: 'Método',
     bw_low: 'Queda menos del 25 % del presupuesto.', bw_critical: 'Queda menos del 10 % del presupuesto.',
     bw_exhausted: 'Presupuesto agotado: no se iniciarán nuevas operaciones con costo.', bw_not_enabled: 'Presupuesto no habilitado en este plan.',
@@ -126,7 +128,9 @@ const T = {
     },
   },
   en: {
-    budgetTitle: 'This month\'s AI budget', budgetMarketing: 'Marketing AI',
+    budgetTitle: 'Marketing AI budget (this month)', budgetMarketing: 'Marketing AI',
+    budgetScopeNote: 'Only limits Marketing AI spending. It is not the global AITA budget (USD 80 per business), which is managed separately.',
+    costCategory: 'Cost category', cat_marketing_ai_budget: 'Marketing AI budget', costEstimated: 'Estimated', costReserved: 'Reserved', costActual: 'Actual',
     monthlyBudget: 'Monthly budget', consumed: 'Consumed', reserved: 'Reserved', available: 'available', method: 'Method',
     bw_low: 'Less than 25% of the budget remains.', bw_critical: 'Less than 10% of the budget remains.',
     bw_exhausted: 'Budget exhausted: no new paid operations will start.', bw_not_enabled: 'Budget not enabled on this plan.',

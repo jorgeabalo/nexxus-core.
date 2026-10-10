@@ -109,7 +109,7 @@ def test_active_job_protects_until_safety_limit(lib, studio, db):
     assert run(db, 31)["protected"] == 1
     r = row(db, m["id"])
     assert r["retention_status"] == "protected_by_workflow" and db.storage
-    assert r["protected_until"] == (NOW + 44 * DAY).isoformat()               # vencimiento + 14 días
+    assert r["protected_until"] == (NOW + 45 * DAY).isoformat()               # 14 días desde que empieza la protección
     run(db, 40)
     assert row(db, m["id"])["retention_status"] == "protected_by_workflow"
     run(db, 45)                                                               # trabajo atascado: se corta
@@ -117,6 +117,34 @@ def test_active_job_protects_until_safety_limit(lib, studio, db):
     assert r["retention_status"] == "purged" and r["purge_reason"] == "workflow_timeout"
     job = studio.job(jwt(OWNER), T1, j["id"])
     assert job["status"] == "cancelled" and job["error_code"] == "timeout"
+    ev = [e for e in db.tables["marketing_generation_job_events"] if e["job_id"] == j["id"] and e["to_status"] == "cancelled"]
+    run(db, 46)
+    run(db, 47)                                                               # idempotente: nada se repite
+    assert len([e for e in db.tables["marketing_generation_job_events"]
+                if e["job_id"] == j["id"] and e["to_status"] == "cancelled"]) == len(ev) == 1
+    assert actions(db, m["id"]).count("purged") == 1
+
+
+def test_timeout_requests_purge_even_if_storage_fails(lib, studio, db, monkeypatch):
+    m = up(lib)
+    no_people(lib, m)
+    new_job(studio, [m["id"]])
+    run(db, 31)                                                               # empieza la protección (14 días)
+    monkeypatch.setattr(db, "storage_remove", lambda b, k: (_ for _ in ()).throw(RuntimeError("-> 500")))
+    run(db, 46)
+    r = row(db, m["id"])
+    assert r["purge_reason"] == "workflow_timeout" and r["purge_requested_at"] and r["retention_status"] == "purge_failed"
+
+
+def test_timeout_blocks_access_before_removing(lib, studio, db, monkeypatch):
+    m = up(lib)
+    no_people(lib, m)
+    new_job(studio, [m["id"]])
+    run(db, 31)
+    seen = []
+    monkeypatch.setattr(db, "storage_remove", lambda b, k: seen.append(row(db, m["id"])["retention_status"]))
+    run(db, 46)
+    assert seen == ["purge_pending"]
 
 
 def test_finished_job_does_not_protect(lib, studio, db):
@@ -160,7 +188,10 @@ def test_published_file_expires_30_days_after_publication(lib, studio, db):
     db.tables["marketing_publications"].append({"id": "p1", "tenant_id": T1, "content_id": cid, "status": "published",
                                                 "published_at": (NOW + 5 * DAY).isoformat()})
     run(db, 6)
-    assert row(db, m["id"])["expires_at"] == (NOW + 35 * DAY).isoformat()
+    r = row(db, m["id"])
+    assert r["publication_hold_until"] == (NOW + 35 * DAY).isoformat() and r["expires_at"] == (NOW + 90 * DAY).isoformat()
+    run(db, 34)
+    assert row(db, m["id"])["retention_status"] != "purged"                   # se conserva hasta 30 días tras publicar
     run(db, 36)
     r = row(db, m["id"])
     assert r["retention_status"] == "purged" and r["purge_reason"] == "publication_done"

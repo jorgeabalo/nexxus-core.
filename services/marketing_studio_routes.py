@@ -13,6 +13,7 @@ from starlette.concurrency import run_in_threadpool
 
 from services.marketing_domain import DomainError
 from services.marketing_library import LibraryService
+from services.marketing_media_stream import MediaStreamService, RedactStreamTokens
 from services.marketing_studio import StudioService, public_job
 from services.member_portal import PortalError
 
@@ -22,6 +23,9 @@ P = "/api/manager/marketing"
 
 def build_router(get_db: Callable) -> APIRouter:
     r = APIRouter()
+    access = logging.getLogger("uvicorn.access")
+    if not any(isinstance(f, RedactStreamTokens) for f in access.filters):
+        access.addFilter(RedactStreamTokens())               # el token de streaming nunca llega a los logs
 
     def _db():
         db = get_db()
@@ -34,6 +38,18 @@ def build_router(get_db: Callable) -> APIRouter:
 
     def studio() -> StudioService:
         return StudioService(_db())
+
+    def streamer() -> MediaStreamService:
+        return MediaStreamService(_db())
+
+    def media_response(res, extra=None):
+        headers = {**res["headers"], "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
+                   "Content-Disposition": "inline", "Cross-Origin-Resource-Policy": "same-origin",
+                   "Referrer-Policy": "no-referrer", **(extra or {})}
+        mime = headers.pop("Content-Type")
+        if res["chunks"] is None:
+            return Response(status_code=res["status"], headers=headers, media_type=mime)
+        return StreamingResponse(res["chunks"], status_code=res["status"], headers=headers, media_type=mime)
 
     def bearer(request: Request) -> str:
         a = request.headers.get("authorization", "")
@@ -94,14 +110,27 @@ def build_router(get_db: Callable) -> APIRouter:
         head = request.method == "HEAD"
         res = await call(lambda: lib().content(bearer(request), tenant_id, media_id, derivative_id,
                                                request.headers.get("range"), head))
-        if not isinstance(res, dict):
-            return res
-        headers = {**res["headers"], "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
-                   "Content-Disposition": "inline", "Cross-Origin-Resource-Policy": "same-origin"}
-        mime = headers.pop("Content-Type")
-        if res["chunks"] is None:
-            return Response(status_code=res["status"], headers=headers, media_type=mime)
-        return StreamingResponse(res["chunks"], status_code=res["status"], headers=headers, media_type=mime)
+        return media_response(res) if isinstance(res, dict) else res
+
+    # ---------- reproducción con HTTP Range (autorización temporal same-origin) ----------
+    @r.post(f"{P}/library/{{media_id}}/stream-token")
+    async def stream_token(request: Request, media_id: str):
+        b = await body(request)
+        res = await call(lambda: streamer().issue_token(bearer(request), tid(b), media_id,
+                                                        str(b.get("derivative_id") or "")))
+        return JSONResponse(res, headers={"Cache-Control": "no-store"}) if isinstance(res, dict) else res
+
+    @r.post(f"{P}/library/{{media_id}}/stream-revoke")
+    async def stream_revoke(request: Request, media_id: str):
+        b = await body(request)
+        return await call(lambda: streamer().revoke(bearer(request), tid(b), media_id))
+
+    @r.api_route(f"{P}/library/stream/{{token}}", methods=["GET", "HEAD"])
+    async def stream(request: Request, token: str):
+        """El <video> pide aquí HEAD y rangos directamente. El token es la autorización; cada petición la
+        revalida (vigencia, revocación, usuario, rol, tenant, módulo, estado del archivo y ruta)."""
+        res = await call(lambda: streamer().stream(token, request.headers.get("range"), request.method == "HEAD"))
+        return media_response(res) if isinstance(res, dict) else res
 
     @r.patch(f"{P}/library/{{media_id}}/privacy")
     async def classify(request: Request, media_id: str):

@@ -75,6 +75,10 @@ class MarketingService:
         user = self.db.user_from_jwt(jwt)
         if not user:
             raise PortalError("unauthorized", 401)
+        return self._ctx_for(user, tenant_id)
+
+    def _ctx_for(self, user: Dict[str, Any], tenant_id: str) -> SimpleNamespace:
+        """Rol owner/manager activo en el tenant + puerta de Marketing (también para tokens de streaming)."""
         tenant_id = _uuid(tenant_id, "forbidden", 403)
         rows = self.db.select("tenant_users", {
             "user_id": f"eq.{user['id']}", "tenant_id": f"eq.{tenant_id}", "active": "eq.true",

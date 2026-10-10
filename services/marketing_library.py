@@ -22,7 +22,9 @@ from typing import Any, Dict, Optional
 from services import marketing_jobs_domain as jd
 from services import marketing_media_files as mf
 from services import marketing_privacy as pv
+from services import marketing_media_stream as mstream
 from services import marketing_retention as rt
+from services import marketing_storage as ms
 from services.marketing import _guard
 from services.marketing_studio_base import BUCKET, StudioBase, uid
 from services.member_portal import PortalError
@@ -65,9 +67,8 @@ class LibraryService(StudioBase):
                                                   "actor_id": c.user["id"], "actor_role": c.role, "detail": detail or {}})
 
     def _used_bytes(self, c) -> int:
-        return sum(int(m.get("byte_size") or 0) for m in (self.db.select("marketing_media", {
-            "tenant_id": f"eq.{c.tenant_id}", "processing_status": "neq.deleted", "select": "byte_size",
-            "limit": "100000"}) or []))
+        """Originales + derivados + resultados/temporales + reservas pendientes (subidas y trabajos)."""
+        return ms.used_bytes(self.db, c.tenant_id)
 
     def _media(self, c, media_id: Any) -> Dict[str, Any]:
         m = self._one(c, "marketing_media", media_id, MEDIA_COLS)
@@ -92,10 +93,10 @@ class LibraryService(StudioBase):
             m["privacy_class"] = pv.original_class(m)
             m["usable"] = pv.usable_media(m) is None and m["privacy_class"] != "restricted"
             m["derivatives"] = [x for x in ders if x["media_id"] == m["id"]]
-        st, used = c.settings, self._used_bytes(c)
-        state = jd.library_state(st["library_storage_limit_bytes"], used)
-        return {"items": items, "storage": {"used_bytes": used, "limit_bytes": st["library_storage_limit_bytes"],
-                                            "max_upload_bytes": st["max_upload_bytes"], "state": state},
+        st = c.settings
+        storage = ms.summary(self.db, c.tenant_id, st)
+        state = storage["state"]
+        return {"items": items, "storage": storage,
                 "warnings": list(pv.WARNINGS), "enabled": st["marketing_enabled"],
                 "can_upload": bool(st["marketing_enabled"]) and state in ("enabled", "unlimited"),
                 "generation_enabled": jd.generation_enabled(st), "malware_scanner": self.scanner.name,
@@ -109,39 +110,8 @@ class LibraryService(StudioBase):
         módulo, tenant, estado del archivo, que no esté eliminado y que la ruta sea de este tenant.
         Devuelve {status, headers, chunks}; chunks es None en HEAD y en 416. Nunca carga el archivo entero."""
         c = self.ctx(jwt, tenant_id)
-        m = self._media(c, media_id)
-        if (m.get("validation_status") != "passed" or m["processing_status"] in ("rejected", "deleted")
-                or m.get("retention_status") in rt.PURGE_STATES):
-            raise PortalError("not_found", 404)                    # pendiente de purga o purgado: sin acceso
-        path, mime, size = m["storage_path"], m["mime_type"], m.get("byte_size")
-        if derivative_id:
-            der = self._one(c, "marketing_media_derivatives", derivative_id, DER_COLS + ",byte_size")
-            if der["media_id"] != m["id"] or der["status"] == "deleted" or not der.get("storage_path"):
-                raise PortalError("not_found", 404)
-            path, mime, size = der["storage_path"], der.get("mime_type"), der.get("byte_size")
-        path = self._path(c, path)
-        if mime not in mf.MIME_TO_EXT or not size or int(size) <= 0:
-            raise PortalError("not_found", 404)
-        size = int(size)
-        base = {"Accept-Ranges": "bytes", "Content-Type": mime}
-        try:
-            rng = mf.parse_range(range_header, size)
-        except mf.RangeNotSatisfiable:
-            return {"status": 416, "headers": {**base, "Content-Range": f"bytes */{size}", "Content-Length": "0"},
-                    "chunks": None}
-        start, end = rng if rng else (0, size - 1)
-        headers = {**base, "Content-Length": str(end - start + 1)}
-        if rng:
-            headers["Content-Range"] = f"bytes {start}-{end}/{size}"
-        status = 206 if rng else 200
-        if head:
-            return {"status": status, "headers": headers, "chunks": None}
-        try:
-            chunks = self.db.storage_stream(BUCKET, path, byte_range=(start, end) if rng else None)
-        except Exception as e:
-            logger.error(f"MARKETING_PREVIEW_ERROR {type(e).__name__}")
-            raise PortalError("storage_unavailable", 503)
-        return {"status": status, "headers": headers, "chunks": chunks}
+        _m, path, mime, size = mstream.resolve(self, c, media_id, derivative_id or None)
+        return mstream.serve(self.db, path, mime, size, range_header, head)
 
     # ------------------------------------------------------------------ subir
     def upload_limit(self, jwt: str, tenant_id: str) -> int:
@@ -176,9 +146,12 @@ class LibraryService(StudioBase):
         scan = self.scanner.scan(data)
         if scan == "clean" and self.scanner.name == "unavailable":
             scan = "unavailable"                          # imposible declarar limpio sin escáner
+        # Reserva atómica de los bytes: dos subidas simultáneas nunca superan la cuota.
+        key = ms.reserve(self.db, c.tenant_id, "upload", info["byte_size"], f"upload:{media_id}")
         try:
             self.db.storage_upload(BUCKET, path, data, info["mime_type"])
         except Exception as e:
+            ms.release(self.db, c.tenant_id, key, consumed=False)
             logger.error(f"MARKETING_UPLOAD_ERROR {type(e).__name__}")
             raise PortalError("storage_unavailable", 503)
         row = self.db.insert("marketing_media", {
@@ -191,6 +164,7 @@ class LibraryService(StudioBase):
             "consent_status": "unknown", "processing_status": "uploaded", "metadata": {},
             "retention_days": rt.default_days(c.settings), "retention_status": "active",
             "expires_at": (c.now + timedelta(days=rt.default_days(c.settings))).isoformat()})
+        ms.release(self.db, c.tenant_id, key, consumed=True)       # ahora cuenta el propio archivo
         self._media_event(c, media_id, "upload", {"mime_type": info["mime_type"], "byte_size": info["byte_size"],
                                                   "malware_scan_status": scan})
         # Formato validado: queda listo, pero excluido hasta que owner/manager clasifique personas y menores.
@@ -242,6 +216,7 @@ class LibraryService(StudioBase):
                                            "processing_status": "neq.deleted"},
                        {"retention_status": "purge_pending", "purge_reason": "consent_revoked",
                         "purge_requested_at": c.now.isoformat()})
+        mstream.revoke_all(self.db, c.tenant_id, m["id"], c.now)   # ningún enlace de reproducción sigue vivo
         self._media_event(c, m["id"], "purge_requested", {"reason": "consent_revoked"})
         return {**out, "retention_status": "purge_pending", "cancelled_jobs": jobs}
 

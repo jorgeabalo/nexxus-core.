@@ -5,9 +5,10 @@ Política (ningún archivo se guarda indefinidamente):
   * archivo sin usar: 30 días (o menos si el plan lo fija) — owner/manager eligen 7/30/60/90 días,
     nunca por encima de max_retention_days del plan (lo fija el operador; máximo absoluto 90);
   * derivados simulados / temporales: 7 días; resultados de trabajos fallidos o cancelados: 7 días;
-  * usado por un trabajo activo o una publicación programada: protegido hasta que termine, con un
-    límite de seguridad de 14 días tras el vencimiento (un trabajo atascado se cancela y se purga);
-  * publicación confirmada: se elimina 30 días después (sin superar el máximo del plan);
+  * usado por un trabajo activo o una publicación programada: protegido como MÁXIMO 14 días desde que
+    empieza la protección; después el trabajo se cancela (idempotente) y se solicita la purga;
+  * publicación confirmada: los archivos se conservan hasta 30 días después de publicarse
+    (publication_hold_until); nunca hay retención permanente;
   * consentimiento retirado: purga prioritaria, cancelación de trabajos pendientes y bloqueo de reutilización;
   * aviso 7 días antes; nunca se extiende automáticamente.
 
@@ -190,32 +191,37 @@ class RetentionRunner:
             return self.purge(m, m.get("purge_reason") or "expired")
         jobs = self._jobs_using(m)
         pub = self._published_at(m, jobs)
-        if pub:                                                   # publicación confirmada: 30 días después
-            cap = _dt(m["created_at"]) + timedelta(days=plan_max(self._settings(m["tenant_id"])))
-            exp = min(pub + timedelta(days=PUBLISHED_DAYS), cap)
-            if exp != _dt(m["expires_at"]):
-                self._upd(m, {"expires_at": exp.isoformat()})
-                m["expires_at"] = exp.isoformat()
-        exp = _dt(m["expires_at"])
-        if exp > self.now:
-            if m["retention_status"] == "active" and exp - self.now <= timedelta(days=WARN_DAYS):
+        created = _dt(m["created_at"])
+        if pub:                                    # una publicación conserva sus archivos hasta 30 días después
+            hold = min(pub + timedelta(days=PUBLISHED_DAYS), created + timedelta(days=HARD_MAX_DAYS + PUBLISHED_DAYS))
+            if m.get("publication_hold_until") != hold.isoformat():
+                self._upd(m, {"publication_hold_until": hold.isoformat()})
+                m["publication_hold_until"] = hold.isoformat()
+        effective = _dt(m["publication_hold_until"]) if pub else _dt(m["expires_at"])
+        if effective > self.now:
+            if m["retention_status"] == "active" and effective - self.now <= timedelta(days=WARN_DAYS):
                 self._upd(m, {"retention_status": "expiring"})
-                self._event(m, "expiry_warning", {"expires_at": exp.isoformat()})
+                self._event(m, "expiry_warning", {"expires_at": effective.isoformat()})
                 return "warned"
             return "skipped"
         why = self._protection(m, jobs)
-        cap = min(exp + timedelta(days=PROTECTION_GRACE_DAYS), _dt(m["created_at"]) + timedelta(days=HARD_MAX_DAYS + 14))
-        if why and self.now < cap:
-            if m["retention_status"] != "protected_by_workflow":
-                self._upd(m, {"retention_status": "protected_by_workflow", "protected_until": cap.isoformat()})
-                self._event(m, "protected", {"reason": why, "until": cap.isoformat()})
-            return "protected"
-        reason = "publication_done" if pub else "expired"
-        if why:                                                   # trabajo atascado: límite de seguridad
+        if why:                                    # un trabajo activo protege como MÁXIMO 14 días
+            until = (_dt(m["protected_until"]) if m.get("protected_until")
+                     else min(self.now + timedelta(days=PROTECTION_GRACE_DAYS),
+                              created + timedelta(days=HARD_MAX_DAYS + PUBLISHED_DAYS + PROTECTION_GRACE_DAYS)))
+            if not m.get("protected_until"):
+                self._upd(m, {"retention_status": "protected_by_workflow", "protected_until": until.isoformat()})
+                self._event(m, "protected", {"reason": why, "until": until.isoformat()})
+            if self.now < until:
+                return "protected"
+            # Límite alcanzado: cancelar (idempotente) y solicitar la purga.
             cancelled = cancel_jobs_for_media(self.db, m["tenant_id"], m["id"], "timeout", self.now)
             self._event(m, "jobs_cancelled", {"reason": "workflow_timeout", "jobs": len(cancelled)})
-            reason = "workflow_timeout"
-        return self.purge(m, reason)
+            self._upd(m, {"retention_status": "purge_pending", "purge_reason": "workflow_timeout",
+                          "purge_requested_at": self.now.isoformat()})
+            m.update({"retention_status": "purge_pending", "purge_reason": "workflow_timeout"})
+            return self.purge(m, "workflow_timeout")
+        return self.purge(m, "publication_done" if pub else "expired")
 
     # ------------------------------------------------------------------ purga
     def _remove(self, tenant_id: str, media_id: str, path: Optional[str]) -> None:
@@ -237,6 +243,9 @@ class RetentionRunner:
         if m.get("retention_status") != "purge_pending":
             self._upd(m, {"retention_status": "purge_pending", "purge_reason": reason,
                           "purge_requested_at": m.get("purge_requested_at") or self.now.isoformat()})
+        # Invalidar cualquier acceso: tokens de reproducción revocados antes de borrar nada.
+        self.db.update("marketing_stream_tokens", {"tenant_id": f"eq.{m['tenant_id']}", "media_id": f"eq.{m['id']}",
+                                                   "revoked_at": "is.null"}, {"revoked_at": self.now.isoformat()})
         ders = self.db.select("marketing_media_derivatives", {"tenant_id": f"eq.{m['tenant_id']}", "media_id": f"eq.{m['id']}",
                                                               "select": "id,storage_path,status", "limit": "500"}) or []
         try:

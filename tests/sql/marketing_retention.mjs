@@ -105,7 +105,70 @@ const d = (await sys(`select expires_at - created_at d from marketing_media_deri
 ok(String(d.d.days ?? d.d).includes('7'), 'derivado simulado vence a los 7 días');
 await sys(`update marketing_media_derivatives set expires_at = null`, '23502');
 
-// 5. el tenant no puede alargar su retención máxima
+// 5. publicación: hasta 30 días tras publicar (máx. 90 + 30); protección: máx. 14 días más
+const M6 = '20000000-0000-0000-0000-0000000000a6';
+await add(M6, TA, '6');
+await sys(`update marketing_media set publication_hold_until = created_at + interval '121 days' where id = '${M6}'`, '23514');
+await sys(`update marketing_media set publication_hold_until = created_at + interval '120 days' where id = '${M6}'`);
+await sys(`update marketing_media set protected_until = created_at + interval '135 days' where id = '${M6}'`, '23514');
+await sys(`update marketing_media set protected_until = created_at + interval '134 days' where id = '${M6}'`);
+
+// 6. cuota: todo cuenta (originales, derivados, resultados, reservas y trabajos pendientes) y la reserva es atómica
+await sys(`update marketing_settings set library_storage_limit_bytes = 0 where tenant_id = '${TB}'`);
+ok((await sys(`select public.marketing_reserve_storage('${TB}','upload:k-000001','upload',10) r`))[0].r.reason === 'library_disabled',
+  'cuota 0: Biblioteca no habilitada');
+await sys(`update marketing_settings set library_storage_limit_bytes = 100 where tenant_id = '${TB}'`);
+const MB2 = '20000000-0000-0000-0000-0000000000b9';
+await sys(`insert into marketing_media (id, tenant_id, storage_path, media_type, mime_type, byte_size, checksum, uploaded_by)
+  values ('${MB2}','${TB}','${TB}/originals/${MB2}/f.png','image','image/png',30,'${'7'.repeat(64)}','${U.ownerB}')`);
+await sys(`insert into marketing_media_derivatives (tenant_id, media_id, kind, created_by, byte_size) values ('${TB}','${MB2}','thumbnail','${U.ownerB}',20)`);
+const used = async () => Number((await sys(`select public.marketing_storage_used('${TB}') u`))[0].u);
+ok(await used() === 50, 'originales + derivados');
+const JQ = (await sys(`insert into marketing_generation_jobs (tenant_id, created_by, task_type, real_media_percent, ai_media_percent,
+  idempotency_key) values ('${TB}','${U.ownerB}','reel',0,100,'job-quota-key-000001') returning id`))[0].id;
+await sys(`insert into marketing_generation_outputs (tenant_id, job_id, kind, byte_size) values ('${TB}','${JQ}','render',7)`);
+await sys(`insert into marketing_generation_outputs (tenant_id, job_id, kind, byte_size, purged_at) values ('${TB}','${JQ}','render',99, now())`);
+ok(await used() === 57, 'resultados/temporales también cuentan (los purgados no)');
+await sys(`update marketing_generation_outputs set purged_at = now() where byte_size = 7`);
+ok(await used() === 50, 'purgado: deja de contar');
+ok((await sys(`select public.marketing_reserve_storage('${TB}','upload:k-000002','upload',40) r`))[0].r.status === 'reserved', 'reserva');
+ok(await used() === 90, 'la reserva cuenta');
+const rr = (await sys(`select public.marketing_reserve_storage('${TB}','upload:k-000003','upload',20) r`))[0].r;
+ok(rr.status === 'rejected' && rr.reason === 'limit_library_storage' && Number(rr.available) === 10, 'dos reservas no comparten espacio');
+ok((await sys(`select public.marketing_reserve_storage('${TB}','upload:k-000002','upload',40) r`))[0].r.status === 'duplicate', 'idempotente');
+await sys(`select public.marketing_release_storage('${TB}','upload:k-000002', false)`);
+ok(await used() === 50, 'liberada: deja de contar');
+// subida registrada: su reserva no cuenta dos veces
+const MB3 = '20000000-0000-0000-0000-0000000000ba';
+await sys(`select public.marketing_reserve_storage('${TB}','upload:${MB3}','upload',25)`);
+await sys(`insert into marketing_media (id, tenant_id, storage_path, media_type, mime_type, byte_size, checksum, uploaded_by)
+  values ('${MB3}','${TB}','${TB}/originals/${MB3}/f.png','image','image/png',25,'${'8'.repeat(64)}','${U.ownerB}')`);
+ok(await used() === 75, 'sin doble conteo entre la reserva y el archivo');
+ok(Number((await sys(`select public.marketing_storage_used('${TA}') u`))[0].u) >= 0
+   && (await sys(`select public.marketing_storage_used('${TA}') u`))[0].u !== (await sys(`select public.marketing_storage_used('${TB}') u`))[0].u,
+   'cada tenant cuenta lo suyo');
+const fsrc = (await sys(`select prosrc from pg_proc where proname = 'marketing_reserve_storage'`))[0].prosrc;
+ok(/from public\.marketing_settings where tenant_id = p_tenant for update/i.test(fsrc), 'reserva serializada por tenant');
+
+// 7. tokens de streaming: solo hash, caducidad corta, nadie más que el backend los lee
+await sys(`insert into marketing_stream_tokens (tenant_id, user_id, media_id, token_hash, expires_at)
+  values ('${TB}','${U.ownerB}','${MB2}','${'a'.repeat(64)}', now() + interval '16 minutes')`, '23514');
+await sys(`insert into marketing_stream_tokens (tenant_id, user_id, media_id, token_hash, expires_at)
+  values ('${TB}','${U.ownerB}','${MB2}','plaintext-token', now() + interval '5 minutes')`, '23514');
+await sys(`insert into marketing_stream_tokens (tenant_id, user_id, media_id, token_hash, expires_at)
+  values ('${TA}','${U.ownerB}','${MB2}','${'b'.repeat(64)}', now() + interval '5 minutes')`, '23503');   // archivo de otro tenant
+await sys(`insert into marketing_stream_tokens (tenant_id, user_id, media_id, token_hash, expires_at)
+  values ('${TB}','${U.ownerB}','${MB2}','${'c'.repeat(64)}', now() + interval '5 minutes')`);
+for (const role of ['anon', 'authenticated']) {
+  for (const t of ['marketing_stream_tokens', 'marketing_storage_reservations']) {
+    ok(!(await sys(`select has_table_privilege('${role}', 'public.${t}', 'SELECT') x`))[0].x, `${role} no lee ${t}`);
+  }
+  for (const f of ['marketing_storage_used(uuid)', 'marketing_reserve_storage(uuid,text,text,bigint)', 'marketing_release_storage(uuid,text,boolean)']) {
+    ok(!(await sys(`select has_function_privilege('${role}', 'public.${f}', 'EXECUTE') x`))[0].x, `${role} no ejecuta ${f}`);
+  }
+}
+
+// 8. el tenant no puede alargar su retención máxima
 await db.exec(`begin; set local role authenticated`);
 await db.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: U.ownerA })]);
 try { await db.query(`update marketing_settings set max_retention_days = 90`); assert.fail('debía fallar'); }

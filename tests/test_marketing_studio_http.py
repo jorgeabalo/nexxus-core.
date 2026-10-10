@@ -103,26 +103,19 @@ def _directive(csp, name):
 def test_manager_csp_not_weakened(monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "https://abc.supabase.co")
     csp = main._manager_csp()
-    assert _directive(csp, "media-src") == ["'self'", "blob:"]
+    assert _directive(csp, "media-src") is None                    # el vídeo usa default-src 'self' (sin blob:)
+    assert _directive(csp, "default-src") == ["'self'"]
     assert _directive(csp, "img-src") == ["'self'", "data:", "blob:"]
     assert _directive(csp, "script-src") == ["'self'"]
-    assert "*" not in csp and "https:" not in _directive(csp, "media-src")
-    assert not any("supabase" in x for x in _directive(csp, "media-src") + _directive(csp, "img-src"))
+    assert "*" not in csp and "https:" not in _directive(csp, "default-src")
+    assert not any("supabase" in x for x in _directive(csp, "default-src") + _directive(csp, "img-src"))
 
 
 def test_preview_served_with_manager_csp(client, db):
     m = upload(client, PNG).json()
     p = client.get(f"/api/manager/marketing/library/{m['id']}/content?tenant_id={T1}", headers=H(OWNER))
-    assert _directive(p.headers["content-security-policy"], "media-src") == ["'self'", "blob:"]
-
-
-def test_frontend_preview_uses_same_origin_blob_only():
-    api = (ROOT / "manager/assets/js/api.js").read_text()
-    block = api[api.index("async previewBlob"):api.index("classify(tenantId")]
-    assert "/api/manager/marketing/library/" in block and "/content?" in block
-    assert "signed" not in block.lower() and "supabase" not in block.lower()
-    lib = (ROOT / "manager/assets/js/modules/marketing-library.js").read_text()
-    assert "URL.createObjectURL" in lib and "URL.revokeObjectURL" in lib
+    assert _directive(p.headers["content-security-policy"], "media-src") is None
+    assert _directive(p.headers["content-security-policy"], "default-src") == ["'self'"]
 
 
 def test_phase2_stylesheet_is_linked_and_served(client):
