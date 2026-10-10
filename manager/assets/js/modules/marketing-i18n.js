@@ -43,7 +43,7 @@ const T = {
     l_en: 'Inglés', l_es: 'Español',
     err: {
       forbidden: 'No tienes acceso a Marketing en esta empresa.', unauthorized: 'Tu sesión expiró. Vuelve a entrar.',
-      marketing_disabled: 'Marketing no está activado para tu empresa.', not_found: 'No se encontró el contenido.',
+      marketing_disabled: 'Marketing no está activado para tu empresa.', marketing_unavailable: 'Marketing todavía no está disponible. Inténtalo más tarde.', not_found: 'No se encontró el contenido.',
       not_editable: 'Este contenido ya está en revisión o aprobado. Vuélvelo a borrador para editarlo.',
       not_approved: 'Solo se puede programar contenido aprobado.', invalid_transition: 'Esa acción no está permitida en este estado.',
       comment_required: 'Escribe el motivo del rechazo.', scheduled_at_required: 'Elige la fecha y hora de publicación.',
@@ -100,7 +100,7 @@ const T = {
     l_en: 'English', l_es: 'Spanish',
     err: {
       forbidden: 'You do not have access to Marketing for this business.', unauthorized: 'Your session expired. Sign in again.',
-      marketing_disabled: 'Marketing is not enabled for your business.', not_found: 'Content not found.',
+      marketing_disabled: 'Marketing is not enabled for your business.', marketing_unavailable: 'Marketing is not available yet. Please try again later.', not_found: 'Content not found.',
       not_editable: 'This content is in review or approved. Move it back to draft to edit it.',
       not_approved: 'Only approved content can be scheduled.', invalid_transition: 'That action is not allowed in this status.',
       comment_required: 'Write the reason for rejecting.', scheduled_at_required: 'Pick the publish date and time.',

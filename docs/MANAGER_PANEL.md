@@ -336,6 +336,13 @@ failed, archived. Las transiciones están en `TRANSITIONS` (Python) y en el trig
 `scheduled` sin estar `approved`; `publishing/published/failed/generating` solo los moverá el sistema.
 Rechazar exige observación. Cada cambio queda en `marketing_approval_events` (inmutable).
 
+**Puerta única (`services/marketing_gate.py`, aplicada en `MarketingService.ctx` a todos los endpoints):**
+Marketing solo se abre si `tenants.modules.marketing` es exactamente `true`. Ausente, `null`, `"true"`, `1` o
+`modules` mal formado → `403 marketing_disabled`, sin consultar ninguna tabla `marketing_*` (en producción
+pueden no existir hasta aplicar la migración). Habilitado pero sin tablas → `503 marketing_unavailable`, sin
+detalles; solo ese error (PostgREST `PGRST205`/`42P01`): RLS, permisos o conexión siguen siendo `500`.
+El orden es: sesión válida → rol owner/manager (staff y socios: `403 forbidden`) → módulo → tablas.
+
 **Escritura:** los usuarios solo **leen** por RLS (owner/manager de su tenant); toda escritura pasa por
 el backend (service role) tras validar rol, tenant, reglas y límites.
 

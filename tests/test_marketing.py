@@ -41,9 +41,10 @@ class FakeDB:
             "tenants": [
                 {"id": T1, "name": "Golden Age Fitness & Training", "timezone": "America/Chicago",
                  "branding": {**GOLDEN_COLORS, "locale": "en-US", "logo_url": "/media/golden.png"},
-                 "settings": {"public_phone": "(346) 245-7940"}},
+                 "settings": {"public_phone": "(346) 245-7940"}, "modules": {"marketing": True}},
                 {"id": T2, "name": "Other Studio", "timezone": "America/New_York",
-                 "branding": {"color_primary": "#112233", "logo_url": "https://evil.example/x.svg"}, "settings": {}}],
+                 "branding": {"color_primary": "#112233", "logo_url": "https://evil.example/x.svg"}, "settings": {},
+                 "modules": {"marketing": True}}],
             "tenant_users": [
                 {"tenant_id": T1, "user_id": OWNER, "role": "owner", "active": True, "staff_id": "s1"},
                 {"tenant_id": T1, "user_id": MANAGER, "role": "manager", "active": True, "staff_id": None},

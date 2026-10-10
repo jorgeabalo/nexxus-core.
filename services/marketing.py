@@ -15,6 +15,7 @@ Fase 1 no publica nada: programar crea filas en marketing_publications con una
 idempotency_key y se las entrega al PublisherProvider, que hoy está desactivado.
 """
 import calendar
+import functools
 import logging
 import re
 import uuid
@@ -25,6 +26,7 @@ from zoneinfo import ZoneInfo
 
 from services import marketing_domain as d
 from services.marketing_domain import DomainError
+from services.marketing_gate import MarketingTablesGuard, marketing_module_enabled
 from services.marketing_providers import PublishRequest, default_providers, redact
 from services.member_portal import PortalError
 
@@ -51,18 +53,18 @@ def _uuid(v: Any, code: str = "not_found", status: int = 404) -> str:
 
 def _guard(fn):
     """Convierte DomainError en PortalError (mismo formato de error que el resto del panel)."""
+    @functools.wraps(fn)
     def wrapper(*a, **kw):
         try:
             return fn(*a, **kw)
         except DomainError as e:
             raise PortalError(e.code, e.status)
-    wrapper.__name__ = fn.__name__
     return wrapper
 
 
 class MarketingService:
     def __init__(self, db, now: Optional[datetime] = None, providers: Optional[Dict[str, Any]] = None):
-        self.db = db
+        self.db = MarketingTablesGuard(db)
         self._now = now
         self.providers = providers or default_providers()
 
@@ -79,8 +81,14 @@ class MarketingService:
             "role": f"in.({','.join(ROLES)})", "select": "role", "limit": "1"})
         if not rows:
             raise PortalError("forbidden", 403)
-        t = (self.db.select("tenants", {"id": f"eq.{tenant_id}", "select": "id,name,timezone,branding,settings",
+        t = (self.db.select("tenants", {"id": f"eq.{tenant_id}",
+                                        "select": "id,name,timezone,branding,settings,modules",
                                         "limit": "1"}) or [{}])[0]
+        # Puerta única de Marketing: solo con tenants.modules.marketing === true. Cualquier otro
+        # valor (ausente, null, "true", 1, modules mal formado) falla cerrado, y en ese caso no se
+        # consulta ninguna tabla marketing_* (en producción pueden no existir aún).
+        if not marketing_module_enabled(t):
+            raise PortalError("marketing_disabled", 403)
         try:
             zone = ZoneInfo(t.get("timezone") or "America/Chicago")
         except Exception:
