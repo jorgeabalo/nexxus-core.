@@ -255,6 +255,39 @@ export const api = {
         { tenant_id: tenantId, to, comment: comment || null, scheduled_at: scheduledAt || null });
     },
     calendar(tenantId, start, end) { return backend('GET', `/api/manager/marketing/calendar?${qs({ tenant_id: tenantId, start, end })}`); },
+    // Fase 2: Biblioteca privada, Estudio de Reels y trabajos de generación (todo por el backend).
+    library(tenantId) { return backend('GET', `/api/manager/marketing/library?${qs({ tenant_id: tenantId })}`); },
+    async upload(tenantId, file) {
+      const token = (await sb.auth.getSession()).data.session?.access_token;
+      const form = new FormData();
+      form.append('tenant_id', tenantId);
+      form.append('file', file);
+      const res = await fetch('/api/manager/marketing/library', { method: 'POST', headers: { Authorization: `Bearer ${token || ''}` }, body: form });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { const e = new Error(data.error || `HTTP ${res.status}`); e.code = data.error; throw e; }
+      return data;
+    },
+    // URL firmada de corta duración: se descarga en memoria (blob) y no se guarda en ningún sitio.
+    async previewBlob(tenantId, mediaId, derivativeId) {
+      const { url } = await backend('GET', `/api/manager/marketing/library/${encodeURIComponent(mediaId)}/preview?${qs({ tenant_id: tenantId, derivative_id: derivativeId })}`);
+      const res = await fetch(url, { cache: 'no-store', referrerPolicy: 'no-referrer' });
+      if (!res.ok) { const e = new Error('preview_failed'); e.code = 'storage_unavailable'; throw e; }
+      return res.blob();
+    },
+    classify(tenantId, id, values) { return backend('PATCH', `/api/manager/marketing/library/${encodeURIComponent(id)}/privacy`, { ...values, tenant_id: tenantId }); },
+    archive(tenantId, id, archived) { return backend('POST', `/api/manager/marketing/library/${encodeURIComponent(id)}/archive`, { tenant_id: tenantId, archived }); },
+    anonymize(tenantId, id, method) { return backend('POST', `/api/manager/marketing/library/${encodeURIComponent(id)}/anonymize`, { tenant_id: tenantId, method }); },
+    reviewDerivative(tenantId, id, approve) {
+      return backend('POST', `/api/manager/marketing/library/derivatives/${encodeURIComponent(id)}/review`, { tenant_id: tenantId, approve, confirm_reviewed: approve });
+    },
+    studio(tenantId) { return backend('GET', `/api/manager/marketing/studio?${qs({ tenant_id: tenantId })}`); },
+    mixPreview(tenantId, values) { return backend('POST', '/api/manager/marketing/studio/mix-preview', { ...values, tenant_id: tenantId }); },
+    jobs(tenantId) { return backend('GET', `/api/manager/marketing/jobs?${qs({ tenant_id: tenantId })}`); },
+    job(tenantId, id) { return backend('GET', `/api/manager/marketing/jobs/${encodeURIComponent(id)}?${qs({ tenant_id: tenantId })}`); },
+    createJob(tenantId, values) { return backend('POST', '/api/manager/marketing/jobs', { ...values, tenant_id: tenantId }); },
+    jobAction(tenantId, id, action, values = {}) {
+      return backend('POST', `/api/manager/marketing/jobs/${encodeURIComponent(id)}/${encodeURIComponent(action)}`, { ...values, tenant_id: tenantId });
+    },
   },
 
   // ----- plan de entrenamiento (RLS: staff del mismo gym) -----

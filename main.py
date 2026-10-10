@@ -101,6 +101,7 @@ def _manager_csp() -> str:
         "style-src 'self' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data: blob:; "
+        "media-src 'self' blob:; "          # vista previa de vídeos de la Biblioteca (blob local)
         f"connect-src 'self' {supa} {ws}; "
         "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
     )
@@ -388,6 +389,9 @@ app.include_router(_accounting_router(lambda: member_portal.db if member_portal 
 # AITA Marketing (/api/manager/marketing/*): solo owner/manager; Fase 1 no publica en redes.
 from services.marketing_routes import build_router as _marketing_router
 app.include_router(_marketing_router(lambda: member_portal.db if member_portal else None))
+# Fase 2: Biblioteca privada, Estudio de Reels y trabajos de IA (proveedores reales apagados).
+from services.marketing_studio_routes import build_router as _marketing_studio_router
+app.include_router(_marketing_studio_router(lambda: member_portal.db if member_portal else None))
 
 
 @app.get("/api/manager/sms-diagnostics")

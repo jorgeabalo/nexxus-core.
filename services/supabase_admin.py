@@ -120,6 +120,23 @@ class SupabaseAdmin:
     def storage_download(self, bucket: str, key: str) -> bytes:
         return self._storage("GET", f"authenticated/{bucket}/{key}").content
 
+    def storage_sign(self, bucket: str, key: str, expires_in: int) -> str:
+        """URL firmada de corta duración para ver un archivo privado. Nunca se registra en logs."""
+        if not self.enabled:
+            raise RuntimeError("Supabase storage disabled")
+        try:
+            r = httpx.post(f"{self.url}/storage/v1/object/sign/{bucket}/{key}", json={"expiresIn": int(expires_in)},
+                           headers={"apikey": self._key, "Authorization": f"Bearer {self._key}"},
+                           timeout=httpx.Timeout(10.0, connect=5.0))
+        except Exception as e:
+            raise RuntimeError(f"Supabase storage SIGN: {type(e).__name__}") from None
+        if r.status_code >= 400:
+            raise RuntimeError(f"Supabase storage SIGN -> {r.status_code}")
+        signed = str((r.json() or {}).get("signedURL") or "")
+        if not signed.startswith("/"):
+            raise RuntimeError("Supabase storage SIGN: invalid response")
+        return f"{self.url}/storage/v1{signed}"
+
     # -- Supabase Auth (GoTrue) -----------------------------------------
     def auth(self, method: str, path: str, *, json=None, params=None, anon: bool = False,
              bearer: Optional[str] = None) -> Tuple[int, Any]:

@@ -77,7 +77,8 @@ def test_not_configured(monkeypatch):
 
 def test_marketing_assets_served():
     c = TestClient(main.app)
-    for name in ("marketing.js", "marketing-forms.js", "marketing-i18n.js", "marketing-state.js"):
+    for name in ("marketing.js", "marketing-forms.js", "marketing-i18n.js", "marketing-state.js", "marketing-library.js",
+                 "marketing-studio.js", "marketing-studio-i18n.js", "marketing-studio-state.js"):
         assert c.get(f"/manager/assets/js/modules/{name}").status_code == 200, name
 
 
@@ -89,7 +90,8 @@ def test_no_provider_secrets_or_brand_hardcoded_in_frontend():
 
 @pytest.mark.skipif(not shutil.which("node"), reason="Node.js no disponible")
 def test_marketing_js():
-    r = subprocess.run(["node", "--test", str(ROOT / "tests/js/marketing.test.mjs")], capture_output=True, text=True, timeout=60)
+    r = subprocess.run(["node", "--test", str(ROOT / "tests/js/marketing.test.mjs"),
+                        str(ROOT / "tests/js/marketing-studio.test.mjs")], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
 
 
@@ -107,3 +109,11 @@ def test_marketing_sql_least_privilege():
     r = subprocess.run(["node", str(ROOT / "tests/sql/marketing_privileges.mjs")], capture_output=True, text=True,
                        timeout=180, env={**os.environ, "NODE_PATH": os.environ["PGLITE_NODE_PATH"]})
     assert r.returncode == 0 and "ALL MARKETING PRIVILEGE TESTS PASSED" in r.stdout, r.stdout[-2000:] + r.stderr[-2000:]
+
+
+@pytest.mark.skipif(not (shutil.which("node") and os.getenv("PGLITE_NODE_PATH")),
+                    reason="PGlite no disponible (PGLITE_NODE_PATH=/ruta/node_modules)")
+def test_marketing_studio_sql():
+    r = subprocess.run(["node", str(ROOT / "tests/sql/marketing_studio.mjs")], capture_output=True, text=True,
+                       timeout=180, env={**os.environ, "NODE_PATH": os.environ["PGLITE_NODE_PATH"]})
+    assert r.returncode == 0 and "ALL MARKETING STUDIO SQL TESTS PASSED" in r.stdout, r.stdout[-2000:] + r.stderr[-2000:]

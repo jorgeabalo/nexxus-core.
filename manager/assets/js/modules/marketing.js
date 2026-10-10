@@ -1,4 +1,5 @@
-// AITA Marketing (Fase 1): resumen, contenido, calendario, campañas y Brand Kit.
+// AITA Marketing: resumen, contenido, calendario, campañas, Brand Kit (Fase 1) y
+// Biblioteca, Estudio de Reels y Trabajos de generación (Fase 2).
 // Los datos vienen del backend (/api/manager/marketing/*), que valida rol
 // (owner/manager), tenant y reglas de estado. Nada se publica en redes todavía.
 // El estado de la vista es por empresa: al cambiar de tenant se empieza de cero.
@@ -7,6 +8,9 @@ import { api } from '../api.js';
 import { t, errText, getLang } from './marketing-i18n.js';
 import { TABS, createScope, monthStart, shiftMonth, monthEnd, monthGrid, usageBar } from './marketing-state.js';
 import { contentModal, contentDetail, campaignModal, brandForm, channelLabel, statusBadge } from './marketing-forms.js';
+import { libraryView } from './marketing-library.js';
+import { studioView, jobsView } from './marketing-studio.js';
+import { s as sText } from './marketing-studio-i18n.js';
 
 const M = api.marketing;
 const scope = createScope();
@@ -27,7 +31,8 @@ export async function render(root, ctx) {
   const body = el('div', { class: 'mk-body' });
   root.append(notice, tabHolder, body);
 
-  const drawTabs = () => clear(tabHolder).appendChild(tabs(TABS.map(v => ({ value: v, label: t(`tab_${v}`) })), st.tab,
+  const tabLabel = (v) => (['library', 'studio', 'jobs'].includes(v) ? sText(`tab_${v}`) : t(`tab_${v}`));
+  const drawTabs = () => clear(tabHolder).appendChild(tabs(TABS.map(v => ({ value: v, label: tabLabel(v) })), st.tab,
     (v) => { st.tab = v; history.replaceState(null, '', `#/marketing/${v}`); drawTabs(); draw(); }));
   drawTabs();
   const open = (id) => contentDetail(ctx, id, { campaigns, reload });
@@ -44,7 +49,7 @@ export async function render(root, ctx) {
     if (!ctx.isCurrent()) return;
     clear(body).appendChild(loading());
     try {
-      const view = { overview, content, calendar, campaigns: campaignList, brand }[st.tab];
+      const view = { overview, content, calendar, campaigns: campaignList, brand, library, studio, jobs }[st.tab];
       const node = await view();
       if (ctx.isCurrent()) clear(body).appendChild(node);
     } catch (e) {
@@ -155,6 +160,12 @@ export async function render(root, ctx) {
     ], campaigns, { onRowClick: c => campaignModal(ctx, c, reload), emptyText: t('noCampaigns') }),
     el('button', { class: 'btn btn-sm', type: 'button', onclick: () => campaignModal(ctx, null, reload) }, `+ ${t('newCampaign')}`));
   }
+
+  // ---------- Fase 2: Biblioteca, Estudio de Reels y Trabajos ----------
+  const library = () => libraryView(ctx, draw);
+  const goJobs = (id) => { st.tab = 'jobs'; st.openJob = id; history.replaceState(null, '', '#/marketing/jobs'); drawTabs(); draw(); };
+  const studio = () => studioView(ctx, goJobs);
+  const jobs = () => { const id = st.openJob; st.openJob = null; return jobsView(ctx, draw, id); };
 
   // ---------- Brand Kit ----------
   async function brand() {
