@@ -50,3 +50,14 @@ Cubren: migración idempotente, configuración inicial apagada con aprobación o
 historial inmutable (UPDATE y DELETE bloqueados incluso para el service role), idempotency_key única (restricción en la base, sin duplicados en reintentos), límites sin negativos (null = sin límite), logo/archivos sin binarios ni URLs externas, RLS
 (owner/manager leen su tenant; staff, socio, otro tenant y anon nada) y ninguna escritura directa.
 Desde pytest: `PGLITE_NODE_PATH=/ruta/node_modules python3 -m pytest tests/test_marketing_http.py`.
+
+AITA Marketing — mínimo privilegio de la migración:
+
+```bash
+NODE_PATH=/ruta/node_modules node tests/sql/marketing_privileges.mjs   # "ALL MARKETING PRIVILEGE TESTS PASSED"
+```
+Simula los privilegios por defecto de Supabase (ALL para anon/authenticated/service_role y, como peor caso,
+PUBLIC) y comprueba en el catálogo (ACL y `has_table_privilege`) y en la práctica: PUBLIC y anon sin
+privilegios; authenticated solo SELECT (sin INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER, ni MAINTAIN en
+PostgreSQL 17; no puede crear triggers ni bloquear tablas); service_role con SELECT/INSERT/UPDATE/DELETE (sin
+TRUNCATE; el historial sigue inmutable); RLS por tenant y por rol; migración repetible y atómica.
