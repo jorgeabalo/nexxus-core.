@@ -31,6 +31,9 @@ def db():
 
 @pytest.fixture
 def client(monkeypatch, db):
+    # Configuración EXPLÍCITA de test: el cliente de pruebas habla HTTP, así que la cookie va sin Secure.
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv(mstream.INSECURE_FLAG, "1")
     monkeypatch.setattr(main, "member_portal", SimpleNamespace(db=db))
     return TestClient(main.app)
 
@@ -123,25 +126,61 @@ def test_ranges_are_requested_from_storage_not_whole_file(client, db, video):
 
 
 # ------------------------------------------------------------------ la cookie
-def test_cookie_attributes_in_development(client, video):
+def test_cookie_attributes_with_explicit_test_config(client, video):
     r = session(client, video)
     _, attrs = cookie_of(r)
     assert "httponly" in attrs and "samesite=strict" in attrs
     assert f"path={mstream.stream_path(video['id'])}".lower() in attrs     # ruta EXACTA del archivo
-    assert "max-age=600" in attrs and "; secure" not in attrs
+    assert "max-age=600" in attrs and "; secure" not in attrs             # solo porque APP_ENV=test lo pide
     assert r.headers["cache-control"] == "private, no-store" and r.headers["referrer-policy"] == "no-referrer"
     assert set(r.json()) == {"url", "max_age", "mime"} and r.json()["max_age"] <= 600
 
 
-def test_cookie_is_secure_in_production(monkeypatch, db):
-    monkeypatch.setattr(main, "member_portal", SimpleNamespace(db=db))
-    prod = TestClient(main.app, base_url="https://app.nexxus.example")
-    m = upload(prod)
-    r = session(prod, m)
+@pytest.mark.parametrize("headers", [{}, {"Host": "localhost"}, {"Host": "127.0.0.1:8000"},
+                                     {"X-Forwarded-Host": "localhost"}, {"X-Forwarded-Proto": "http"}])
+def test_cookie_is_always_secure_without_explicit_test_config(monkeypatch, client, video, headers):
+    """Sin configuración explícita = producción: Secure siempre, diga lo que diga Host o X-Forwarded-Host."""
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.delenv(mstream.INSECURE_FLAG, raising=False)
+    r = client.post(f"{LIB}/{video['id']}/stream-session", json={"tenant_id": T1}, headers={**H(OWNER), **headers})
     _, attrs = cookie_of(r)
     assert "; secure" in attrs and "httponly" in attrs and "samesite=strict" in attrs and "max-age=600" in attrs
-    rv = prod.post(f"{LIB}/{m['id']}/stream-revoke", json={"tenant_id": T1}, headers=H(OWNER))
-    assert "; secure" in cookie_of(rv)[1]
+    rv = client.post(f"{LIB}/{video['id']}/stream-revoke", json={"tenant_id": T1}, headers={**H(OWNER), **headers})
+    assert "; secure" in cookie_of(rv)[1] and "max-age=0" in cookie_of(rv)[1]
+
+
+@pytest.mark.parametrize("app_env,flag,secure", [(None, None, True), ("production", None, True), ("test", None, True),
+                                                 ("local", "0", True), ("test", "1", False), ("development", "true", False)])
+def test_cookie_secure_only_disabled_by_explicit_local_config(monkeypatch, app_env, flag, secure):
+    for k, v in (("APP_ENV", app_env), (mstream.INSECURE_FLAG, flag)):
+        monkeypatch.delenv(k, raising=False) if v is None else monkeypatch.setenv(k, v)
+    assert mstream.cookie_secure() is secure
+
+
+@pytest.mark.parametrize("app_env", [None, "production", "staging", "prod", ""])
+def test_production_refuses_to_start_if_secure_is_disabled(monkeypatch, app_env):
+    monkeypatch.setenv(mstream.INSECURE_FLAG, "1")
+    monkeypatch.delenv("APP_ENV", raising=False) if app_env is None else monkeypatch.setenv("APP_ENV", app_env)
+    from services.marketing_studio_routes import build_router
+    with pytest.raises(RuntimeError, match="Secure"):
+        build_router(lambda: None)
+    with pytest.raises(RuntimeError):
+        mstream.cookie_secure()                                         # ni siquiera por petición
+
+
+def test_app_process_does_not_start_in_production_with_insecure_cookie():
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+    env = {k: v for k, v in os.environ.items() if k != "APP_ENV"}
+    env.update({mstream.INSECURE_FLAG: "1", "PYTHONDONTWRITEBYTECODE": "1"})
+    p = subprocess.run([sys.executable, "-c", "import main"], cwd=Path(__file__).resolve().parents[1], env=env,
+                       capture_output=True, text=True, timeout=120)
+    assert p.returncode != 0 and "MARKETING_STREAM_COOKIE_INSECURE" in p.stderr
+    env["APP_ENV"] = "test"
+    assert subprocess.run([sys.executable, "-c", "import main"], cwd=Path(__file__).resolve().parents[1], env=env,
+                          capture_output=True, text=True, timeout=120).returncode == 0
 
 
 def test_session_is_only_issued_to_owner_manager_of_tenant(client, video):

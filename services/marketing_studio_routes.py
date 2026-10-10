@@ -13,7 +13,7 @@ from starlette.concurrency import run_in_threadpool
 
 from services.marketing_domain import DomainError
 from services.marketing_library import LibraryService
-from services.marketing_media_stream import COOKIE, MediaStreamService, stream_path
+from services.marketing_media_stream import COOKIE, MediaStreamService, check_cookie_config, cookie_secure, stream_path
 from services.marketing_studio import StudioService, public_job
 from services.member_portal import PortalError
 
@@ -22,6 +22,7 @@ P = "/api/manager/marketing"
 
 
 def build_router(get_db: Callable) -> APIRouter:
+    check_cookie_config()                         # en producción, una cookie sin Secure impide arrancar
     r = APIRouter()
 
     def _db():
@@ -52,13 +53,9 @@ def build_router(get_db: Callable) -> APIRouter:
         a = request.headers.get("authorization", "")
         return a[7:].strip() if a.lower().startswith("bearer ") else ""
 
-    def secure_cookie(request: Request) -> bool:
-        """Secure en producción (HTTPS); sin Secure solo en desarrollo local."""
-        return request.url.hostname not in ("localhost", "127.0.0.1", "testserver", "::1")
-
     def expire_stream_cookie(response, request: Request, media_id: str):
         response.set_cookie(COOKIE, "", max_age=0, expires=0, path=stream_path(media_id), httponly=True,
-                            secure=secure_cookie(request), samesite="strict")
+                            secure=cookie_secure(), samesite="strict")
         return response
 
     async def call(fn):
@@ -128,7 +125,7 @@ def build_router(get_db: Callable) -> APIRouter:
         out = JSONResponse({"url": res["url"], "max_age": res["max_age"], "mime": res["mime"]},
                            headers={"Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer"})
         out.set_cookie(COOKIE, res["token"], max_age=res["max_age"], path=res["path"], httponly=True,
-                       secure=secure_cookie(request), samesite="strict")
+                       secure=cookie_secure(), samesite="strict")
         return out
 
     @r.post(f"{P}/library/{{media_id}}/stream-revoke")

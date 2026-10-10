@@ -11,8 +11,10 @@ Comprueba con conexiones y transacciones separadas, abiertas a la vez:
   * dos aprobaciones simultáneas cerca del límite de costo → solo una;
   * una subida y una aprobación simultáneas compitiendo por el mismo espacio → solo una.
 
-Se omite si no hay binarios de PostgreSQL. Ejecutar (ejemplo con Homebrew):
-  MARKETING_PG_BIN=/opt/homebrew/opt/postgresql@17/bin python3 -m pytest tests/test_marketing_pg_concurrency.py
+Se omite si no hay binarios de PostgreSQL. Comando exacto (ver docs/AITA_MARKETING_PHASE2.md, §4f):
+  python3 -m venv /tmp/mk-pg-venv && /tmp/mk-pg-venv/bin/pip install pytest "psycopg[binary]==3.2.3"
+  MARKETING_PG_BIN=/opt/homebrew/opt/postgresql@17/bin /tmp/mk-pg-venv/bin/python -m pytest -v -p no:cacheprovider \
+      --noconftest tests/test_marketing_pg_concurrency.py
 """
 import os
 import shutil

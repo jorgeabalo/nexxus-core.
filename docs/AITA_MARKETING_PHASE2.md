@@ -134,7 +134,11 @@ está prohibido. El mismo archivo puede volver a subirse después.
   (`POST …/library/{id}/stream-session`, con el JWT) crea una **sesión opaca** de un solo archivo, ligada a
   tenant + usuario + archivo, y la coloca en una **cookie** `mk_stream`: `HttpOnly`, `Secure` en producción
   (solo se omite en localhost/127.0.0.1), `SameSite=Strict`, `Path` = la ruta **exacta** del archivo y
-  `Max-Age` ≤ 600 s (`MARKETING_STREAM_TTL`, 60–600, 600 por defecto). En la base de datos solo se guarda su hash
+  `Max-Age` ≤ 600 s (`MARKETING_STREAM_TTL`, 60–600, 600 por defecto). **Secure no se decide con `Host`,
+  `X-Forwarded-Host` ni la URL**: es obligatorio salvo con una configuración explícita de test/local
+  (`APP_ENV` = `test`, `local` o `development` **y** `MARKETING_STREAM_COOKIE_INSECURE=1`). Sin `APP_ENV`, o con
+  cualquier otro valor, es producción: si `MARKETING_STREAM_COOKIE_INSECURE` está activo, la aplicación **se
+  niega a arrancar** (`RuntimeError` al construir las rutas). En la base de datos solo se guarda su hash
   (`marketing_stream_tokens`, solo service_role; la base exige caducidad ≤ 10 minutos).
 * El reproductor usa una **URL limpia**, sin token: `GET|HEAD /api/manager/marketing/library/{id}/stream`. El
   navegador envía la cookie en HEAD, GET y cada Range (`Range: bytes=a-b | a- | -n` → 206 + `Content-Range` +
@@ -204,7 +208,18 @@ de 80 USD por tenant (voz, IA de Claudia, infraestructura…), que irá en otro 
 * **Concurrencia en PostgreSQL real**: `tests/test_marketing_pg_concurrency.py` crea un clúster desechable
   (initdb en un directorio temporal, solo 127.0.0.1), carga las migraciones y abre transacciones simultáneas:
   dos subidas, dos aprobaciones por bytes, dos por costo y subida contra aprobación, cerca del límite → solo una
-  entra. Se omite sin `MARKETING_PG_BIN`. Nunca usa Supabase ni producción.
+  entra. Se omite sin `MARKETING_PG_BIN`. Nunca usa Supabase ni producción. Comando exacto (macOS con
+  Homebrew `postgresql@17`; desde la raíz del repositorio; el entorno solo necesita `pytest` y `psycopg`, por eso
+  `--noconftest` evita cargar las dependencias del resto de la suite):
+
+  ```bash
+  python3 -m venv /tmp/mk-pg-venv && /tmp/mk-pg-venv/bin/pip install pytest "psycopg[binary]==3.2.3"
+  MARKETING_PG_BIN=/opt/homebrew/opt/postgresql@17/bin /tmp/mk-pg-venv/bin/python -m pytest -v -p no:cacheprovider --noconftest tests/test_marketing_pg_concurrency.py
+  ```
+
+  En Linux, `MARKETING_PG_BIN` es la carpeta de `initdb`/`pg_ctl` (p. ej. `/usr/lib/postgresql/17/bin`). La
+  prueba arranca el servidor con `LC_ALL=C` (en macOS el postmaster no arranca sin un locale válido), lo
+  detiene y borra el directorio al terminar. Resultado esperado: `17 passed`.
 
 * `marketing_settings.monthly_ai_cost_limit` (USD/mes) lo fija **solo el operador**; `0` por defecto = ninguna
   generación, ni siquiera simulada; `null` = sin límite. El tenant no puede cambiarlo (sin endpoint; SELECT only).
@@ -307,6 +322,8 @@ transporte inyectado explícitamente, `submit()` devuelve `provider_disabled`.
 | `MARKETING_LOCAL_TOOLS_ENABLED` | `false` | Herramientas locales (FFmpeg); no instaladas en producción |
 | `MARKETING_AI_CATALOG_PATH` | catálogo del repo | Otro catálogo en el servidor |
 | `MARKETING_STREAM_TTL` | 600 | Vida de la sesión de reproducción (cookie) en segundos (se limita a 60–600) |
+| `APP_ENV` | `production` | `test`, `local` o `development` permiten (solo junto con la siguiente) una cookie sin Secure |
+| `MARKETING_STREAM_COOKIE_INSECURE` | — | `1` = cookie sin Secure, **solo** con `APP_ENV` de test/local; en producción impide arrancar |
 | `MARKETING_MAX_VIDEO_DURATION_MS` | 900000 | Duración máxima creíble de un vídeo subido (15 min) |
 | `MARKETING_HARD_MAX_UPLOAD_BYTES` | 100 MB | Tope absoluto por archivo (memoria del servidor) |
 

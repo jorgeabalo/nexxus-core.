@@ -29,6 +29,29 @@ from services.member_portal import PortalError
 
 logger = logging.getLogger(__name__)
 COOKIE = "mk_stream"
+# Secure NUNCA se decide con Host, X-Forwarded-Host ni la URL de la petición: es obligatorio salvo que una
+# configuración EXPLÍCITA de test/local lo desactive. Cualquier otro APP_ENV (o ninguno) = producción.
+INSECURE_FLAG = "MARKETING_STREAM_COOKIE_INSECURE"
+LOCAL_ENVS = ("test", "local", "development")
+
+
+def app_env() -> str:
+    return (os.getenv("APP_ENV") or "production").strip().lower()
+
+
+def _insecure_requested() -> bool:
+    return (os.getenv(INSECURE_FLAG) or "").strip().lower() in ("1", "true", "yes")
+
+
+def check_cookie_config() -> None:
+    """Se llama al construir la aplicación: en producción, pedir una cookie sin Secure impide arrancar."""
+    if _insecure_requested() and app_env() not in LOCAL_ENVS:
+        raise RuntimeError(f"{INSECURE_FLAG} solo se permite con APP_ENV en {LOCAL_ENVS}; la cookie debe ser Secure")
+
+
+def cookie_secure() -> bool:
+    check_cookie_config()                                     # también por petición: nunca Secure=False en producción
+    return not (_insecure_requested() and app_env() in LOCAL_ENVS)
 _TOKEN = re.compile(r"^[A-Za-z0-9_-]{32,64}$")
 
 
