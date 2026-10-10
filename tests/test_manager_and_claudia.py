@@ -129,6 +129,7 @@ class TwilioSignedClient(TestClient):
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setenv("TWILIO_AUTH_TOKEN", TWILIO_TEST_TOKEN)   # la firma se valida también en tests
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)        # URL firmada = https://testserver
     main.twilio_handler = main.TwilioWebhookHandler()
     main._llamadas_cerradas.clear()
     main._sms_despedida_enviados.clear()

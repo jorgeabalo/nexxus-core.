@@ -62,7 +62,11 @@ def test_validator_accepts_valid_signature_and_strips_token(monkeypatch):
 @pytest.fixture
 def app_with(monkeypatch):
     """Devuelve (client, recepcionista, db) con el token indicado (None = sin variable)."""
-    def build(token):
+    def build(token, public_base=None):
+        if public_base is None:
+            monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+        else:
+            monkeypatch.setenv("PUBLIC_BASE_URL", public_base)
         if token is None:
             monkeypatch.delenv("TWILIO_AUTH_TOKEN", raising=False)
         else:
@@ -140,6 +144,50 @@ def test_rejects_when_handler_missing(app_with, monkeypatch, path, data, _):
     r = client.post(path, data=data, headers={"X-Twilio-Signature": sign(path, data)})
     assert r.status_code == 403
     _assert_untouched(recep, db)
+
+
+# ---------------------------------------------------------------- URL pública (PUBLIC_BASE_URL)
+PUBLIC = "https://nexxus-core-production.up.railway.app"
+
+
+@pytest.mark.parametrize("path,data,expected", ENDPOINTS)
+def test_signature_uses_public_base_url(app_with, path, data, expected):
+    client, _, _ = app_with(TOKEN, public_base=PUBLIC + "/")          # la barra final se ignora
+    good = RequestValidator(TOKEN).compute_signature(f"{PUBLIC}{path}", data)
+    assert client.post(path, data=data, headers={"X-Twilio-Signature": good}).status_code == expected
+
+
+def test_forwarded_headers_cannot_change_validated_url(app_with):
+    client, recep, db = app_with(TOKEN, public_base=PUBLIC)
+    path = "/api/twilio/mensaje"
+    evil = "https://evil.example"
+    forged = {"X-Forwarded-Host": "evil.example", "X-Forwarded-Proto": "https",
+              "X-Twilio-Signature": RequestValidator(TOKEN).compute_signature(f"{evil}{path}", GATHER)}
+    assert client.post(path, data=GATHER, headers=forged).status_code == 403
+    # firma sobre la URL interna/http tampoco vale
+    internal = {"X-Twilio-Signature": RequestValidator(TOKEN).compute_signature(f"http://testserver{path}", GATHER)}
+    assert client.post(path, data=GATHER, headers=internal).status_code == 403
+    _assert_untouched(recep, db)
+    # la firma correcta sigue valiendo aunque el proxy mande cabeceras raras
+    ok = {"X-Forwarded-Host": "evil.example", "X-Forwarded-Proto": "http",
+          "X-Twilio-Signature": RequestValidator(TOKEN).compute_signature(f"{PUBLIC}{path}", GATHER)}
+    assert client.post(path, data=GATHER, headers=ok).status_code == 200
+
+
+@pytest.mark.parametrize("bad", ["http://nexxus-core-production.up.railway.app", "https://x.example/sub", "nexxus.example", "https://"])
+def test_invalid_public_base_url_fails_closed(app_with, bad):
+    client, recep, db = app_with(TOKEN, public_base=bad)
+    path = "/webhooks/twilio/voice"
+    sig = RequestValidator(TOKEN).compute_signature(f"{bad.rstrip('/')}{path}", VOICE)
+    assert client.post(path, data=VOICE, headers={"X-Twilio-Signature": sig}).status_code == 403
+    _assert_untouched(recep, db)
+
+
+def test_query_string_with_public_base_url(app_with):
+    client, _, _ = app_with(TOKEN, public_base=PUBLIC)
+    path = "/webhooks/twilio/voice?tenant=golden_age"
+    sig = RequestValidator(TOKEN).compute_signature(f"{PUBLIC}{path}", VOICE)
+    assert client.post(path, data=VOICE, headers={"X-Twilio-Signature": sig}).status_code == 200
 
 
 # ---------------------------------------------------------------- healthcheck

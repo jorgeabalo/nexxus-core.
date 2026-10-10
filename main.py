@@ -622,20 +622,37 @@ async def finalizar(request: Request):
     except Exception as e:
         return {"error": str(e)}
 
+_HTTPS_BASE = re.compile(r"https://[A-Za-z0-9.-]+(:\d+)?")
+
+
 def _twilio_url(request: Request) -> str:
-    """URL pública exacta que Twilio firmó (Railway termina TLS y reenvía X-Forwarded-*)."""
-    scheme = request.headers.get("X-Forwarded-Proto", "https")
-    host = request.headers.get("X-Forwarded-Host") or request.url.netloc
+    """URL pública exacta que Twilio firmó: https + dominio + ruta + query.
+
+    Fuente principal: PUBLIC_BASE_URL (configurada en el servidor; no la controla
+    quien hace la petición). Solo si no existe se reconstruye con las cabeceras del
+    proxy (X-Forwarded-*), como hasta ahora. Si existe pero no es https://dominio
+    válido se devuelve "" y la firma se rechaza (falla cerrado).
+    """
+    env = (os.getenv("PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    if env:
+        if not _HTTPS_BASE.fullmatch(env):
+            logger.error("PUBLIC_BASE_URL no es https://dominio válido: webhooks de Twilio rechazados")
+            return ""
+        base = env
+    else:
+        scheme = (request.headers.get("X-Forwarded-Proto") or "https").split(",")[0].strip()
+        host = (request.headers.get("X-Forwarded-Host") or request.url.netloc).split(",")[0].strip()
+        base = f"{scheme}://{host}"
     query = f"?{request.url.query}" if request.url.query else ""
-    return f"{scheme}://{host}{request.url.path}{query}"
+    return f"{base}{request.url.path}{query}"
 
 
 def _twilio_firma_valida(request: Request, data: dict) -> bool:
-    """Falla cerrado: sin handler, sin token o con firma inválida => False."""
-    if not twilio_handler:
+    """Falla cerrado: sin handler, sin token, sin URL válida o con firma inválida => False."""
+    url = _twilio_url(request)
+    if not twilio_handler or not url:
         return False
-    return twilio_handler.signature_validator.validate(
-        _twilio_url(request), data, request.headers.get("X-Twilio-Signature", ""))
+    return twilio_handler.signature_validator.validate(url, data, request.headers.get("X-Twilio-Signature", ""))
 
 
 @app.get("/health")
