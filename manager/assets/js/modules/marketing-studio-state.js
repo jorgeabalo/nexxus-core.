@@ -41,16 +41,21 @@ export function approxScenes(real, scenes, seconds, adaptReal = false) {
 }
 
 // Clase de privacidad del original (espejo informativo de services/marketing_privacy.py).
+// Personas sin confirmar que NO hay menores → siempre restringido.
+const minorsRisk = (m) => m.contains_people !== false && m.contains_minors !== false;
 export function privacyClass(m) {
-  if (!m) return 'restricted';
+  if (!m || minorsRisk(m) || m.consent_status === 'revoked') return 'restricted';
   if (m.contains_people === false && m.people_policy === 'no_people') return 'business_media_no_people';
   if (m.people_policy === 'consented' && m.consent_status === 'granted') return 'consented_people';
   return 'restricted';
 }
-// ¿Se puede elegir este archivo como fuente de un Reel?
+// ¿Se puede elegir este archivo como fuente de un Reel? Un derivado simulado nunca cuenta.
 export function usableAsSource(m) {
-  if (!m || m.processing_status !== 'ready') return false;
-  if (m.people_policy === 'anonymize') return (m.derivatives || []).some(d => d.kind === 'anonymized' && d.status === 'ready');
+  if (!m || m.processing_status !== 'ready' || m.validation_status !== 'passed') return false;
+  if (minorsRisk(m) || m.consent_status === 'revoked') return false;
+  if (m.people_policy === 'anonymize') {
+    return (m.derivatives || []).some(d => d.kind === 'anonymized' && d.status === 'ready' && !d.is_mock);
+  }
   return privacyClass(m) !== 'restricted';
 }
 

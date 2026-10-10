@@ -120,22 +120,35 @@ class SupabaseAdmin:
     def storage_download(self, bucket: str, key: str) -> bytes:
         return self._storage("GET", f"authenticated/{bucket}/{key}").content
 
-    def storage_sign(self, bucket: str, key: str, expires_in: int) -> str:
-        """URL firmada de corta duración para ver un archivo privado. Nunca se registra en logs."""
+    def storage_stream(self, bucket: str, key: str, chunk_size: int = 65536):
+        """Descarga en trozos (sin cargar el archivo entero en memoria) para entregarlo por el backend.
+        Ninguna URL de Storage llega al navegador ni a los logs."""
         if not self.enabled:
             raise RuntimeError("Supabase storage disabled")
+        client = httpx.Client(timeout=httpx.Timeout(60.0, connect=5.0))
         try:
-            r = httpx.post(f"{self.url}/storage/v1/object/sign/{bucket}/{key}", json={"expiresIn": int(expires_in)},
-                           headers={"apikey": self._key, "Authorization": f"Bearer {self._key}"},
-                           timeout=httpx.Timeout(10.0, connect=5.0))
+            r = client.send(client.build_request("GET", f"{self.url}/storage/v1/object/authenticated/{bucket}/{key}",
+                                                 headers={"apikey": self._key, "Authorization": f"Bearer {self._key}"}),
+                            stream=True)
         except Exception as e:
-            raise RuntimeError(f"Supabase storage SIGN: {type(e).__name__}") from None
+            client.close()
+            raise RuntimeError(f"Supabase storage STREAM: {type(e).__name__}") from None
         if r.status_code >= 400:
-            raise RuntimeError(f"Supabase storage SIGN -> {r.status_code}")
-        signed = str((r.json() or {}).get("signedURL") or "")
-        if not signed.startswith("/"):
-            raise RuntimeError("Supabase storage SIGN: invalid response")
-        return f"{self.url}/storage/v1{signed}"
+            r.close()
+            client.close()
+            raise RuntimeError(f"Supabase storage STREAM -> {r.status_code}")
+
+        def chunks():
+            try:
+                yield from r.iter_bytes(chunk_size)
+            finally:
+                r.close()
+                client.close()
+        return chunks()
+
+    def storage_remove(self, bucket: str, key: str) -> None:
+        """Elimina un objeto (borrado controlado; la auditoría la registra quien llama)."""
+        self._storage("DELETE", f"{bucket}/{key}")
 
     # -- Supabase Auth (GoTrue) -----------------------------------------
     def auth(self, method: str, path: str, *, json=None, params=None, anon: bool = False,

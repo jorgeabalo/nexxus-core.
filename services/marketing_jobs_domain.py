@@ -10,15 +10,16 @@ from typing import Any, Dict, Optional
 from services.marketing_domain import DomainError
 
 # ---------------------------------------------------------------- Biblioteca
-MEDIA_STATUSES = ("uploaded", "scanning", "ready", "rejected", "processing", "failed", "archived")
+MEDIA_STATUSES = ("uploaded", "scanning", "ready", "rejected", "processing", "failed", "archived", "deleted")
+# 'deleted' = borrado controlado (auditado; la fila queda como registro). Es final.
 MEDIA_TRANSITIONS: Dict[str, tuple] = {
-    "uploaded": ("scanning", "ready", "rejected"),
-    "scanning": ("ready", "rejected", "failed"),
-    "ready": ("processing", "archived"),
+    "uploaded": ("scanning", "ready", "rejected", "deleted"),
+    "scanning": ("ready", "rejected", "failed", "deleted"),
+    "ready": ("processing", "archived", "deleted"),
     "processing": ("ready", "failed"),
-    "failed": ("ready", "archived"),
-    "rejected": ("archived",),
-    "archived": ("ready",),
+    "failed": ("ready", "archived", "deleted"),
+    "rejected": ("archived", "deleted"),
+    "archived": ("ready", "deleted"),
 }
 
 # ---------------------------------------------------------------- trabajos
@@ -40,15 +41,17 @@ SCENE_ORIGINS = ("client_original", "client_ai_adapted", "ai_generated")
 
 # Códigos de error públicos (seguros para mostrar; nunca detalles del proveedor).
 PUBLIC_ERRORS = ("provider_disabled", "provider_unavailable", "budget_exceeded", "no_eligible_model",
-                 "privacy_blocked", "timeout", "moderation_rejected", "render_failed", "cancelled_by_user",
-                 "internal_error")
+                 "privacy_blocked", "consent_revoked", "minors_excluded", "media_excluded", "media_not_ready",
+                 "timeout", "moderation_rejected", "render_failed", "cancelled_by_user", "internal_error")
 
 # ---------------------------------------------------------------- límites nuevos
-# 0 = nada permitido (por defecto). None = sin límite. El tenant no puede cambiarlos.
+# 0 = nada permitido (por defecto). None = sin límite. El tenant no puede cambiarlos (no hay ningún
+# endpoint que escriba marketing_settings y RLS/privilegios lo impiden).
 GEN_LIMIT_KEYS = ("monthly_generation_job_limit", "monthly_regeneration_limit", "monthly_generated_image_limit",
-                  "monthly_generated_video_seconds_limit", "monthly_ai_cost_limit", "library_storage_limit_bytes")
+                  "monthly_generated_video_seconds_limit", "monthly_ai_cost_limit")
+# La Biblioteca no consume generación: almacenamiento propio (1 GiB por defecto) y tamaño por archivo.
 GEN_DEFAULTS: Dict[str, Any] = {"ai_generation_enabled": False, "max_upload_bytes": 52428800,
-                                **{k: 0 for k in GEN_LIMIT_KEYS}}
+                                "library_storage_limit_bytes": 1073741824, **{k: 0 for k in GEN_LIMIT_KEYS}}
 
 
 def check_media_transition(current: str, target: str) -> None:
@@ -82,8 +85,9 @@ def limit_left(limit: Optional[float], used: float) -> Optional[float]:
 
 def check_generation_limits(settings: Dict[str, Any], usage: Dict[str, float], *, regeneration: bool,
                             images: int, video_seconds: int, max_cost: float) -> None:
-    """Se comprueba al APROBAR un trabajo (antes de cualquier gasto). Cuenta el mes del tenant."""
-    if settings.get("ai_generation_enabled") is not True:
+    """Se comprueba al APROBAR un trabajo (antes de cualquier gasto, también para el mock). Cuenta el mes
+    del tenant. Interruptor apagado o límite principal en 0 = "generación no habilitada en este plan"."""
+    if not generation_enabled(settings):
         raise DomainError("generation_disabled", 403)
     checks = (
         ("monthly_generation_job_limit", usage.get("jobs", 0), 1),
@@ -95,6 +99,15 @@ def check_generation_limits(settings: Dict[str, Any], usage: Dict[str, float], *
     for key, used, needed in checks:
         if needed <= 0:
             continue
-        left = limit_left(settings.get(key, 0), used)
+        limit = settings.get(key, 0)
+        if limit == 0:
+            raise DomainError("generation_disabled", 403)
+        left = limit_left(limit, used)
         if left is not None and needed > left:
             raise DomainError(f"limit_{key}", 409)
+
+
+def generation_enabled(settings: Dict[str, Any]) -> bool:
+    """Para la interfaz: ¿el plan permite generar algo (real o simulado)?"""
+    return (settings.get("ai_generation_enabled") is True and settings.get("monthly_generation_job_limit", 0) != 0
+            and settings.get("monthly_ai_cost_limit", 0) != 0)     # presupuesto 0 = nada, ni siquiera el mock

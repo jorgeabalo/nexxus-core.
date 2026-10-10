@@ -6,7 +6,10 @@ AITA Marketing — validación de archivos de la Biblioteca (funciones puras, si
 * Nunca SVG, HTML, scripts ni ejecutables (también si vienen disfrazados).
 * El nombre que manda el navegador no se usa como ruta: se sanea y la ruta se construye en el
   servidor, aislada por tenant: {tenant_id}/originals/{asset_id}/{safe_filename}.
-* Dimensiones y duración se leen de las cabeceras sin decodificar la imagen ni el vídeo.
+* Dimensiones y duración se leen de las cabeceras sin decodificar la imagen ni el vídeo, con
+  ventanas y profundidad ACOTADAS; valores imposibles (duración o tamaño falsos) se rechazan.
+* Archivos truncados y "polyglot" (imagen válida con HTML/JS/ZIP dentro) se rechazan.
+* Validar el formato NO es un antivirus: el escaneo de malware es otro estado (malware_scan_status).
 """
 import hashlib
 import os
@@ -26,6 +29,15 @@ MIME_TO_EXT = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "i
 # Tope absoluto del servidor (memoria); el límite por tenant lo fija el operador en marketing_settings.
 HARD_MAX_BYTES = int(os.getenv("MARKETING_HARD_MAX_UPLOAD_BYTES", str(100 * 1024 * 1024)))
 _DANGEROUS = (b"<svg", b"<?xml", b"<html", b"<!doctype", b"<script", b"#!/", b"MZ", b"\x7fELF", b"PK\x03\x04")
+# marcadores de contenido activo o contenedores escondidos en cualquier parte de las ventanas revisadas
+_EMBEDDED = (b"<script", b"<html", b"<svg", b"<?php", b"<!doctype", b"<iframe", b"javascript:", b"<?xml-stylesheet",
+             b"pk\x05\x06", b"pk\x03\x04")
+SCAN_WINDOW = 128 * 1024                 # bytes revisados al principio y al final del archivo
+JPEG_SCAN_LIMIT = 1024 * 1024            # los metadatos no pueden empujar las dimensiones más allá de 1 MB
+MP4_MAX_BOXES, MP4_MAX_DEPTH = 4096, 4
+MAX_DIMENSION = 20000
+MAX_DURATION_MS = int(os.getenv("MARKETING_MAX_VIDEO_DURATION_MS", str(15 * 60 * 1000)))
+MIN_VIDEO_BYTES_PER_SECOND = 1000        # menos que esto: duración declarada falsa
 
 
 class MediaFileError(Exception):
@@ -58,9 +70,42 @@ def sniff(data: bytes) -> Optional[str]:
 
 
 def looks_dangerous(data: bytes) -> bool:
-    """SVG/HTML/scripts/ejecutables/ZIP, aunque la extensión diga otra cosa."""
+    """SVG/HTML/scripts/ejecutables/ZIP al principio, o contenido activo escondido (polyglot) en las
+    ventanas inicial y final del archivo. Las ventanas están acotadas: nunca se recorre todo el archivo."""
     head = data[:512].lstrip().lower()
-    return any(head.startswith(sig.lower()) for sig in _DANGEROUS) or b"<script" in head or b"<svg" in head
+    if any(head.startswith(sig.lower()) for sig in _DANGEROUS):
+        return True
+    windows = (data[:SCAN_WINDOW].lower(), data[-SCAN_WINDOW:].lower())
+    return any(marker in w for w in windows for marker in _EMBEDDED)
+
+
+def structurally_complete(data: bytes, mime: str) -> bool:
+    """Detecta archivos truncados con comprobaciones baratas y acotadas."""
+    n = len(data)
+    if mime == "image/png":
+        return n >= 45 and data[12:16] == b"IHDR" and data[-12:-4] == b"\x00\x00\x00\x00IEND"
+    if mime == "image/jpeg":
+        return n >= 4 and b"\xff\xd9" in data[-1024:]
+    if mime == "image/gif":
+        return n >= 14 and b"\x3b" in data[-16:]
+    if mime == "image/webp":
+        return n >= 20 and int.from_bytes(data[4:8], "little") + 8 <= n
+    if mime in ("video/mp4", "video/quicktime"):
+        i, boxes = 0, 0
+        while i + 8 <= n and boxes < MP4_MAX_BOXES:
+            size = struct.unpack(">I", data[i:i + 4])[0]
+            if size == 1 and i + 16 <= n:
+                size = struct.unpack(">Q", data[i + 8:i + 16])[0]
+            if size == 0:
+                return True                                   # la última caja llega hasta el final
+            if size < 8 or i + size > n:
+                return False                                  # caja que promete más bytes de los que hay
+            i += size
+            boxes += 1
+        return i == n and boxes > 0
+    if mime == "video/webm":
+        return n >= 32
+    return False
 
 
 def safe_filename(name: str, ext: str) -> str:
@@ -113,8 +158,15 @@ def validate(data: bytes, filename: str, declared_mime: str, max_bytes: int) -> 
         raise MediaFileError("extension_mismatch", 415)       # p. ej. un .png que en realidad es GIF
     if declared != real:
         raise MediaFileError("mime_mismatch", 415)            # MIME declarado falso
+    if not structurally_complete(data, real):
+        raise MediaFileError("truncated_file", 415)
     width, height, duration = dimensions(data, real)
-    return {"mime_type": real, "media_type": media_type, "byte_size": len(data),
+    if any(v is not None and not (1 <= v <= MAX_DIMENSION) for v in (width, height)):
+        raise MediaFileError("invalid_media_metadata", 415)
+    if duration is not None and (duration > MAX_DURATION_MS
+                                 or (duration > 0 and len(data) * 1000 / duration < MIN_VIDEO_BYTES_PER_SECOND)):
+        raise MediaFileError("invalid_media_metadata", 415)       # duración falsa o imposible
+    return {"mime_type": real, "media_type": media_type, "byte_size": len(data), "validation_status": "passed",
             "checksum": hashlib.sha256(data).hexdigest(), "width": width, "height": height,
             "duration_ms": duration, "safe_filename": safe_filename(filename, MIME_TO_EXT[real]),
             "original_filename": os.path.basename(str(filename).replace("\\", "/"))[:200]}
@@ -141,8 +193,8 @@ def dimensions(data: bytes, mime: str) -> Tuple[Optional[int], Optional[int], Op
 
 
 def _jpeg_size(data: bytes) -> Tuple[Optional[int], Optional[int]]:
-    i = 2
-    while i + 9 < len(data):
+    i, end = 2, min(len(data), JPEG_SCAN_LIMIT)
+    while i + 9 < end:
         if data[i] != 0xFF:
             i += 1
             continue
@@ -175,11 +227,13 @@ def _webp_size(data: bytes) -> Tuple[Optional[int], Optional[int]]:
 def _mp4_info(data: bytes) -> Tuple[Optional[int], Optional[int], Optional[int]]:
     """Duración (mvhd) y tamaño de la primera pista con dimensiones (tkhd), recorriendo las cajas."""
     width = height = duration = None
+    count = 0
 
-    def walk(start: int, end: int):
-        nonlocal width, height, duration
+    def walk(start: int, end: int, depth: int):
+        nonlocal width, height, duration, count
         i = start
-        while i + 8 <= end:
+        while i + 8 <= end and count < MP4_MAX_BOXES:
+            count += 1
             size, kind = struct.unpack(">I4s", data[i:i + 8])
             header = 8
             if size == 1 and i + 16 <= end:
@@ -188,8 +242,8 @@ def _mp4_info(data: bytes) -> Tuple[Optional[int], Optional[int], Optional[int]]
             if size < header:
                 return
             box_end = min(i + size, end)
-            if kind in (b"moov", b"trak"):
-                walk(i + header, box_end)
+            if kind in (b"moov", b"trak") and depth < MP4_MAX_DEPTH:
+                walk(i + header, box_end, depth + 1)
             elif kind == b"mvhd" and duration is None:
                 v = data[i + 8]
                 if v == 1:
@@ -202,5 +256,5 @@ def _mp4_info(data: bytes) -> Tuple[Optional[int], Optional[int], Optional[int]]
                 if w >> 16 and h >> 16:
                     width, height = w >> 16, h >> 16
             i += size
-    walk(0, len(data))
+    walk(0, len(data), 0)
     return width, height, duration

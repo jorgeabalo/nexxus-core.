@@ -50,6 +50,8 @@ class RouteRequest:
     duration: Optional[int] = None
     language: str = "es"
     brand_constraints: Dict[str, Any] = field(default_factory=dict)
+    # Validar el formato no es un antivirus: material real solo sale si está escaneado y limpio.
+    inputs_malware_clean: bool = False
 
     def validate(self) -> None:
         if self.task_type not in TASK_TYPES:
@@ -89,11 +91,13 @@ def provider_enabled(provider: str, env: Optional[Dict[str, str]] = None) -> boo
     return False
 
 
-def _privacy_ok(m: ModelEntry, privacy_class: str) -> bool:
+def _privacy_ok(m: ModelEntry, privacy_class: str, malware_clean: bool = False) -> bool:
     if not m.external:
         return True                                         # local / mock: no sale del servidor
     if privacy_class == "restricted":
         return False                                        # nunca hacia fuera
+    if privacy_class != "synthetic_only" and not malware_clean:
+        return False                                        # material real sin escaneo antivirus: no sale
     if privacy_class in ("consented_people", "anonymized_people"):
         if not m.real_people_allowed or m.data_retention_policy in ("unknown", "provider_default"):
             return False
@@ -123,7 +127,7 @@ class MarketingAIRouter:
             if req.task_type not in m.supported_tasks or not _inputs_ok(m, req.input_media_types):
                 excluded["unsupported"] += 1
                 continue
-            if not _privacy_ok(m, req.privacy_class):
+            if not _privacy_ok(m, req.privacy_class, req.inputs_malware_clean):
                 excluded["privacy"] += 1
                 continue
             if m.estimated_cost is None or (m.external and not m.price_verified):

@@ -3,7 +3,9 @@ AITA Marketing (Fase 2) — Estudio de Reels y trabajos de generación asíncron
 
 Flujo (demostrable de punta a punta con proveedores simulados, sin red ni gasto):
   subir → clasificar → elegir mezcla → guion → estimar → APROBAR generación → procesar (mock)
-  → revisar escenas → enviar a aprobación de contenido (Fase 1). Nunca se publica nada.
+  → revisar escenas → enviar a aprobación de contenido (Fase 1). Nunca se publica nada, y un
+  resultado simulado no puede programarse (MarketingService._schedule_checks lo bloquea).
+La ejecución vive en services/marketing_worker.py (preparada para un worker asíncrono).
 
 Garantías:
   * nada pasa a 'queued' sin aprobación explícita de owner/manager (aquí y en el trigger);
@@ -20,11 +22,12 @@ from typing import Any, Dict, Optional
 from services import marketing_jobs_domain as jd
 from services import marketing_privacy as pv
 from services.marketing import _guard
-from services.marketing_ai_router import MarketingAIRouter, RouteRequest, default_adapters
+from services.marketing_ai_router import MarketingAIRouter, default_adapters
 from services.marketing_library import media_for_job
 from services.marketing_mix import confirm_mix, plan_scenes, suggest_mix, validate_mix
 from services.marketing_reel_plan import estimate, validate_brief
 from services.marketing_studio_base import StudioBase
+from services.marketing_worker import JobRunner, WorkerError, all_mock, recheck_inputs
 from services.member_portal import PortalError
 
 logger = logging.getLogger(__name__)
@@ -86,10 +89,12 @@ class StudioService(StudioBase):
     def overview(self, jwt: str, tenant_id: str) -> Dict[str, Any]:
         c = self.ctx(jwt, tenant_id)
         media = self.db.select("marketing_media", {"tenant_id": f"eq.{c.tenant_id}", "processing_status": "eq.ready",
-                                                   "select": "id,contains_people,people_policy,consent_status,processing_status",
+                                                   "select": "id,contains_people,contains_minors,people_policy,"
+                                                             "consent_status,processing_status,validation_status",
                                                    "limit": "1000"}) or []
-        usable = sum(1 for m in media if pv.original_class(m) in pv.EXTERNAL_OK)
+        usable = sum(1 for m in media if pv.usable_media(m) is None and pv.original_class(m) in pv.EXTERNAL_OK)
         return {"limits": {k: c.settings.get(k) for k in ("ai_generation_enabled", *jd.GEN_LIMIT_KEYS)},
+                "generation_enabled": jd.generation_enabled(c.settings),
                 "usage": self._gen_usage(c), "suggestion": suggest_mix(len(media), usable),
                 "catalog": self.router.catalog.public(), "presets": [list(p) for p in ((100, 0), (75, 25), (50, 50),
                                                                                       (25, 75), (0, 100))],
@@ -167,6 +172,7 @@ class StudioService(StudioBase):
             self.router.catalog.currency, "idempotency_key": key, "regeneration_of": regen,
             "request_metadata": {"brief": brief, "scenes": scenes, "adapt_real": body.get("adapt_real") is True,
                                  "privacy_class": inputs["privacy_class"], "real_kinds": inputs["kinds"],
+                                 "malware_clean": inputs["malware_clean"],
                                  "mix_confirmed_by": c.user["id"], "mix_confirmed_at": c.now.isoformat()}})
         for i in inputs["inputs"]:
             self.db.insert("marketing_generation_inputs", {"tenant_id": c.tenant_id, "job_id": job["id"],
@@ -187,7 +193,8 @@ class StudioService(StudioBase):
                        mix=validate_mix(j["real_media_percent"], j["ai_media_percent"]), scenes=int(meta["scenes"]),
                        adapt_real=bool(meta.get("adapt_real")), input_class=meta.get("privacy_class", "synthetic_only"),
                        people_policy=j["people_policy"], real_kinds=list(meta.get("real_kinds") or []),
-                       quality_tier=j["quality_tier"], maximum_cost=float(j["maximum_cost"]))
+                       quality_tier=j["quality_tier"], maximum_cost=float(j["maximum_cost"]),
+                       inputs_malware_clean=bool(meta.get("malware_clean")))
         return self._move(c, j, "awaiting_generation_approval", "request_approval",
                           {"estimated_cost": est["estimated_cost"], "request_metadata": {**meta, "estimate": est}},
                           detail={"estimated_cost": est["estimated_cost"], "catalog_version": est["catalog_version"]})
@@ -201,6 +208,9 @@ class StudioService(StudioBase):
         j = self._job(c, job_id)
         if j["status"] != "awaiting_generation_approval":
             raise PortalError("invalid_transition", 409)
+        why = recheck_inputs(self.db, c.tenant_id, j["id"])
+        if why:
+            raise PortalError(why, 409)                      # p. ej. consentimiento retirado después de crear
         est = (j["request_metadata"] or {}).get("estimate") or {}
         jd.check_generation_limits(c.settings, self._gen_usage(c), regeneration=bool(j.get("regeneration_of")),
                                    images=int(est.get("generated_images") or 0),
@@ -225,73 +235,20 @@ class StudioService(StudioBase):
 
     @_guard
     def process_job(self, jwt: str, tenant_id: str, job_id: str) -> Dict[str, Any]:
-        """Ejecuta un trabajo aprobado con los adaptadores activos (hoy: mock). En el futuro lo hará un
-        worker; aquí se mantiene síncrono y determinista para poder demostrar el flujo."""
+        """Desde una petición HTTP solo se ejecutan trabajos 100 % simulados (rápidos, sin red). Cualquier
+        trabajo con proveedores reales, vídeo, render o anonimización real requiere el worker asíncrono."""
         c = self.ctx(jwt, tenant_id)
         self._writable(c)
         j = self._job(c, job_id)
         if j["status"] != "queued" or not j.get("approved_at"):
             raise PortalError("generation_approval_required" if j["status"] in ("draft", "awaiting_generation_approval")
                               else "invalid_transition", 409)
-        est = (j["request_metadata"] or {}).get("estimate") or {}
-        j = self._move(c, j, "processing", "start")
-        total, provider_ids, first = 0.0, [], None
-        for st in est.get("subtasks") or []:
-            adapter = self.adapters.get(st["provider"])
-            model = next((m for m in self.router.catalog.models if m.model_id == st["model_id"]), None)
-            if adapter is None or model is None:
-                return self._fail(c, j, "provider_unavailable", total)
-            if st["external"] and not pv.can_go_external(st["privacy_class"]):
-                return self._fail(c, j, "privacy_blocked", total)          # nunca restricted hacia fuera
-            req = RouteRequest(tenant_id=c.tenant_id, task_type=st["task_type"], quality_tier=j["quality_tier"],
-                               maximum_cost=float(j["maximum_cost"]), privacy_class=st["privacy_class"],
-                               idempotency_key=st["idempotency_key"], units=float(st["units"]))
-            done = self.db.select("marketing_model_usage", {"tenant_id": f"eq.{c.tenant_id}",
-                                                            "idempotency_key": f"eq.{req.idempotency_key}",
-                                                            "select": "actual_cost,provider_job_id", "limit": "1"})
-            if done:                                     # reintento: ya facturado, no se vuelve a enviar
-                total += float(done[0].get("actual_cost") or 0)
-                continue
-            res = adapter.submit(req, model)
-            if res.status != "succeeded":
-                return self._fail(c, j, jd.public_error(res.error_code), total)
-            cost = float(res.actual_cost or 0)
-            if total + cost > float(j["maximum_cost"]):
-                return self._fail(c, j, "budget_exceeded", total)
-            total += cost
-            provider_ids.append(res.provider_job_id)
-            first = first or (st["provider"], st["model_id"], res.provider_job_id)
-            self.db.insert("marketing_model_usage", {
-                "tenant_id": c.tenant_id, "job_id": j["id"], "provider": st["provider"], "model_id": st["model_id"],
-                "task_type": st["task_type"], "catalog_version": est.get("catalog_version", "unknown"),
-                "billing_unit": st["billing_unit"], "units": st["units"], "estimated_cost": st["estimated_cost"],
-                "actual_cost": cost, "currency": j["currency"], "idempotency_key": req.idempotency_key,
-                "provider_job_id": res.provider_job_id, "status": "charged" if cost else "not_charged"})
-        self._outputs(c, j, est)
-        prov, model_id, pjid = first or ("mock", None, None)
-        return self._move(c, j, "succeeded", "succeed", {
-            "actual_cost": round(total, 4), "selected_provider": prov, "selected_model": model_id,
-            "provider_job_id": pjid, "completed_at": c.now.isoformat(),
-            "result_metadata": {"mock": all(s["provider"] == "mock" for s in est.get("subtasks") or []),
-                                "scenes": est.get("plan", {}).get("scenes"), "provider_jobs": len(provider_ids)}})
-
-    def _fail(self, c, j, code: str, cost: float) -> Dict[str, Any]:
-        return self._move(c, j, "failed", "fail", {"error_code": jd.public_error(code), "actual_cost": round(cost, 4),
-                                                   "completed_at": c.now.isoformat()}, detail={"error_code": code})
-
-    def _outputs(self, c, j, est: Dict[str, Any]) -> None:
-        brief = (j["request_metadata"] or {}).get("brief") or {}
-        self.db.insert("marketing_generation_outputs", {"tenant_id": c.tenant_id, "job_id": j["id"], "kind": "script",
-                                                        "metadata": {"script": brief.get("script"), "mock": True}})
-        for p in (est.get("plan") or {}).get("plan") or []:
-            self.db.insert("marketing_generation_outputs", {
-                "tenant_id": c.tenant_id, "job_id": j["id"], "kind": "scene", "scene_index": p["index"],
-                "origin": p["origin"], "duration_ms": p["seconds"] * 1000, "review_status": "generated",
-                "metadata": {"mock": True, "cover": p["index"] == brief.get("cover_scene", 0)}})
-        self.db.insert("marketing_generation_outputs", {"tenant_id": c.tenant_id, "job_id": j["id"], "kind": "render",
-                                                        "mime_type": "video/mp4", "review_status": "generated",
-                                                        "metadata": {"mock": True, "aspect_ratio": "9:16",
-                                                                     "safe_subtitles": brief.get("subtitles", True)}})
+        if not all_mock((j["request_metadata"] or {}).get("estimate") or {}):
+            raise PortalError("requires_worker", 409)
+        try:
+            return JobRunner(self.db, self.router, self.adapters, now=c.now).run(c.tenant_id, j["id"])
+        except WorkerError as e:
+            raise PortalError("conflict" if e.code == "already_claimed" else "invalid_transition", 409)
 
     # ------------------------------------------------------------------ revisión → aprobación de contenido
     @_guard
@@ -309,7 +266,8 @@ class StudioService(StudioBase):
         item = self.create_content(jwt, c.tenant_id, {
             "title": (str(title or "").strip() or "Reel")[:160], "format": "reel", "language": brief.get("language", "es"),
             "script": "\n".join(x for x in (script.get("hook"), script.get("body")) if x)[:4000] or None,
-            "cta": script.get("cta") or None, "notes": f"generation_job:{j['id']}"})
+            "cta": script.get("cta") or None,
+            "notes": f"{'mock_generation_job' if (j.get('result_metadata') or {}).get('mock') else 'generation_job'}:{j['id']}"})
         self.db.update("marketing_generation_jobs", {"id": f"eq.{j['id']}", "tenant_id": f"eq.{c.tenant_id}"},
                        {"content_id": item["id"]})
         self.db.update("marketing_generation_outputs", {"job_id": f"eq.{j['id']}", "tenant_id": f"eq.{c.tenant_id}"},

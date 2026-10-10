@@ -23,7 +23,7 @@ export async function studioView(ctx, goJobs) {
   const notice = el('div', {},
     el('p', {}, s('studioIntro')),
     ov.providers.omniroute_enabled ? null : el('p', { class: 'mk-note' }, s('providersOff')),
-    ov.limits.ai_generation_enabled ? null : el('p', { class: 'error-box mk-notice' }, s('limitsClosed')));
+    ov.generation_enabled ? null : el('p', { class: 'error-box mk-notice mk-gen-off', role: 'status' }, el('strong', {}, s('genNotEnabled')), ' ', s('limitsClosed')));
   const stepper = el('ol', { class: 'mk-steps' });
   const pane = el('div', { class: 'card-body' });
   const nav = el('div', { class: 'btn-row mk-wiz-nav' });
@@ -108,7 +108,7 @@ export async function studioView(ctx, goJobs) {
   }
   function render() {
     clear(stepper).append(...WIZARD_STEPS.map((k, i) => el('li', { class: i === w.step ? 'active' : i < w.step ? 'done' : '',
-      'aria-current': i === w.step ? 'step' : null }, `${i + 1}. ${s(`step_${k}`)}`)));
+      'aria-current': i === w.step && 'step' }, `${i + 1}. ${s(`step_${k}`)}`)));
     clear(pane).append(el('h2', {}, s(`step_${WIZARD_STEPS[w.step]}`)), views[WIZARD_STEPS[w.step]](), err);
     const last = w.step === WIZARD_STEPS.length - 1;
     clear(nav).append(
@@ -121,7 +121,7 @@ export async function studioView(ctx, goJobs) {
 }
 
 // ------------------------------------------------------------------ trabajos
-function jobDetail(ctx, id, reload) {
+function jobDetail(ctx, id, reload, genEnabled = true) {
   const holder = el('div', {}, el('div', { class: 'spinner spinner-inline' }));
   openModal({ title: s('tab_jobs'), closeLabel: s('close'), body: holder });
   const act = (action, extra) => async (e) => {
@@ -138,10 +138,11 @@ function jobDetail(ctx, id, reload) {
     const scenes = j.outputs.filter(o => o.kind === 'scene');
     const by = {};
     for (const o of scenes) { by[o.origin] = by[o.origin] || { n: 0, ms: 0 }; by[o.origin].n++; by[o.origin].ms += o.duration_ms || 0; }
-    clear(holder).append(
+    clear(holder).appendChild(el('div', { class: 'mk-job-detail' },   // el() descarta null; append() nativo lo escribiría como texto
       el('p', {}, jobBadge(j.status), ' ', el('strong', {}, `${j.real_media_percent}% ${s('real')} / ${j.ai_media_percent}% ${s('ai')}`),
         ` · ${s(`q_${j.quality_tier}`)} · ${s('maxCost')}: ${fmtCost(j.maximum_cost, j.currency)}`),
       j.error_code ? el('p', { class: 'error-box' }, sErr({ code: j.error_code })) : null,
+      (j.result_metadata || {}).mock ? el('p', { class: 'mk-note' }, `${s('mock')}: ${sErr({ code: 'mock_content_not_publishable' })}`) : null,
       est ? el('div', {}, el('p', {}, `${s('estimated')}: ${fmtCost(est.estimated_cost, est.currency)} · ${s('catalogV')} ${est.catalog_version}`),
         table([{ label: s('subtasks'), key: 'task_type' }, { label: s('provider'), render: r => `${r.provider} (${r.external ? s('external') : s('local')})` },
           { label: s('privacy'), render: r => privacyBadge(r.privacy_class) }, { label: s('cost'), num: true, render: r => fmtCost(r.estimated_cost, est.currency) }],
@@ -151,7 +152,8 @@ function jobDetail(ctx, id, reload) {
       el('div', { class: 'btn-row mk-job-actions' },
         j.status === 'draft' ? el('button', { class: 'btn btn-primary', type: 'button', onclick: act('estimate') }, s('estimate')) : null,
         j.status === 'awaiting_generation_approval' ? el('label', { class: 'mk-check', for: confirm.id }, confirm, el('span', {}, s('approveConfirm'))) : null,
-        j.status === 'awaiting_generation_approval' ? el('button', { class: 'btn btn-primary', type: 'button', onclick: act('approve', () => ({ confirm: confirm.checked })) }, s('approve')) : null,
+        j.status === 'awaiting_generation_approval' && !genEnabled ? el('p', { class: 'error-box', role: 'status' }, s('genNotEnabled')) : null,
+        j.status === 'awaiting_generation_approval' ? el('button', { class: 'btn btn-primary', type: 'button', disabled: !genEnabled, onclick: act('approve', () => ({ confirm: confirm.checked })) }, s('approve')) : null,
         j.status === 'awaiting_generation_approval' ? el('button', { class: 'btn', type: 'button', onclick: act('reopen') }, s('reopen')) : null,
         j.status === 'queued' ? el('button', { class: 'btn btn-primary', type: 'button', onclick: act('process') }, s('process')) : null,
         ['draft', 'awaiting_generation_approval', 'queued', 'processing'].includes(j.status)
@@ -159,7 +161,7 @@ function jobDetail(ctx, id, reload) {
         j.status === 'succeeded' && !j.content_id ? el('span', { class: 'btn-row' }, title,
           el('button', { class: 'btn btn-accent', type: 'button', onclick: act('send-to-approval', () => ({ title: title.value })) }, s('sendToApproval'))) : null),
       el('h3', {}, s('events')),
-      el('ol', { class: 'mk-events' }, j.events.map(e => el('li', {}, `${fmtDateTime(e.created_at)} · ${s(`js_${e.to_status}`)}`))));
+      el('ol', { class: 'mk-events' }, j.events.map(e => el('li', {}, `${fmtDateTime(e.created_at)} · ${s(`js_${e.to_status}`)}`)))));
   }
   draw();
 }
@@ -168,8 +170,10 @@ export async function jobsView(ctx, reload, openId) {
   const [list, ov] = await Promise.all([M.jobs(ctx.tenantId), M.studio(ctx.tenantId)]);
   const u = ov.usage, l = ov.limits;
   const lim = (v) => (v === null || v === undefined ? '∞' : String(v));
-  if (openId) setTimeout(() => jobDetail(ctx, openId, reload), 0);
+  const gen = ov.generation_enabled;
+  if (openId) setTimeout(() => jobDetail(ctx, openId, reload, gen), 0);
   return el('div', {},
+    gen ? null : el('p', { class: 'error-box mk-notice', role: 'status' }, el('strong', {}, s('genNotEnabled'))),
     el('div', { class: 'kpis mk-kpis' },
       kpi(s('l_jobs'), `${u.jobs} / ${lim(l.monthly_generation_job_limit)}`),
       kpi(s('l_regenerations'), `${u.regenerations} / ${lim(l.monthly_regeneration_limit)}`),
@@ -183,7 +187,7 @@ export async function jobsView(ctx, reload, openId) {
       { label: s('mixCol'), render: j => `${j.real_media_percent} / ${j.ai_media_percent}` },
       { label: s('quality'), render: j => s(`q_${j.quality_tier}`) },
       { label: s('cost'), num: true, render: j => fmtCost(j.actual_cost ?? j.estimated_cost, j.currency) },
-    ], list.items, { onRowClick: j => jobDetail(ctx, j.id, reload), emptyText: s('noJobs') })),
+    ], list.items, { onRowClick: j => jobDetail(ctx, j.id, reload, gen), emptyText: s('noJobs') })),
     card(s('admin'), table([
       { label: s('provider'), key: 'provider' }, { label: s('model'), key: 'model_id' },
       { label: s('status'), render: m => (m.enabled ? s('enabled') : s('disabled')) + (m.price_verified ? '' : ` · ${s('priceUnverified')}`) },

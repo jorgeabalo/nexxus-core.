@@ -38,6 +38,9 @@ async function showPreview(ctx, m, derivativeId) {
 function classifyModal(ctx, m, reload) {
   const people = select([{ value: '', label: s('unknown') }, { value: 'yes', label: s('yes') }, { value: 'no', label: s('no') }]
     .map(o => ({ ...o, selected: o.value === (m.contains_people === true ? 'yes' : m.contains_people === false ? 'no' : '') })));
+  const triVal = (v) => (v === true ? 'yes' : v === false ? 'no' : '');
+  const minors = select([{ value: '', label: s('unknown') }, { value: 'yes', label: s('yes') }, { value: 'no', label: s('no') }]
+    .map(o => ({ ...o, selected: o.value === triVal(m.contains_minors) })));
   const policy = select(PEOPLE_POLICIES.map(p => ({ value: p, label: s(`pp_${p}`), selected: p === m.people_policy })));
   const consent = select(['unknown', 'not_required', 'pending', 'granted', 'revoked']
     .map(c => ({ value: c, label: s(`cs_${c}`), selected: c === m.consent_status })));
@@ -46,12 +49,14 @@ function classifyModal(ctx, m, reload) {
   openModal({
     title: s('classify'), closeLabel: s('close'),
     body: el('form', { class: 'form-grid', onsubmit: (e) => e.preventDefault() },
-      field(s('containsPeople'), people), field(s('policy'), policy), field(s('consent'), consent),
+      field(s('containsPeople'), people), field(s('containsMinors'), minors, { hint: s('minorsHint') }),
+      field(s('policy'), policy), field(s('consent'), consent),
       field(s('consentNote'), note, { full: true }), el('div', { class: 'full' }, warnings()), err),
     actions: [(close) => el('button', { class: 'btn btn-primary', type: 'button', onclick: async (e) => {
       e.target.disabled = true;
       try {
-        await M.classify(ctx.tenantId, m.id, { contains_people: people.value === 'yes' ? true : people.value === 'no' ? false : null,
+        const tri = (v) => (v === 'yes' ? true : v === 'no' ? false : null);
+        await M.classify(ctx.tenantId, m.id, { contains_people: tri(people.value), contains_minors: tri(minors.value),
           people_policy: policy.value, consent_status: consent.value, consent_note: note.value });
         close(); toast(s('classify')); reload();
       } catch (x) { err.textContent = sErr(x); } finally { e.target.disabled = false; }
@@ -75,18 +80,36 @@ function anonymizeModal(ctx, m, reload) {
   });
 }
 
+function deleteModal(ctx, m, reload) {
+  const reason = el('textarea', { class: 'input', maxlength: '300', rows: '2' });
+  const err = el('p', { class: 'form-error full', role: 'alert' });
+  openModal({
+    title: s('delTitle'), closeLabel: s('close'),
+    body: el('div', {}, el('p', {}, m.original_filename || ''), el('p', { class: 'hint' }, s('delNote')),
+      field(s('delReason'), reason), err),
+    actions: [(close) => el('button', { class: 'btn btn-danger', type: 'button', onclick: async (e) => {
+      e.target.disabled = true;
+      try {
+        const r = await M.deleteMedia(ctx.tenantId, m.id, reason.value);
+        close(); toast(r.storage_removed ? s('deleted') : s('delPending')); reload();
+      } catch (x) { err.textContent = sErr(x); } finally { e.target.disabled = false; }
+    } }, s('del'))],
+  });
+}
+
 function derivativeRow(ctx, m, d, reload) {
   const act = async (approve) => {
     try { await M.reviewDerivative(ctx.tenantId, d.id, approve); reload(); } catch (x) { toast(sErr(x), 'error'); }
   };
-  return el('li', { class: 'mk-der' },
+  const simulated = d.is_mock || d.status === 'mock_only' || d.status === 'awaiting_processing';
+  return el('li', { class: `mk-der${simulated ? ' mk-der-mock' : ''}` },
     el('span', {}, `${s(`am_${d.method}`)} · `), badge(d.status, s(`ds_${d.status}`)),
-    d.metadata?.low_confidence ? el('span', { class: 'hint' }, ` ${s('lowConfidence')}`) : null,
-    d.metadata?.mock ? el('span', { class: 'hint' }, ` (${s('mock')})`) : null,
-    d.storage_path ? el('button', { class: 'btn btn-sm', type: 'button', onclick: () => showPreview(ctx, m, d.id) }, s('preview')) : null,
-    d.status === 'needs_review' ? el('span', { class: 'btn-row' },
+    simulated ? el('span', { class: 'hint' }, ` ${s('mockDerNote')}`) : null,
+    d.storage_path && !simulated ? el('button', { class: 'btn btn-sm', type: 'button', onclick: () => showPreview(ctx, m, d.id) }, s('preview')) : null,
+    d.status === 'needs_review' && !simulated ? el('span', { class: 'btn-row' },
       el('button', { class: 'btn btn-sm btn-primary', type: 'button', disabled: !d.storage_path, onclick: () => act(true) }, s('approveDer')),
-      el('button', { class: 'btn btn-sm', type: 'button', onclick: () => act(false) }, s('rejectDer'))) : null);
+      el('button', { class: 'btn btn-sm', type: 'button', onclick: () => act(false) }, s('rejectDer'))) : null,
+    d.status === 'mock_only' ? el('button', { class: 'btn btn-sm', type: 'button', onclick: () => act(false) }, s('rejectDer')) : null);
 }
 
 export async function libraryView(ctx, reload) {
@@ -108,6 +131,7 @@ export async function libraryView(ctx, reload) {
     el('p', {}, s('libIntro')),
     el('p', { class: 'hint' }, `${s('formats')} ${fmtBytes(st.max_upload_bytes)}. ${s('storage')}: ${fmtBytes(st.used_bytes)}`
       + (st.limit_bytes === null ? '' : ` / ${fmtBytes(st.limit_bytes)}`)),
+    el('p', { class: 'mk-note' }, s('scanNote')),
     el('div', { class: 'btn-row' },
       el('label', { class: `btn btn-accent${data.can_upload ? '' : ' disabled'}`, for: fileInput.id, role: 'button',
         'aria-disabled': String(!data.can_upload) }, `+ ${s('upload')}`), fileInput, status),
@@ -118,9 +142,11 @@ export async function libraryView(ctx, reload) {
     { label: s('file'), render: m => el('span', { class: 'mk-file' }, m.original_filename || m.id.slice(0, 8)) },
     { label: s('type'), render: m => `${m.media_type} · ${m.mime_type.split('/')[1]}` },
     { label: s('size'), num: true, render: m => fmtBytes(m.byte_size) },
-    { label: s('people'), render: m => peopleText(m.contains_people) },
+    { label: s('people'), render: m => `${peopleText(m.contains_people)} · ${s('minorsShort')}: ${peopleText(m.contains_minors)}` },
     { label: s('privacy'), render: m => privacyBadge(m.privacy_class || privacyClass(m)) },
     { label: s('status'), render: m => badge(m.processing_status, s(`ms_${m.processing_status}`)) },
+    { label: s('scan'), render: m => el('span', { class: 'mk-scan' }, m.validation_status === 'passed' ? `${s('formatOk')} · ` : '',
+      s(`scan_${m.malware_scan_status || 'not_scanned'}`)) },
     { label: s('created_at'), render: m => fmtDateTime(m.created_at) },
     { label: s('actions'), render: m => el('div', { class: 'btn-row mk-lib-actions' },
       el('button', { class: 'btn btn-sm', type: 'button', onclick: () => showPreview(ctx, m) }, s('preview')),
@@ -128,11 +154,15 @@ export async function libraryView(ctx, reload) {
         : el('button', { class: 'btn btn-sm', type: 'button', onclick: () => classifyModal(ctx, m, reload) }, s('classify')),
       m.people_policy === 'anonymize' && m.processing_status === 'ready'
         ? el('button', { class: 'btn btn-sm', type: 'button', onclick: () => anonymizeModal(ctx, m, reload) }, s('anonymize')) : null,
+      m.consent_status === 'granted' ? el('button', { class: 'btn btn-sm', type: 'button', onclick: async () => {
+        try { await M.revokeConsent(ctx.tenantId, m.id); toast(s('revoked')); reload(); } catch (x) { toast(sErr(x), 'error'); }
+      } }, s('revokeConsent')) : null,
       el('button', { class: 'btn btn-sm', type: 'button', onclick: async () => {
         try { await M.archive(ctx.tenantId, m.id, m.processing_status !== 'archived'); reload(); } catch (x) { toast(sErr(x), 'error'); }
       } }, m.processing_status === 'archived' ? s('unarchive') : s('archive')),
+      el('button', { class: 'btn btn-sm btn-danger', type: 'button', onclick: () => deleteModal(ctx, m, reload) }, s('del')),
       (m.derivatives || []).length ? el('ul', { class: 'mk-ders', 'aria-label': s('derivatives') },
         m.derivatives.map(d => derivativeRow(ctx, m, d, reload))) : null) },
   ], rows, { emptyText: s('noMedia') });
-  return el('div', {}, card(s('tab_library'), el('div', { class: 'card-body' }, head)), card(s('tab_library'), tbl));
+  return el('div', {}, card(s('tab_library'), el('div', { class: 'card-body' }, head)), card(s('files'), tbl));
 }

@@ -84,7 +84,7 @@ def subtasks(plan: Dict[str, Any], input_class: str, people_policy: str, real_ki
 
 def estimate(router: MarketingAIRouter, *, tenant_id: str, job_key: str, brief: Dict[str, Any], mix: Dict[str, int],
              scenes: int, adapt_real: bool, input_class: str, people_policy: str, real_kinds: List[str],
-             quality_tier: str, maximum_cost: float) -> Dict[str, Any]:
+             quality_tier: str, maximum_cost: float, inputs_malware_clean: bool = False) -> Dict[str, Any]:
     plan = plan_scenes(mix["real_media_percent"], mix["ai_media_percent"], scenes, brief["duration_seconds"], adapt_real)
     if plan["by_origin"]["client_original"]["scenes"] + plan["by_origin"]["client_ai_adapted"]["scenes"] and not real_kinds:
         raise DomainError("real_media_required", 400)
@@ -94,6 +94,7 @@ def estimate(router: MarketingAIRouter, *, tenant_id: str, job_key: str, brief: 
                            maximum_cost=float(maximum_cost), privacy_class=st["privacy_class"],
                            idempotency_key=f"{job_key}:{i}:{st['task_type']}"[:160], units=float(st["units"]),
                            input_media_types=st["inputs"], aspect_ratio=ASPECT_RATIO,
+                           inputs_malware_clean=inputs_malware_clean,
                            duration=brief["duration_seconds"], language=brief["language"])
         try:
             route = router.route(req)

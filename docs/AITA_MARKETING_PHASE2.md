@@ -18,10 +18,11 @@ FastAPI  services/marketing_studio_routes.py
    ├── marketing_reel_plan.py     asistente de 7 pasos, subtareas y estimación de coste
    ├── marketing_ai_router.py     MarketingAIRouter + adaptadores (Mock, OmniRoute-contrato, FFmpeg local)
    ├── marketing_ai_catalog.(py|json)  catálogo central de modelos (sin claves)
+   ├── marketing_worker.py        JobRunner: reclama y ejecuta trabajos (preparado para worker/cola)
    └── marketing_jobs_domain.py   estados de archivos y trabajos, límites, errores públicos
    ▼
 Supabase (service role, solo backend)
-   ├── tablas marketing_media, *_derivatives, *_generation_jobs, *_job_events, *_inputs, *_outputs, *_model_usage
+   ├── tablas marketing_media, *_media_events, *_derivatives, *_generation_jobs, *_job_events, *_inputs, *_outputs, *_model_usage
    └── Storage privado marketing-assets: {tenant}/originals/{asset}/{nombre} · {tenant}/derivatives/{asset}/{id}.{ext}
 ```
 
@@ -30,9 +31,11 @@ futuro, un transporte de OmniRoute inyectado explícitamente.
 
 ## 2. Flujo de datos (demostrable hoy con el mock)
 
-1. **Subir** (owner/manager) → el backend valida tamaño, extensión, MIME declarado y firma real; rechaza
-   SVG/HTML/scripts/ejecutables; construye la ruta; sube con `x-upsert: false`; guarda checksum, quién y cuándo.
-2. **Clasificar** personas: `contains_people` (sí/no/no sé) + `people_policy` + `consent_status`.
+1. **Subir** (owner/manager) → el backend calcula el límite **antes de leer el cuerpo** (rol, módulo, tamaño
+   por archivo y espacio libre), corta la lectura al superarlo, valida extensión, MIME declarado, firma real y
+   estructura (truncados, polyglot, metadatos imposibles); construye la ruta; sube con `x-upsert: false`;
+   guarda checksum, quién y cuándo, `validation_status = passed` y `malware_scan_status = unavailable`.
+2. **Clasificar** personas y menores: `contains_people`, `contains_minors` (sí/no/no sé) + `people_policy` + `consent_status`.
 3. **Elegir mezcla** real/IA (preset o personalizada en pasos de 5 %), ver la aproximación en escenas/segundos.
 4. **Guion** (gancho, mensaje, CTA) con filtro de afirmaciones prohibidas.
 5. **Estimar**: el router elige modelo por subtarea → `awaiting_generation_approval` con coste estimado.
@@ -63,9 +66,17 @@ futuro, un transporte de OmniRoute inyectado explícitamente.
 | Política | Significado | ¿Puede ir a un proveedor externo? |
 |---|---|---|
 | `exclude` (por defecto si no se sabe) | no se usa con IA | **No** (ni siquiera como entrada de un trabajo) |
-| `anonymize` | se usa solo un **derivado** anonimizado y revisado por una persona | Solo el derivado revisado |
+| `anonymize` | se usa solo un **derivado** anonimizado real y revisado por una persona (hoy no existe: es simulado) | Solo el derivado real revisado |
 | `consented` | hay consentimiento registrado (`consent_status = granted`) | Sí, solo a modelos que admiten personas reales, con retención conocida y uso comercial |
 | `no_people` | confirmado que no hay personas (`contains_people = false`) | Sí |
+
+**Menores**: si hay o puede haber personas y no se ha confirmado `contains_minors = false`, el archivo queda
+**excluido** (Python y `check` en la tabla). Tampoco puede marcarse “sin personas” con menores.
+
+**Consentimiento retirable**: “Retirar consentimiento” pone `consent_status = revoked` y `people_policy = exclude`
+(la tabla exige ambas cosas juntas) y queda en la auditoría. Efecto inmediato: no se crean trabajos nuevos con
+ese archivo; los pendientes fallan al aprobar (`consent_revoked`) y, si ya estaban en cola, el worker los marca
+como fallidos **antes** de enviar nada; el trigger impide además pasarlos a `queued`/`processing`.
 
 Clases de privacidad: `synthetic_only`, `business_media_no_people`, `anonymized_people`, `consented_people`,
 `restricted`. **`restricted` nunca sale del servidor**; solo pueden procesarlo herramientas locales.
@@ -81,7 +92,49 @@ Clases de privacidad: `synthetic_only`, `business_media_no_people`, `anonymized_
 * Un derivado anonimizado solo puede quedar `ready` con `reviewed_by` y `reviewed_at` (lo impone la base de datos).
 * Sin reconocimiento facial: el detector solo devuelve posiciones, nunca identidades ni comparaciones biométricas.
 * Métodos previstos: `pixelate_faces`, `blur_faces`, `crop_people`, `silhouette`, `replace_background_and_people`.
-  En esta fase el procesamiento es **simulado** (un marcador gris, nunca una copia del original).
+* **En esta fase la anonimización es simulada** y nunca se marca nada como anonimizado: el derivado queda
+  `mock_only` (detección simulada, `is_mock = true`) o `awaiting_processing` (sin detector), sin archivo.
+  Un derivado simulado **no puede** aprobarse (`mock_derivative`), entrar en un trabajo (trigger
+  `marketing_input_guard` + Python), salir hacia proveedores ni usarse en contenido. La interfaz lo muestra como
+  “Simulado: NO anonimizado”.
+
+## 4b. Borrado controlado
+
+“Inmutable” significa que el original **no se sobrescribe** (ruta, checksum, tamaño, tipo, autor y fecha son
+fijos), no que no pueda eliminarse. Eliminar (owner/manager, con confirmación y motivo):
+
+1. se comprueba que ningún trabajo activo (`draft`, `awaiting_generation_approval`, `queued`, `processing`) lo
+   use → si no, `media_in_use` (también lo impone el trigger);
+2. se registra `delete` en `marketing_media_events` (solo inserción) con motivo, checksum y tamaño;
+3. la fila pasa a `deleted` con `deleted_by`/`deleted_at` (la tabla los exige) y ya no puede cambiar;
+4. se eliminan el original y sus derivados de Storage (`storage_removed` o `storage_remove_failed` en la auditoría).
+
+La fila queda como registro (los trabajos terminados que la usaron siguen siendo auditables); un `DELETE` directo
+está prohibido. El mismo archivo puede volver a subirse después.
+
+## 4c. Validación de archivos y antivirus
+
+* `validation_status` (formato) y `malware_scan_status` (antivirus) son campos **distintos**.
+* Validación: extensión + MIME declarado + firma real; estructura completa (PNG con IEND, JPEG con EOI, GIF con
+  trailer, tamaño RIFF de WebP, cajas MP4/MOV que no prometen más bytes de los que hay); búsqueda de contenido
+  activo o contenedores escondidos (HTML, `<script`, SVG, PHP, `javascript:`, ZIP) en ventanas de 128 KB al
+  principio y al final; dimensiones 1–20 000 px; duración ≤ 15 min (configurable) y coherente con el tamaño.
+* Parsers acotados: JPEG solo en el primer MB, MP4 con profundidad ≤ 4 y ≤ 4096 cajas; nunca se decodifica la imagen.
+* **No hay antivirus.** Sin escáner, `malware_scan_status = unavailable` (nunca `clean`; la tabla exige escáner
+  y fecha para `clean`). Material real sin `clean` **no puede** ir a un proveedor externo (router).
+* Antes de permitir proveedores reales hace falta: un escáner (p. ej. ClamAV en un servicio aislado) con firmas
+  actualizadas, escaneo asíncrono en el estado `scanning`, cuarentena de `infected`, reintento de `error`,
+  registro de `malware_scanner` y `malware_scanned_at`, y pruebas con EICAR.
+* Los metadatos (EXIF, GPS) del original no se leen ni se guardan; quitar EXIF de los derivados queda pendiente
+  para cuando haya procesamiento real.
+
+## 4d. Vista previa y CSP
+
+La vista previa **no** usa URLs firmadas: `GET /api/manager/marketing/library/{id}/content` comprueba sesión, rol,
+tenant y ruta, y entrega el archivo **en trozos desde el backend** (mismo origen, `nosniff`, `no-store`). El
+navegador lo descarga con `fetch` (cabecera Authorization), crea un `blob:` en memoria y lo libera al cerrar.
+Por eso basta `media-src 'self' blob:` y `img-src` sigue igual: la CSP no se abre a Supabase ni a ningún otro
+dominio, y ninguna URL de Storage llega al navegador ni a los logs. Hay pruebas que fijan las directivas exactas.
 
 ## 5. Mezcla real / IA
 
@@ -161,7 +214,7 @@ transporte inyectado explícitamente, `submit()` devuelve `provider_disabled`.
 | `MARKETING_AI_MOCK_ENABLED` | `true` | Proveedor simulado (sin red, coste 0) |
 | `MARKETING_LOCAL_TOOLS_ENABLED` | `false` | Herramientas locales (FFmpeg); no instaladas en producción |
 | `MARKETING_AI_CATALOG_PATH` | catálogo del repo | Otro catálogo en el servidor |
-| `MARKETING_SIGNED_URL_TTL` | `300` | Segundos de las URLs firmadas (se limita a 60–900) |
+| `MARKETING_MAX_VIDEO_DURATION_MS` | 900000 | Duración máxima creíble de un vídeo subido (15 min) |
 | `MARKETING_HARD_MAX_UPLOAD_BYTES` | 100 MB | Tope absoluto por archivo (memoria del servidor) |
 
 No hay ninguna clave nueva. Las claves futuras irían solo en variables del servidor; nunca en el navegador,
@@ -180,11 +233,29 @@ Columnas nuevas en `marketing_settings` (las fija el operador; el tenant no pued
 | `monthly_generated_image_limit` (0) | imágenes generadas estimadas | al aprobar | igual |
 | `monthly_generated_video_seconds_limit` (0) | segundos generados o adaptados con IA | al aprobar | igual |
 | `monthly_ai_cost_limit` (0) | coste real, o el estimado si aún no hay real | al aprobar (reserva) | cancelado/fallido cuenta solo su coste real |
-| `library_storage_limit_bytes` (0) | bytes de originales (también archivados) | al subir | archivar no libera espacio (nunca se borra) |
+| `library_storage_limit_bytes` (1 GiB) | bytes de originales no eliminados (incluidos archivados) | al subir | eliminar libera espacio; archivar no |
 | `max_upload_bytes` (50 MB) | tamaño por archivo | al subir | — |
 
-`null` = sin límite; `0` = nada permitido. El mes es el del huso horario del tenant. Golden Age no cambia: sus
-límites de Fase 1 se conservan y los nuevos quedan en 0 (generación apagada) hasta que se decida.
+`null` = sin límite; `0` = nada permitido. El mes es el del huso horario del tenant.
+Con `ai_generation_enabled = false`, `monthly_generation_job_limit = 0` o `monthly_ai_cost_limit = 0`
+**no se aprueba ninguna generación, ni real ni simulada** (`generation_disabled`), y la interfaz muestra
+“Generación no habilitada en este plan”. La Biblioteca (subir, clasificar, eliminar) **no consume generación** y
+funciona con su propio límite de almacenamiento (1 GiB por defecto).
+Golden Age no cambia: sus límites de Fase 1 se conservan y los de generación quedan en 0 hasta que el operador
+decida. El tenant nunca puede elevar sus límites: ningún endpoint escribe `marketing_settings` y `authenticated`
+solo tiene SELECT (probado en SQL).
+
+## 9b. Ejecución asíncrona
+
+* `marketing_worker.JobRunner` reclama un trabajo con una actualización condicional `queued → processing` (solo un
+  worker gana), vuelve a comprobar las entradas, ejecuta subtareas con idempotencia y cierra el trabajo.
+  `run_pending()` es el punto de entrada para un worker programado; **en esta fase no hay worker desplegado**.
+* Desde una petición HTTP solo se ejecutan trabajos **100 % simulados** (rápidos, sin red). Cualquier trabajo con
+  vídeo real, render, anonimización real o proveedores reales responde `requires_worker` y queda en cola.
+* Vídeo, render, anonimización y proveedores reales **requieren** ese worker asíncrono (con timeouts, reintentos
+  limitados y métricas) antes de activarse.
+* Los resultados simulados quedan marcados (`result_metadata.mock`, `mock_generation_job:` en las notas) y
+  `MarketingService` bloquea programarlos (`mock_content_not_publishable`).
 
 ## 10. Proveedores desactivados y cómo activarlos en el futuro
 
@@ -210,9 +281,10 @@ Para activar un proveedor real (cada paso con autorización explícita):
 
 ## 12. Pruebas
 
-* Python: `tests/test_marketing_studio.py` (permisos, archivos, privacidad, flujo completo mock, límites,
-  idempotencia, sin red) y `tests/test_marketing_ai_router.py` (catálogo, política del router, mezcla,
-  sincronía Python↔SQL, endpoints HTTP, puerta).
+* Python: `tests/test_marketing_studio.py` (permisos, archivos, truncados/polyglot/metadatos, antivirus, borrado,
+  menores, consentimiento, anonimización simulada), `tests/test_marketing_studio_jobs.py` (flujo mock, worker,
+  idempotencia, límites en 0), `tests/test_marketing_studio_http.py` (subida con límite previo, vista previa y CSP)
+  y `tests/test_marketing_ai_router.py` (catálogo, router, mezcla, sincronía Python↔SQL, endpoints, puerta).
 * JS: `tests/js/marketing-studio.test.mjs` (mezcla, privacidad, etapas, textos ES/EN, sin claves).
 * SQL (PGlite): `tests/sql/marketing_studio.mjs` (RLS, mínimo privilegio, inmutabilidad, trabajos, aislamiento,
   límites por defecto, bucket, atomicidad).
@@ -220,12 +292,12 @@ Para activar un proveedor real (cada paso con autorización explícita):
 
 ## 13. Riesgos y pendientes
 
-* Sin escaneo antivirus de archivos (estado `scanning` reservado); la validación por firma reduce el riesgo pero
-  no sustituye un escáner.
-* El GIF/WebM/MOV no se decodifica: se valida firma y cabecera, no el contenido completo.
-* La subida se lee en memoria (tope 100 MB por defecto); para vídeos grandes hará falta subida reanudable.
-* La anonimización real (FFmpeg/detector local) y el render final están simulados.
-* El procesamiento es síncrono en la petición; con proveedores reales debe moverse a un worker.
+* Sin antivirus (ver 4c): el material real no sale hacia proveedores externos hasta que exista.
+* GIF/WebM/MOV no se decodifican: se valida firma, estructura y cabecera, no el contenido completo.
+* La subida se acumula en memoria hasta el límite del tenant (50 MB por defecto, tope 100 MB); para vídeos grandes
+  hará falta subida reanudable directa a Storage.
+* La anonimización real (FFmpeg/detector local) y el render final están simulados y nunca se presentan como reales.
+* No hay worker desplegado: con proveedores reales hará falta desplegarlo (ver 9b).
 * Costes: hoy 0 (mock). Con proveedores reales, el coste depende del catálogo verificado y de los límites.
 
 ## 14. Qué falta para publicar de verdad

@@ -6,7 +6,6 @@ tenant → tenants.modules.marketing === true → configuración. Staff, socios,
 tenants nunca llegan a tocar una tabla. Además, todo id que llega del cliente se vuelve a buscar
 filtrando por tenant_id: nunca se confía en un id del navegador.
 """
-import os
 import uuid
 from datetime import datetime
 from typing import Any, Dict, Optional
@@ -17,15 +16,6 @@ from services.marketing import MarketingService, _iso
 from services.member_portal import PortalError
 
 BUCKET = "marketing-assets"
-
-
-def signed_ttl() -> int:
-    """Duración de las URLs firmadas (segundos). Corta por diseño: 60..900, 300 por defecto."""
-    try:
-        v = int(os.getenv("MARKETING_SIGNED_URL_TTL", "300"))
-    except ValueError:
-        v = 300
-    return min(max(v, 60), 900)
 
 
 def uid(v: Any, code: str = "not_found", status: int = 404) -> str:

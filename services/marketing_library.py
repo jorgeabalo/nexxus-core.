@@ -2,113 +2,149 @@
 AITA Marketing (Fase 2) — Biblioteca multimedia privada.
 
 * Solo owner/manager del tenant (puerta de Fase 1). Todo pasa por el backend.
-* Subida: extensión + MIME declarado + firma real (services/marketing_media_files.py); ruta
-  construida en el servidor: {tenant_id}/originals/{asset_id}/{safe_filename}; x-upsert=false.
-* El original nunca se modifica ni se borra (también lo impone la base de datos). Los derivados
-  van a {tenant_id}/derivatives/{asset_id}/{derivative_id}.{ext}.
-* Vista previa con URL firmada de corta duración (nunca URLs públicas permanentes). Las URLs
-  firmadas no se registran en logs.
-* Personas reales: clasificación explícita; por defecto exclude. Anonimizar crea un derivado que
-  SIEMPRE necesita revisión humana antes de usarse.
+* Subida: el límite de tamaño se aplica ANTES de leer el cuerpo (ruta), luego extensión + MIME +
+  firma real + estructura (services/marketing_media_files.py). Ruta construida en el servidor:
+  {tenant_id}/originals/{asset_id}/{safe_filename}; x-upsert=false (nunca se sobrescribe).
+* Validación de formato ≠ antivirus: malware_scan_status queda 'unavailable' mientras no haya
+  escáner; nunca 'clean' sin un escáner real.
+* Vista previa entregada por el backend en trozos (mismo origen): ninguna URL de Storage llega al
+  navegador y la CSP no se abre a otros dominios.
+* Borrado controlado: auditado, bloqueado si un trabajo activo usa el archivo; la fila queda como
+  registro ('deleted') y los objetos de Storage se eliminan.
+* Personas reales y menores: clasificación explícita; por defecto exclude. Consentimiento retirable.
+  Anonimizar hoy es SIMULADO: el derivado queda 'mock_only' / 'awaiting_processing' y no se usa.
 """
 import logging
-import struct
 import uuid
-import zlib
 from typing import Any, Dict, Optional
 
 from services import marketing_jobs_domain as jd
 from services import marketing_media_files as mf
 from services import marketing_privacy as pv
 from services.marketing import _guard
-from services.marketing_domain import DomainError
-from services.marketing_studio_base import BUCKET, StudioBase, signed_ttl, uid
+from services.marketing_studio_base import BUCKET, StudioBase, uid
 from services.member_portal import PortalError
 
 logger = logging.getLogger(__name__)
 MEDIA_COLS = ("id,tenant_id,storage_path,original_filename,media_type,mime_type,byte_size,width,height,duration_ms,"
-              "checksum,uploaded_by,created_at,updated_at,contains_people,people_policy,consent_status,"
-              "processing_status,metadata")
-DER_COLS = ("id,tenant_id,media_id,kind,method,storage_path,mime_type,status,detection_confidence,review_required,"
-            "reviewed_by,reviewed_at,created_by,created_at,metadata")
+              "checksum,uploaded_by,created_at,updated_at,validation_status,malware_scan_status,contains_people,"
+              "contains_minors,people_policy,consent_status,consent_updated_at,processing_status,deleted_at,metadata")
+DER_COLS = ("id,tenant_id,media_id,kind,method,storage_path,mime_type,status,is_mock,detection_confidence,"
+            "review_required,reviewed_by,reviewed_at,created_by,created_at,metadata")
+ACTIVE_JOBS = ("draft", "awaiting_generation_approval", "queued", "processing")
 
 
-def placeholder_png(w: int = 9, h: int = 16, gray: int = 128) -> bytes:
-    """PNG gris mínimo (sin dependencias) para los derivados simulados: deja claro que es un mock."""
-    raw = b"".join(b"\x00" + bytes([gray]) * w for _ in range(h))
-    def chunk(t, d):
-        return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
-    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 0, 0, 0, 0))
-            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+class UnavailableMalwareScanner:
+    """No hay escáner antivirus configurado: el estado es 'unavailable', nunca 'clean'."""
+    name = "unavailable"
+
+    def scan(self, data: bytes) -> str:
+        return "unavailable"
 
 
 class LibraryService(StudioBase):
-    def __init__(self, db, now=None, providers=None, detector: Optional[pv.FaceDetector] = None):
+    def __init__(self, db, now=None, providers=None, detector: Optional[pv.FaceDetector] = None, scanner=None):
         super().__init__(db, now=now, providers=providers)
         self.detector = detector or pv.UnavailableFaceDetector()
+        self.scanner = scanner or UnavailableMalwareScanner()
+
+    # ------------------------------------------------------------------ helpers
+    def _path(self, c, path: Optional[str]) -> str:
+        """Nunca se construye ni se consulta una ruta de otro tenant."""
+        if not path or not mf.path_belongs_to(path, c.tenant_id):
+            logger.warning("MARKETING_PATH_REJECTED")                 # sin la ruta
+            raise PortalError("not_found", 404)
+        return path
+
+    def _media_event(self, c, media_id: str, action: str, detail: Optional[Dict] = None, derivative_id=None):
+        self.db.insert("marketing_media_events", {"tenant_id": c.tenant_id, "media_id": media_id,
+                                                  "derivative_id": derivative_id, "action": action,
+                                                  "actor_id": c.user["id"], "actor_role": c.role, "detail": detail or {}})
+
+    def _used_bytes(self, c) -> int:
+        return sum(int(m.get("byte_size") or 0) for m in (self.db.select("marketing_media", {
+            "tenant_id": f"eq.{c.tenant_id}", "processing_status": "neq.deleted", "select": "byte_size",
+            "limit": "100000"}) or []))
+
+    def _media(self, c, media_id: Any) -> Dict[str, Any]:
+        m = self._one(c, "marketing_media", media_id, MEDIA_COLS)
+        if m["processing_status"] == "deleted":
+            raise PortalError("not_found", 404)
+        return m
 
     # ------------------------------------------------------------------ listar / ver
     def library(self, jwt: str, tenant_id: str, status: str = "") -> Dict[str, Any]:
         c = self.ctx(jwt, tenant_id)
-        params = {"tenant_id": f"eq.{c.tenant_id}", "select": MEDIA_COLS, "order": "created_at.desc", "limit": "500"}
+        params = {"tenant_id": f"eq.{c.tenant_id}", "processing_status": "neq.deleted", "select": MEDIA_COLS,
+                  "order": "created_at.desc", "limit": "500"}
         if status:
-            if status not in jd.MEDIA_STATUSES:
+            if status not in jd.MEDIA_STATUSES or status == "deleted":
                 raise PortalError("invalid_status", 400)
             params["processing_status"] = f"eq.{status}"
         items = self.db.select("marketing_media", params) or []
-        ders = self.db.select("marketing_media_derivatives", {"tenant_id": f"eq.{c.tenant_id}", "select": DER_COLS,
-                                                              "limit": "2000"}) or []
+        ders = self.db.select("marketing_media_derivatives", {"tenant_id": f"eq.{c.tenant_id}", "status": "neq.deleted",
+                                                              "select": DER_COLS, "limit": "2000"}) or []
         for m in items:
             m["privacy_class"] = pv.original_class(m)
+            m["usable"] = pv.usable_media(m) is None and m["privacy_class"] != "restricted"
             m["derivatives"] = [x for x in ders if x["media_id"] == m["id"]]
-        used = sum(int(m.get("byte_size") or 0) for m in (self.db.select("marketing_media", {
-            "tenant_id": f"eq.{c.tenant_id}", "select": "byte_size", "limit": "100000"}) or []))
-        return {"items": items, "storage": {"used_bytes": used, "limit_bytes": c.settings["library_storage_limit_bytes"],
-                                            "max_upload_bytes": c.settings["max_upload_bytes"]},
-                "warnings": list(pv.WARNINGS), "enabled": c.settings["marketing_enabled"],
-                "can_upload": bool(c.settings["marketing_enabled"])}
+        st = c.settings
+        return {"items": items, "storage": {"used_bytes": self._used_bytes(c), "limit_bytes": st["library_storage_limit_bytes"],
+                                            "max_upload_bytes": st["max_upload_bytes"]},
+                "warnings": list(pv.WARNINGS), "enabled": st["marketing_enabled"],
+                "can_upload": bool(st["marketing_enabled"]), "malware_scanner": self.scanner.name,
+                "anonymization": "simulated"}
 
-    def preview(self, jwt: str, tenant_id: str, media_id: str, derivative_id: str = "") -> Dict[str, Any]:
-        """URL firmada de corta duración, solo para un archivo de ESTE tenant."""
+    def content(self, jwt: str, tenant_id: str, media_id: str, derivative_id: str = ""):
+        """(trozos, mime) del archivo de ESTE tenant, entregado por el backend (mismo origen)."""
         c = self.ctx(jwt, tenant_id)
-        m = self._one(c, "marketing_media", media_id, MEDIA_COLS)
-        path = m["storage_path"]
+        m = self._media(c, media_id)
+        path, mime = m["storage_path"], m["mime_type"]
         if derivative_id:
             der = self._one(c, "marketing_media_derivatives", derivative_id, DER_COLS)
-            if der["media_id"] != m["id"] or not der.get("storage_path"):
+            if der["media_id"] != m["id"] or der["status"] == "deleted" or not der.get("storage_path"):
                 raise PortalError("not_found", 404)
-            path = der["storage_path"]
-        if not mf.path_belongs_to(path, c.tenant_id):
+            path, mime = der["storage_path"], der.get("mime_type") or "application/octet-stream"
+        path = self._path(c, path)
+        if mime not in mf.MIME_TO_EXT:
             raise PortalError("not_found", 404)
-        ttl = signed_ttl()
         try:
-            url = self.db.storage_sign(BUCKET, path, ttl)
+            return self.db.storage_stream(BUCKET, path), mime
         except Exception as e:
-            logger.error(f"MARKETING_SIGN_ERROR {type(e).__name__}")     # sin la URL ni la ruta
+            logger.error(f"MARKETING_PREVIEW_ERROR {type(e).__name__}")
             raise PortalError("storage_unavailable", 503)
-        return {"url": url, "expires_in": ttl}
 
     # ------------------------------------------------------------------ subir
+    def upload_limit(self, jwt: str, tenant_id: str) -> int:
+        """Límite en bytes para ESTA subida (se aplica antes de leer el cuerpo). 0 = no se puede subir."""
+        c = self.ctx(jwt, tenant_id)
+        self._writable(c)
+        limit = min(int(c.settings["max_upload_bytes"] or 0), mf.HARD_MAX_BYTES)
+        storage = c.settings["library_storage_limit_bytes"]
+        if storage is not None:
+            limit = min(limit, max(int(storage) - self._used_bytes(c), 0))
+            if limit <= 0:
+                raise PortalError("limit_library_storage", 409)
+        return limit
+
     @_guard
     def upload(self, jwt: str, tenant_id: str, filename: str, declared_mime: str, data: bytes) -> Dict[str, Any]:
         c = self.ctx(jwt, tenant_id)
         self._writable(c)
+        limit = self.upload_limit(jwt, tenant_id)
         try:
-            info = mf.validate(data, filename, declared_mime, int(c.settings["max_upload_bytes"] or 0))
+            info = mf.validate(data, filename, declared_mime, limit)
         except mf.MediaFileError as e:
             raise PortalError(e.code, e.status)
-        limit = c.settings["library_storage_limit_bytes"]
-        if limit is not None:
-            used = sum(int(m.get("byte_size") or 0) for m in (self.db.select("marketing_media", {
-                "tenant_id": f"eq.{c.tenant_id}", "select": "byte_size", "limit": "100000"}) or []))
-            if used + info["byte_size"] > int(limit):
-                raise PortalError("limit_library_storage", 409)
         dup = self.db.select("marketing_media", {"tenant_id": f"eq.{c.tenant_id}", "checksum": f"eq.{info['checksum']}",
-                                                 "select": MEDIA_COLS, "limit": "1"})
+                                                 "processing_status": "neq.deleted", "select": MEDIA_COLS, "limit": "1"})
         if dup:
             return {**dup[0], "duplicate": True}          # mismo archivo: no se sube dos veces
         media_id = str(uuid.uuid4())
-        path = mf.original_path(c.tenant_id, media_id, info["safe_filename"])
+        path = self._path(c, mf.original_path(c.tenant_id, media_id, info["safe_filename"]))
+        scan = self.scanner.scan(data)
+        if scan == "clean" and self.scanner.name == "unavailable":
+            scan = "unavailable"                          # imposible declarar limpio sin escáner
         try:
             self.db.storage_upload(BUCKET, path, data, info["mime_type"])
         except Exception as e:
@@ -119,42 +155,58 @@ class LibraryService(StudioBase):
             "original_filename": info["original_filename"], "media_type": info["media_type"],
             "mime_type": info["mime_type"], "byte_size": info["byte_size"], "width": info["width"],
             "height": info["height"], "duration_ms": info["duration_ms"], "checksum": info["checksum"],
-            "uploaded_by": c.user["id"], "contains_people": None, "people_policy": "exclude",
+            "uploaded_by": c.user["id"], "validation_status": "passed", "malware_scan_status": scan,
+            "contains_people": None, "contains_minors": None, "people_policy": "exclude",
             "consent_status": "unknown", "processing_status": "uploaded", "metadata": {}})
-        # Validación completa en el servidor: el archivo queda listo, pero con personas "desconocido"
-        # y política exclude hasta que owner/manager lo clasifique.
+        self._media_event(c, media_id, "upload", {"mime_type": info["mime_type"], "byte_size": info["byte_size"],
+                                                  "malware_scan_status": scan})
+        # Formato validado: queda listo, pero excluido hasta que owner/manager clasifique personas y menores.
         self.db.update("marketing_media", {"id": f"eq.{media_id}", "tenant_id": f"eq.{c.tenant_id}"},
                        {"processing_status": "ready"})
         row["processing_status"] = "ready"
         return {**row, "privacy_class": pv.original_class(row)}
 
-    # ------------------------------------------------------------------ clasificar personas
+    # ------------------------------------------------------------------ clasificar / consentimiento
     @_guard
     def classify(self, jwt: str, tenant_id: str, media_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
         c = self.ctx(jwt, tenant_id)
         self._writable(c)
-        m = self._one(c, "marketing_media", media_id, MEDIA_COLS)
+        m = self._media(c, media_id)
         if m["processing_status"] in ("archived", "rejected"):
             raise PortalError("not_editable", 409)
-        cp = body.get("contains_people")
-        out = pv.classify(cp if cp in (True, False) else None, str(body.get("people_policy") or "exclude"),
-                          str(body.get("consent_status") or "unknown"))
-        note = str(body.get("consent_note") or "")[:300]
+        tri = lambda v: v if v in (True, False) else None   # noqa: E731
+        out = pv.classify(tri(body.get("contains_people")), str(body.get("people_policy") or "exclude"),
+                          str(body.get("consent_status") or "unknown"), tri(body.get("contains_minors")))
         meta = dict(m.get("metadata") or {})
+        note = str(body.get("consent_note") or "")[:300]
         if note:
             meta["consent_note"] = note
-        meta["classified_by"], meta["classified_at"] = c.user["id"], c.now.isoformat()
-        rows = self.db.update("marketing_media", {"id": f"eq.{m['id']}", "tenant_id": f"eq.{c.tenant_id}"},
-                              {"contains_people": out["contains_people"], "people_policy": out["people_policy"],
-                               "consent_status": out["consent_status"], "metadata": meta})
+        values = {k: out[k] for k in ("contains_people", "contains_minors", "people_policy", "consent_status")}
+        values["metadata"] = meta
+        if out["consent_status"] != m.get("consent_status"):
+            values.update({"consent_updated_by": c.user["id"], "consent_updated_at": c.now.isoformat()})
+        rows = self.db.update("marketing_media", {"id": f"eq.{m['id']}", "tenant_id": f"eq.{c.tenant_id}"}, values)
+        revoked = out["consent_status"] == "revoked" and m.get("consent_status") != "revoked"
+        self._media_event(c, m["id"], "consent_revoke" if revoked else "classify",
+                          {k: out[k] for k in ("contains_people", "contains_minors", "people_policy", "consent_status")})
         return {**(rows[0] if rows else m), "privacy_class": out["privacy_class"]}
 
     @_guard
-    def set_archived(self, jwt: str, tenant_id: str, media_id: str, archived: bool) -> Dict[str, Any]:
-        """Archivar oculta el archivo de la selección; nunca lo borra."""
+    def revoke_consent(self, jwt: str, tenant_id: str, media_id: str) -> Dict[str, Any]:
+        """Retirar el consentimiento: el archivo queda excluido al instante (también para trabajos
+        pendientes, que se vuelven a comprobar al aprobar y al procesar)."""
         c = self.ctx(jwt, tenant_id)
         self._writable(c)
-        m = self._one(c, "marketing_media", media_id, MEDIA_COLS)
+        m = self._media(c, media_id)
+        return self.classify(jwt, tenant_id, m["id"], {"contains_people": m.get("contains_people"),
+                                                       "contains_minors": m.get("contains_minors"),
+                                                       "people_policy": "exclude", "consent_status": "revoked"})
+
+    @_guard
+    def set_archived(self, jwt: str, tenant_id: str, media_id: str, archived: bool) -> Dict[str, Any]:
+        c = self.ctx(jwt, tenant_id)
+        self._writable(c)
+        m = self._media(c, media_id)
         target = "archived" if archived else "ready"
         jd.check_media_transition(m["processing_status"], target)
         rows = self.db.update("marketing_media", {"id": f"eq.{m['id']}", "tenant_id": f"eq.{c.tenant_id}",
@@ -162,88 +214,128 @@ class LibraryService(StudioBase):
                               {"processing_status": target})
         if not rows:
             raise PortalError("conflict", 409)
+        self._media_event(c, m["id"], "archive" if archived else "restore")
         return rows[0]
 
-    # ------------------------------------------------------------------ anonimizar (derivado)
+    # ------------------------------------------------------------------ borrado controlado
+    @_guard
+    def delete(self, jwt: str, tenant_id: str, media_id: str, reason: str, confirm: bool) -> Dict[str, Any]:
+        c = self.ctx(jwt, tenant_id)
+        self._writable(c)
+        if confirm is not True:
+            raise PortalError("confirmation_required", 400)
+        m = self._media(c, media_id)
+        jd.check_media_transition(m["processing_status"], "deleted")
+        uses = self.db.select("marketing_generation_inputs", {"tenant_id": f"eq.{c.tenant_id}", "media_id": f"eq.{m['id']}",
+                                                              "select": "job_id", "limit": "1000"}) or []
+        if uses:
+            ids = ",".join(sorted({u["job_id"] for u in uses}))
+            if self.db.select("marketing_generation_jobs", {"tenant_id": f"eq.{c.tenant_id}", "id": f"in.({ids})",
+                                                            "status": f"in.({','.join(ACTIVE_JOBS)})",
+                                                            "select": "id", "limit": "1"}):
+                raise PortalError("media_in_use", 409)
+        ders = self.db.select("marketing_media_derivatives", {"tenant_id": f"eq.{c.tenant_id}", "media_id": f"eq.{m['id']}",
+                                                              "status": "neq.deleted", "select": DER_COLS, "limit": "200"}) or []
+        reason = str(reason or "").strip()[:300] or None
+        self._media_event(c, m["id"], "delete", {"reason": reason, "checksum": m["checksum"], "byte_size": m["byte_size"]})
+        rows = self.db.update("marketing_media", {"id": f"eq.{m['id']}", "tenant_id": f"eq.{c.tenant_id}",
+                                                  "processing_status": f"eq.{m['processing_status']}"},
+                              {"processing_status": "deleted", "deleted_by": c.user["id"],
+                               "deleted_at": c.now.isoformat(), "delete_reason": reason})
+        if not rows:
+            raise PortalError("conflict", 409)
+        removed = True
+        for path in [m["storage_path"]] + [d["storage_path"] for d in ders if d.get("storage_path")]:
+            try:
+                self.db.storage_remove(BUCKET, self._path(c, path))
+            except Exception as e:
+                removed = False
+                logger.error(f"MARKETING_REMOVE_ERROR {type(e).__name__}")
+        for d in ders:
+            self.db.update("marketing_media_derivatives", {"id": f"eq.{d['id']}", "tenant_id": f"eq.{c.tenant_id}"},
+                           {"status": "deleted"})
+        self._media_event(c, m["id"], "storage_removed" if removed else "storage_remove_failed")
+        return {"id": m["id"], "processing_status": "deleted", "storage_removed": removed}
+
+    # ------------------------------------------------------------------ anonimizar (simulado)
     @_guard
     def anonymize(self, jwt: str, tenant_id: str, media_id: str, method: str) -> Dict[str, Any]:
         c = self.ctx(jwt, tenant_id)
         self._writable(c)
-        m = self._one(c, "marketing_media", media_id, MEDIA_COLS)
+        m = self._media(c, media_id)
         if m["processing_status"] != "ready":
             raise PortalError("media_not_ready", 409)
         if m.get("people_policy") != "anonymize":
             raise PortalError("policy_not_anonymize", 409)
-        # Detección local, sin identificar a nadie. Si no hay detector fiable, se pide revisión humana.
-        # En esta fase el detector es simulado o no existe: no hace falta descargar el original.
-        detection = self.detector.detect(b"", m["mime_type"])
-        plan = pv.anonymization_plan(method, detection)
-        der_id = str(uuid.uuid4())
-        path = None
-        mock = getattr(self.detector, "name", "") == "mock"
-        if mock and not plan["low_confidence"]:
-            # Derivado SIMULADO: un marcador gris, nunca una copia del original.
-            path = mf.derivative_path(c.tenant_id, m["id"], der_id, "png")
-            try:
-                self.db.storage_upload(BUCKET, path, placeholder_png(), "image/png")
-            except Exception as e:
-                logger.error(f"MARKETING_UPLOAD_ERROR {type(e).__name__}")
-                raise PortalError("storage_unavailable", 503)
+        # Detección local sin identidad. En esta fase es simulada (o no existe): no se descarga el
+        # original, no se genera ningún archivo y el derivado NUNCA se considera anonimizado.
+        plan = pv.anonymization_plan(method, self.detector.detect(b"", m["mime_type"]), simulated=True)
         row = self.db.insert("marketing_media_derivatives", {
-            "id": der_id, "tenant_id": c.tenant_id, "media_id": m["id"], "kind": "anonymized", "method": plan["method"],
-            "storage_path": path, "mime_type": "image/png" if path else None, "status": "needs_review",
+            "id": str(uuid.uuid4()), "tenant_id": c.tenant_id, "media_id": m["id"], "kind": "anonymized",
+            "method": plan["method"], "storage_path": None, "status": plan["status"], "is_mock": plan["is_mock"],
             "detection_confidence": plan["detection_confidence"], "review_required": True, "created_by": c.user["id"],
-            "metadata": {"mock": mock, "low_confidence": plan["low_confidence"], "stop_reason": plan["stop_reason"],
+            "metadata": {"simulated": True, "low_confidence": plan["low_confidence"], "stop_reason": plan["stop_reason"],
                          "guarantee": plan["guarantee"], "detector": getattr(self.detector, "name", "unknown")}})
+        self._media_event(c, m["id"], "anonymize_request", {"method": plan["method"], "status": plan["status"]},
+                          derivative_id=row["id"])
         return {**row, "warnings": plan["warnings"]}
 
     @_guard
     def review_derivative(self, jwt: str, tenant_id: str, derivative_id: str, approve: bool,
                           confirm_reviewed: bool = False) -> Dict[str, Any]:
-        """Una persona revisa el derivado anonimizado. Solo así puede quedar 'ready'."""
+        """Revisión humana de un derivado REAL. Un derivado simulado nunca se aprueba."""
         c = self.ctx(jwt, tenant_id)
         self._writable(c)
         der = self._one(c, "marketing_media_derivatives", derivative_id, DER_COLS)
+        if der.get("is_mock") or der["status"] == "mock_only":
+            if not approve:
+                rows = self.db.update("marketing_media_derivatives", {"id": f"eq.{der['id']}",
+                                      "tenant_id": f"eq.{c.tenant_id}"}, {"status": "rejected"})
+                return rows[0] if rows else der
+            raise PortalError("mock_derivative", 409)
         if der["status"] != "needs_review":
-            raise PortalError("invalid_transition", 409)
+            raise PortalError("derivative_not_processed", 409)
         if approve and (not confirm_reviewed or not der.get("storage_path")):
-            raise DomainError("human_review_required", 409)
-        values = {"status": "ready" if approve else "rejected", "reviewed_by": c.user["id"],
-                  "reviewed_at": c.now.isoformat()}
+            raise PortalError("human_review_required", 409)
         rows = self.db.update("marketing_media_derivatives", {"id": f"eq.{der['id']}", "tenant_id": f"eq.{c.tenant_id}",
-                                                              "status": "eq.needs_review"}, values)
+                                                              "status": "eq.needs_review"},
+                              {"status": "ready" if approve else "rejected", "reviewed_by": c.user["id"],
+                               "reviewed_at": c.now.isoformat()})
         if not rows:
             raise PortalError("conflict", 409)
         return rows[0]
 
 
-def media_for_job(svc: StudioBase, c, media_ids, derivative_ids) -> Dict[str, Any]:
+def media_for_job(svc: StudioBase, c, media_ids, derivative_ids=None) -> Dict[str, Any]:
     """Resuelve las entradas de un trabajo SOLO dentro del tenant y calcula su clase de privacidad.
-    exclude → no se puede usar; anonymize → solo con derivado revisado."""
+    Excluido, menores, consentimiento retirado, sin validar o eliminado → no se puede usar.
+    anonymize → solo con un derivado real, revisado y no simulado (hoy no existe ninguno)."""
     ids = [uid(x, "invalid_media", 400) for x in (media_ids or [])][:20]
-    ders = {uid(x, "invalid_media", 400) for x in (derivative_ids or [])}
-    out, kinds = [], set()
+    wanted = {uid(x, "invalid_media", 400) for x in (derivative_ids or [])}
+    out, kinds, clean = [], set(), True
     for mid in ids:
         m = svc._one(c, "marketing_media", mid, MEDIA_COLS)
-        if m["processing_status"] != "ready":
-            raise PortalError("media_not_ready", 409)
+        if m["processing_status"] == "deleted":
+            raise PortalError("not_found", 404)
+        why = pv.usable_media(m)
+        if why:
+            raise PortalError(why, 409)
         der = None
         if m.get("people_policy") == "anonymize":
-            cands = svc.db.select("marketing_media_derivatives", {
+            cands = [x for x in (svc.db.select("marketing_media_derivatives", {
                 "tenant_id": f"eq.{c.tenant_id}", "media_id": f"eq.{m['id']}", "kind": "eq.anonymized",
-                "status": "eq.ready", "select": DER_COLS, "limit": "20"}) or []
-            cands = [x for x in cands if x["id"] in ders] or cands[:1]
+                "status": "eq.ready", "select": DER_COLS, "limit": "20"}) or []) if not x.get("is_mock")]
+            cands = [x for x in cands if x["id"] in wanted] or cands[:1]
             if not cands:
                 raise PortalError("anonymization_required", 409)
             der = cands[0]
-        elif m.get("people_policy") == "exclude" and m.get("contains_people") is not False:
-            raise PortalError("media_excluded", 409)
         cls = pv.input_class(m, der)
         if cls == "restricted":
             raise PortalError("privacy_blocked", 409)
+        clean = clean and pv.malware_clean(m)
         out.append({"media_id": m["id"], "derivative_id": der["id"] if der else None, "privacy_class": cls,
                     "media_type": m["media_type"]})
         kinds.add(m["media_type"])
     order = ("consented_people", "anonymized_people", "business_media_no_people", "synthetic_only")
     worst = next((k for k in order if any(i["privacy_class"] == k for i in out)), "synthetic_only")
-    return {"inputs": out, "privacy_class": worst, "kinds": sorted(kinds)}
+    return {"inputs": out, "privacy_class": worst, "kinds": sorted(kinds), "malware_clean": clean and bool(out)}

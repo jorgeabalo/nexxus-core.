@@ -112,17 +112,21 @@ def test_unverified_price_is_excluded():
     ("restricted", {}, False),                                                     # nunca sale
     ("consented_people", {}, False),                                               # modelo no admite personas
     ("consented_people", {"real_people_allowed": True}, True),
+    ("consented_people", {"real_people_allowed": True, "_unscanned": True}, False),   # sin antivirus: no sale
     ("anonymized_people", {"real_people_allowed": True, "data_retention_policy": "unknown"}, False),
     ("business_media_no_people", {"supports_commercial_use": False}, False),
     ("synthetic_only", {}, True),
 ])
 def test_privacy_rules_for_external(cls, kw, ok):
+    kw = dict(kw)
+    clean = not kw.pop("_unscanned", False)
     cat = catalog(entry(**kw))
+    r = req(privacy_class=cls, inputs_malware_clean=clean)
     if ok:
-        assert MarketingAIRouter(cat, env=ON).route(req(privacy_class=cls)).model.external
+        assert MarketingAIRouter(cat, env=ON).route(r).model.external
     else:
         with pytest.raises(RouterError):
-            MarketingAIRouter(cat, env=ON).route(req(privacy_class=cls))
+            MarketingAIRouter(cat, env=ON).route(r)
 
 
 def test_local_tools_may_process_restricted():
@@ -224,7 +228,9 @@ def test_applied_migration_unchanged_and_new_one_is_additive():
 JOB = "00000000-0000-0000-0000-000000000001"
 ENDPOINTS = [
     ("GET", f"/api/manager/marketing/library?tenant_id={T1}", None),
-    ("GET", f"/api/manager/marketing/library/{JOB}/preview?tenant_id={T1}", None),
+    ("GET", f"/api/manager/marketing/library/{JOB}/content?tenant_id={T1}", None),
+    ("POST", f"/api/manager/marketing/library/{JOB}/revoke-consent", {"tenant_id": T1}),
+    ("POST", f"/api/manager/marketing/library/{JOB}/delete", {"tenant_id": T1, "confirm": True}),
     ("PATCH", f"/api/manager/marketing/library/{JOB}/privacy", {"tenant_id": T1, "people_policy": "exclude"}),
     ("POST", f"/api/manager/marketing/library/{JOB}/archive", {"tenant_id": T1}),
     ("POST", f"/api/manager/marketing/library/{JOB}/anonymize", {"tenant_id": T1, "method": "blur_faces"}),
@@ -261,9 +267,8 @@ def test_staff_and_member_blocked_everywhere(monkeypatch, user):
     for method, path, body in ENDPOINTS:
         r = call(client, method, path, body, user)
         assert r.status_code == 403 and r.json() == {"error": "forbidden"}, path
-    up = client.post("/api/manager/marketing/library", data={"tenant_id": T1},
-                     files={"file": ("a.png", b"\x89PNG\r\n\x1a\n" + b"\x00" * 40, "image/png")},
-                     headers={"Authorization": f"Bearer jwt-{user}"})
+    up = client.post(f"/api/manager/marketing/library?tenant_id={T1}", content=b"\x89PNG\r\n\x1a\n" + b"\x00" * 40,
+                     headers={"Authorization": f"Bearer jwt-{user}", "Content-Type": "image/png", "X-File-Name": "a.png"})
     assert up.status_code == 403
     assert db.marketing_calls == []
 

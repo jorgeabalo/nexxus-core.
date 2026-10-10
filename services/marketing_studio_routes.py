@@ -5,14 +5,14 @@ el rol owner/manager y el tenant se comprueban en el servicio. Errores = solo un
 """
 import logging
 from typing import Callable
+from urllib.parse import unquote
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 from services.marketing_domain import DomainError
 from services.marketing_library import LibraryService
-from services.marketing_media_files import HARD_MAX_BYTES
 from services.marketing_studio import StudioService
 from services.member_portal import PortalError
 
@@ -64,26 +64,40 @@ def build_router(get_db: Callable) -> APIRouter:
         return await call(lambda: lib().library(bearer(request), tenant_id, status))
 
     @r.post(f"{P}/library")
-    async def upload(request: Request):
-        if int(request.headers.get("content-length") or 0) > HARD_MAX_BYTES + 200_000:
+    async def upload(request: Request, tenant_id: str = ""):
+        """Cuerpo = bytes del archivo (no multipart). El límite se calcula ANTES de leer nada y la lectura
+        se corta en cuanto lo supera: nunca se carga en memoria más de lo permitido."""
+        jw = bearer(request)
+        limit = await call(lambda: lib().upload_limit(jw, tenant_id))
+        if not isinstance(limit, int):
+            return limit                                           # error (rol, módulo, almacenamiento…)
+        declared = request.headers.get("content-length")
+        if declared is not None and (not declared.isdigit() or int(declared) > limit):
             return JSONResponse({"error": "file_too_large"}, status_code=413)
+        buf, size = bytearray(), 0
         try:
-            form = await request.form()
-            f = form.get("file")
-            data = await f.read(HARD_MAX_BYTES + 1) if hasattr(f, "read") else b""
-            name = getattr(f, "filename", "") or ""
-            mime = getattr(f, "content_type", "") or ""
-            tenant = str(form.get("tenant_id") or "")
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > limit:
+                    return JSONResponse({"error": "file_too_large"}, status_code=413)
+                buf.extend(chunk)
         except Exception:
             return JSONResponse({"error": "invalid_upload"}, status_code=400)
-        return await call(lambda: lib().upload(bearer(request), tenant, name, mime, data))
+        name = unquote(request.headers.get("x-file-name", ""))[:300]
+        mime = (request.headers.get("content-type") or "").split(";")[0].strip()
+        return await call(lambda: lib().upload(jw, tenant_id, name, mime, bytes(buf)))
 
-    @r.get(f"{P}/library/{{media_id}}/preview")
-    async def preview(request: Request, media_id: str, tenant_id: str = "", derivative_id: str = ""):
-        res = await call(lambda: lib().preview(bearer(request), tenant_id, media_id, derivative_id))
-        if isinstance(res, dict):
-            return JSONResponse(res, headers={"Cache-Control": "no-store"})
-        return res
+    @r.get(f"{P}/library/{{media_id}}/content")
+    async def content(request: Request, media_id: str, tenant_id: str = "", derivative_id: str = ""):
+        """Vista previa entregada por el backend (mismo origen, en trozos): el navegador crea un blob y
+        la CSP no necesita abrir media-src/img-src a ningún dominio externo."""
+        res = await call(lambda: lib().content(bearer(request), tenant_id, media_id, derivative_id))
+        if not isinstance(res, tuple):
+            return res
+        chunks, mime = res
+        return StreamingResponse(chunks, media_type=mime, headers={
+            "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Disposition": "inline",
+            "Content-Security-Policy": "default-src 'none'; sandbox", "Cross-Origin-Resource-Policy": "same-origin"})
 
     @r.patch(f"{P}/library/{{media_id}}/privacy")
     async def classify(request: Request, media_id: str):
@@ -94,6 +108,17 @@ def build_router(get_db: Callable) -> APIRouter:
     async def archive(request: Request, media_id: str):
         b = await body(request)
         return await call(lambda: lib().set_archived(bearer(request), tid(b), media_id, b.get("archived") is not False))
+
+    @r.post(f"{P}/library/{{media_id}}/revoke-consent")
+    async def revoke_consent(request: Request, media_id: str):
+        b = await body(request)
+        return await call(lambda: lib().revoke_consent(bearer(request), tid(b), media_id))
+
+    @r.post(f"{P}/library/{{media_id}}/delete")
+    async def delete(request: Request, media_id: str):
+        b = await body(request)
+        return await call(lambda: lib().delete(bearer(request), tid(b), media_id, str(b.get("reason") or ""),
+                                               b.get("confirm") is True))
 
     @r.post(f"{P}/library/{{media_id}}/anonymize")
     async def anonymize(request: Request, media_id: str):

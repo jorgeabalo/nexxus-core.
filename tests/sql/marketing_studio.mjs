@@ -10,7 +10,7 @@ const { PGlite } = require('@electric-sql/pglite');
 const file = (p) => readFile(new URL(p, import.meta.url), 'utf8');
 const MIG1 = await file('../../supabase/migrations/20261009120000_aita_marketing.sql');
 const MIG2 = await file('../../supabase/migrations/20261011120000_marketing_reel_studio.sql');
-const TABLES = ['marketing_media', 'marketing_media_derivatives', 'marketing_generation_jobs',
+const TABLES = ['marketing_media', 'marketing_media_derivatives', 'marketing_media_events', 'marketing_generation_jobs',
   'marketing_generation_job_events', 'marketing_generation_inputs', 'marketing_generation_outputs', 'marketing_model_usage'];
 const U = { ownerA: '00000000-0000-0000-0000-00000000000a', mgrA: '00000000-0000-0000-0000-00000000000b',
   staffA: '00000000-0000-0000-0000-00000000000c', member: '00000000-0000-0000-0000-00000000000d',
@@ -72,8 +72,9 @@ async function as(role, user, sql, expected) {
 const s = (await sys(`select * from marketing_settings where tenant_id = '${TA}'`))[0];
 ok(s.monthly_post_limit === 8 && s.monthly_reel_limit === 4 && s.plan_code === 'pilot', 'límites de Fase 1 intactos');
 ok(s.ai_generation_enabled === false, 'IA apagada por defecto');
-for (const k of ['library_storage_limit_bytes', 'monthly_generation_job_limit', 'monthly_regeneration_limit',
+for (const k of ['monthly_generation_job_limit', 'monthly_regeneration_limit',
   'monthly_generated_image_limit', 'monthly_generated_video_seconds_limit']) ok(Number(s[k]) === 0, `${k} = 0 por defecto`);
+ok(Number(s.library_storage_limit_bytes) === 1073741824, 'Biblioteca: 1 GiB por defecto (no consume generación)');
 ok(Number(s.monthly_ai_cost_limit) === 0, 'coste IA = 0 por defecto');
 await sys(`update marketing_settings set monthly_generation_job_limit = -1 where tenant_id = '${TA}'`, [], '23514');
 await sys(`update marketing_settings set max_upload_bytes = 999999999999 where tenant_id = '${TA}'`, [], '23514');
@@ -100,6 +101,7 @@ await sys(`insert into marketing_media (id, tenant_id, storage_path, media_type,
   values ('20000000-0000-0000-0000-0000000000dd','${TA}','${TA}/originals/20000000-0000-0000-0000-0000000000dd/a.png','image','image/png',1,'${'d'.repeat(64)}','${U.ownerA}','ready')`, [], '23514');
 const m0 = (await sys(`select * from marketing_media where id = '${MA}'`))[0];
 ok(m0.people_policy === 'exclude' && m0.consent_status === 'unknown' && m0.contains_people === null, 'personas: exclude por defecto');
+ok(m0.contains_minors === null && m0.malware_scan_status === 'not_scanned' && m0.validation_status === 'pending', 'menores y escaneo: desconocidos');
 // inmutable y nunca borrado
 for (const set of [`storage_path = '${TA}/originals/${MA}/otra.png'`, `checksum = '${'e'.repeat(64)}'`, `byte_size = 5`,
   `mime_type = 'image/gif'`, `uploaded_by = '${U.mgrA}'`, `tenant_id = '${TB}'`]) {
@@ -107,7 +109,8 @@ for (const set of [`storage_path = '${TA}/originals/${MA}/otra.png'`, `checksum 
 }
 await sys(`delete from marketing_media where id = '${MA}'`, [], '42501');
 await sys(`update marketing_media set processing_status = 'processing' where id = '${MA}'`, [], '23514');   // uploaded → processing no
-await sys(`update marketing_media set processing_status = 'ready' where id = '${MA}'`);
+await sys(`update marketing_media set processing_status = 'ready' where id = '${MA}'`, [], '23514');      // sin validar
+await sys(`update marketing_media set validation_status = 'passed', processing_status = 'ready' where id = '${MA}'`);
 await sys(`update marketing_media set people_policy = 'no_people' where id = '${MA}'`, [], '23514');       // contains_people null
 await sys(`update marketing_media set people_policy = 'consented', contains_people = true where id = '${MA}'`, [], '23514');
 await sys(`update marketing_media set people_policy = 'no_people', contains_people = false, consent_status = 'not_required' where id = '${MA}'`);
@@ -159,7 +162,9 @@ await sys(`insert into marketing_generation_jobs (tenant_id, created_by, task_ty
   idempotency_key) values ('${TA}','${U.ownerA}','publish_now',50,50,'job-key-000000000003')`, [], '23514');
 
 // ---------------------------------------------------------------- 5. entradas, uso, historial: sin cruces de tenant, solo inserción
-await sys(`insert into marketing_generation_inputs (tenant_id, job_id, media_id, privacy_class) values ('${TA}','${J}','${MB}','synthetic_only')`, [], '23503');
+await sys(`update marketing_media set validation_status = 'passed', processing_status = 'ready', contains_people = false,
+  people_policy = 'no_people' where id = '${MB}'`);                  // MB es válido, pero de OTRO tenant
+await sys(`insert into marketing_generation_inputs (tenant_id, job_id, media_id, privacy_class) values ('${TA}','${J}','${MB}','synthetic_only')`, [], '23514');
 await sys(`insert into marketing_generation_inputs (tenant_id, job_id, media_id, privacy_class) values ('${TA}','${J}','${MA}','public')`, [], '23514');
 await sys(`insert into marketing_generation_inputs (tenant_id, job_id, media_id, privacy_class) values ('${TA}','${J}','${MA}','business_media_no_people')`);
 await sys(`insert into marketing_model_usage (tenant_id, job_id, provider, model_id, task_type, catalog_version, billing_unit, units,
@@ -175,6 +180,72 @@ await sys(`insert into marketing_generation_job_events (tenant_id, job_id, actio
 await sys(`insert into marketing_generation_outputs (tenant_id, job_id, kind, origin, storage_path) values ('${TA}','${J}','scene','ai_generated','${TB}/derivatives/x.png')`, [], '23514');
 await sys(`insert into marketing_generation_outputs (tenant_id, job_id, kind, origin) values ('${TA}','${J}','scene','stock_photo')`, [], '23514');
 await sys(`insert into marketing_generation_outputs (tenant_id, job_id, kind, origin, scene_index) values ('${TA}','${J}','scene','client_original',0)`);
+
+// ---------------------------------------------------------------- 6a. endurecimiento: menores, consentimiento, antivirus, borrado
+const mk = async (id, ck, extra = '') => {
+  await sys(`insert into marketing_media (id, tenant_id, storage_path, media_type, mime_type, byte_size, checksum, uploaded_by)
+    values ('${id}','${TA}','${TA}/originals/${id}/f.png','image','image/png',10,'${ck.repeat(64)}','${U.ownerA}')`);
+  await sys(`update marketing_media set validation_status = 'passed', processing_status = 'ready' ${extra} where id = '${id}'`);
+};
+const MC = '20000000-0000-0000-0000-0000000000c1', MD = '20000000-0000-0000-0000-0000000000d1';
+await mk(MC, '1');
+await mk(MD, '2', `, contains_people = false, people_policy = 'no_people', consent_status = 'not_required'`);
+// menores: desconocido o sí → siempre excluido
+await sys(`update marketing_media set contains_people = true, people_policy = 'consented', consent_status = 'granted' where id = '${MC}'`, [], '23514');
+await sys(`update marketing_media set contains_people = true, contains_minors = true, people_policy = 'anonymize' where id = '${MC}'`, [], '23514');
+await sys(`update marketing_media set contains_people = null, contains_minors = null, people_policy = 'anonymize' where id = '${MC}'`, [], '23514');
+await sys(`update marketing_media set contains_people = false, contains_minors = true, people_policy = 'no_people' where id = '${MC}'`, [], '23514');
+await sys(`update marketing_media set contains_people = true, contains_minors = false, people_policy = 'consented', consent_status = 'granted' where id = '${MC}'`);
+// consentimiento retirado → excluido
+await sys(`update marketing_media set consent_status = 'revoked' where id = '${MC}'`, [], '23514');
+await sys(`update marketing_media set people_policy = 'anonymize', consent_status = 'revoked' where id = '${MC}'`, [], '23514');
+// antivirus: nunca "clean" sin escáner
+await sys(`update marketing_media set malware_scan_status = 'clean' where id = '${MD}'`, [], '23514');
+await sys(`update marketing_media set malware_scan_status = 'unavailable' where id = '${MD}'`);
+// entradas: solo archivos permitidos, nunca un derivado simulado
+const J2 = (await sys(`insert into marketing_generation_jobs (tenant_id, created_by, task_type, real_media_percent, ai_media_percent,
+  maximum_cost, idempotency_key) values ('${TA}','${U.ownerA}','reel',50,50,5,'job-key-000000000010') returning id`))[0].id;
+await sys(`insert into marketing_generation_inputs (tenant_id, job_id, media_id, privacy_class) values ('${TA}','${J2}','${MD}','business_media_no_people')`);
+await sys(`insert into marketing_generation_inputs (tenant_id, job_id, media_id, privacy_class) values ('${TA}','${J2}','${MC}','consented_people')`);
+const MU = '20000000-0000-0000-0000-0000000000e1';
+await sys(`insert into marketing_media (id, tenant_id, storage_path, media_type, mime_type, byte_size, checksum, uploaded_by)
+  values ('${MU}','${TA}','${TA}/originals/${MU}/f.png','image','image/png',10,'${'3'.repeat(64)}','${U.ownerA}')`);
+await sys(`insert into marketing_generation_inputs (tenant_id, job_id, media_id, privacy_class) values ('${TA}','${J2}','${MU}','restricted')`, [], '23514');
+await sys(`update marketing_media set validation_status = 'passed', processing_status = 'ready' where id = '${MU}'`);
+await sys(`insert into marketing_generation_inputs (tenant_id, job_id, media_id, privacy_class) values ('${TA}','${J2}','${MU}','restricted')`, [], '23514'); // menores desconocido
+const DM = '30000000-0000-0000-0000-0000000000b1';
+await sys(`insert into marketing_media_derivatives (id, tenant_id, media_id, kind, method, created_by, is_mock, status)
+  values (gen_random_uuid(),'${TA}','${MC}','anonymized','blur_faces','${U.ownerA}',true,'ready')`, [], '23514');
+await sys(`insert into marketing_media_derivatives (id, tenant_id, media_id, kind, created_by, is_mock, status)
+  values (gen_random_uuid(),'${TA}','${MC}','thumbnail','${U.ownerA}',true,'ready')`, [], '23514');
+await sys(`insert into marketing_media_derivatives (id, tenant_id, media_id, kind, method, created_by, is_mock, status)
+  values ('${DM}','${TA}','${MC}','anonymized','blur_faces','${U.ownerA}',true,'mock_only')`);
+await sys(`update marketing_media_derivatives set status = 'ready', reviewed_by = '${U.ownerA}', reviewed_at = now() where id = '${DM}'`, [], '23514');
+await sys(`update marketing_media_derivatives set is_mock = false where id = '${DM}'`, [], '42501');
+await sys(`insert into marketing_generation_inputs (tenant_id, job_id, derivative_id, privacy_class) values ('${TA}','${J2}','${DM}','anonymized_people')`, [], '23514');
+// consentimiento retirado después de crear el trabajo → no puede entrar en cola
+await sys(`update marketing_generation_jobs set status = 'awaiting_generation_approval' where id = '${J2}'`);
+await sys(`update marketing_media set consent_status = 'revoked', people_policy = 'exclude' where id = '${MC}'`);
+await sys(`update marketing_generation_jobs set status = 'queued', approved_at = now(), approved_by = '${U.ownerA}' where id = '${J2}'`, [], '23514');
+// borrado controlado: bloqueado mientras un trabajo activo lo use; con auditoría; la fila queda
+await sys(`delete from marketing_media where id = '${MD}'`, [], '42501');
+await sys(`update marketing_media set processing_status = 'deleted' where id = '${MD}'`, [], '23514');               // sin quién/cuándo
+await sys(`update marketing_media set processing_status = 'deleted', deleted_by = '${U.ownerA}', deleted_at = now() where id = '${MD}'`, [], '23514');
+await sys(`update marketing_generation_jobs set status = 'cancelled' where id = '${J2}'`);
+await sys(`update marketing_media set processing_status = 'deleted', deleted_by = '${U.ownerA}', deleted_at = now(), delete_reason = 'pedido' where id = '${MD}'`);
+await sys(`update marketing_media set processing_status = 'ready' where id = '${MD}'`, [], '42501');
+await sys(`update marketing_media set metadata = '{"x":1}' where id = '${MD}'`, [], '42501');
+await mk('20000000-0000-0000-0000-0000000000d2', '2');                     // mismo contenido, tras borrar: permitido
+await sys(`insert into marketing_media_events (tenant_id, media_id, action, actor_id, actor_role, detail)
+  values ('${TA}','${MD}','delete','${U.ownerA}','owner','{"reason":"pedido"}')`);
+await sys(`insert into marketing_media_events (tenant_id, media_id, action) values ('${TA}','${MB}','delete')`, [], '23503');
+await sys(`update marketing_media_events set action = 'upload'`, [], '42501');
+await sys(`delete from marketing_media_events`, [], '42501');
+// el tenant no puede elevar sus propios límites
+await as('authenticated', U.ownerA, `update marketing_settings set monthly_generation_job_limit = 999, ai_generation_enabled = true
+  where tenant_id = '${TA}'`, '42501');
+ok(Number((await sys(`select monthly_generation_job_limit v from marketing_settings where tenant_id = '${TA}'`))[0].v) === 0,
+  'límites sin cambios');
 
 // ---------------------------------------------------------------- 6. privilegios y RLS
 for (const t of TABLES) {

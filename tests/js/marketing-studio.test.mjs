@@ -31,18 +31,33 @@ test('aproximación a escenas y segundos antes de generar', () => {
   assert.equal(approxScenes(50, 4, 20, true).realOrigin, 'client_ai_adapted');
 });
 
-test('privacidad: desconocido o excluido nunca es utilizable', () => {
-  const base = { processing_status: 'ready' };
+test('privacidad: desconocido, menores, revocado, simulado o sin validar nunca es utilizable', () => {
+  const base = { processing_status: 'ready', validation_status: 'passed' };
   assert.equal(privacyClass({ ...base, contains_people: null, people_policy: 'exclude' }), 'restricted');
   assert.equal(usableAsSource({ ...base, contains_people: null, people_policy: 'exclude' }), false);
   assert.equal(usableAsSource({ ...base, contains_people: false, people_policy: 'no_people' }), true);
-  assert.equal(usableAsSource({ ...base, contains_people: true, people_policy: 'consented', consent_status: 'pending' }), false);
-  assert.equal(usableAsSource({ ...base, contains_people: true, people_policy: 'consented', consent_status: 'granted' }), true);
-  const anon = { ...base, contains_people: true, people_policy: 'anonymize' };
+  assert.equal(usableAsSource({ ...base, contains_people: false, people_policy: 'no_people', validation_status: 'pending' }), false);
+  const ok = { ...base, contains_people: true, contains_minors: false, people_policy: 'consented', consent_status: 'granted' };
+  assert.equal(usableAsSource(ok), true);
+  assert.equal(usableAsSource({ ...ok, consent_status: 'pending' }), false);
+  assert.equal(usableAsSource({ ...ok, contains_minors: null }), false);            // no se sabe → excluido
+  assert.equal(usableAsSource({ ...ok, contains_minors: true }), false);
+  assert.equal(usableAsSource({ ...ok, consent_status: 'revoked', people_policy: 'exclude' }), false);
+  const anon = { ...base, contains_people: true, contains_minors: false, people_policy: 'anonymize' };
   assert.equal(usableAsSource(anon), false);
-  assert.equal(usableAsSource({ ...anon, derivatives: [{ kind: 'anonymized', status: 'needs_review' }] }), false);
-  assert.equal(usableAsSource({ ...anon, derivatives: [{ kind: 'anonymized', status: 'ready' }] }), true);
+  assert.equal(usableAsSource({ ...anon, derivatives: [{ kind: 'anonymized', status: 'mock_only', is_mock: true }] }), false);
+  assert.equal(usableAsSource({ ...anon, derivatives: [{ kind: 'anonymized', status: 'ready', is_mock: true }] }), false);
+  assert.equal(usableAsSource({ ...anon, derivatives: [{ kind: 'anonymized', status: 'awaiting_processing' }] }), false);
+  assert.equal(usableAsSource({ ...anon, derivatives: [{ kind: 'anonymized', status: 'ready', is_mock: false }] }), true);
   assert.equal(usableAsSource({ contains_people: false, people_policy: 'no_people', processing_status: 'archived' }), false);
+});
+
+test('textos: "Generación no habilitada en este plan" y estados simulados', () => {
+  assert.equal(STUDIO_TEXT.es.err.generation_disabled, 'Generación no habilitada en este plan');
+  assert.equal(STUDIO_TEXT.es.genNotEnabled, 'Generación no habilitada en este plan');
+  assert.match(STUDIO_TEXT.es.ds_mock_only, /NO anonimizado/);
+  assert.match(STUDIO_TEXT.en.ds_mock_only, /NOT anonymized/);
+  assert.ok(!/limpio|clean/i.test(STUDIO_TEXT.es.scan_unavailable + STUDIO_TEXT.en.scan_unavailable));
 });
 
 test('etapas del Reel distintas y nunca "publicado" sin serlo', () => {
@@ -72,6 +87,13 @@ test('textos ES/EN completos para pestañas, pasos, estados y errores', () => {
   for (const k of ['draft', 'awaiting_generation_approval', 'queued', 'processing', 'succeeded', 'failed', 'cancelled']) assert.ok(es[`js_${k}`]);
   for (const k of ['generated', 'in_review', 'approved', 'scheduled', 'pending_publication', 'published', 'failed']) assert.ok(es[`rs_${k}`] && en[`rs_${k}`]);
   assert.ok(TABS.includes('brand') && TABS.includes('overview'));
+});
+
+test('ningún append() nativo recibe hijos condicionales (escribiría "null" en pantalla)', async () => {
+  for (const f of ['marketing-library.js', 'marketing-studio.js']) {
+    const src = await readFile(new URL(`../../manager/assets/js/modules/${f}`, import.meta.url), 'utf8');
+    for (const m of src.matchAll(/\.append\(([\s\S]*?)\);\n/g)) assert.ok(!/:\s*null/.test(m[1]), `${f}: ${m[1].slice(0, 80)}`);
+  }
 });
 
 test('formatos y utilidades', () => {

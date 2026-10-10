@@ -257,22 +257,26 @@ export const api = {
     calendar(tenantId, start, end) { return backend('GET', `/api/manager/marketing/calendar?${qs({ tenant_id: tenantId, start, end })}`); },
     // Fase 2: Biblioteca privada, Estudio de Reels y trabajos de generación (todo por el backend).
     library(tenantId) { return backend('GET', `/api/manager/marketing/library?${qs({ tenant_id: tenantId })}`); },
+    // El archivo va como cuerpo (no multipart): el backend aplica el límite antes de leerlo.
     async upload(tenantId, file) {
       const token = (await sb.auth.getSession()).data.session?.access_token;
-      const form = new FormData();
-      form.append('tenant_id', tenantId);
-      form.append('file', file);
-      const res = await fetch('/api/manager/marketing/library', { method: 'POST', headers: { Authorization: `Bearer ${token || ''}` }, body: form });
+      const res = await fetch(`/api/manager/marketing/library?${qs({ tenant_id: tenantId })}`, {
+        method: 'POST', body: file,
+        headers: { Authorization: `Bearer ${token || ''}`, 'Content-Type': file.type || 'application/octet-stream',
+          'X-File-Name': encodeURIComponent(file.name || '') },
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { const e = new Error(data.error || `HTTP ${res.status}`); e.code = data.error; throw e; }
       return data;
     },
-    // URL firmada de corta duración: se descarga en memoria (blob) y no se guarda en ningún sitio.
+    // Vista previa entregada por el backend (mismo origen) → blob en memoria. Ninguna URL de Storage
+    // llega al navegador y la CSP no se abre a dominios externos.
     async previewBlob(tenantId, mediaId, derivativeId) {
-      const { url } = await backend('GET', `/api/manager/marketing/library/${encodeURIComponent(mediaId)}/preview?${qs({ tenant_id: tenantId, derivative_id: derivativeId })}`);
-      const res = await fetch(url, { cache: 'no-store', referrerPolicy: 'no-referrer' });
-      if (!res.ok) { const e = new Error('preview_failed'); e.code = 'storage_unavailable'; throw e; }
-      return res.blob();
+      return blob(`/api/manager/marketing/library/${encodeURIComponent(mediaId)}/content?${qs({ tenant_id: tenantId, derivative_id: derivativeId })}`);
+    },
+    revokeConsent(tenantId, id) { return backend('POST', `/api/manager/marketing/library/${encodeURIComponent(id)}/revoke-consent`, { tenant_id: tenantId }); },
+    deleteMedia(tenantId, id, reason) {
+      return backend('POST', `/api/manager/marketing/library/${encodeURIComponent(id)}/delete`, { tenant_id: tenantId, reason, confirm: true });
     },
     classify(tenantId, id, values) { return backend('PATCH', `/api/manager/marketing/library/${encodeURIComponent(id)}/privacy`, { ...values, tenant_id: tenantId }); },
     archive(tenantId, id, archived) { return backend('POST', `/api/manager/marketing/library/${encodeURIComponent(id)}/archive`, { tenant_id: tenantId, archived }); },

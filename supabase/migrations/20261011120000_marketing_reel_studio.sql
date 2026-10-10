@@ -2,7 +2,8 @@
 -- AITA Marketing — Fase 2: Biblioteca multimedia privada + Estudio de Reels + trabajos de IA.
 -- Migración NUEVA (no modifica 20261009120000_aita_marketing.sql, ya aplicada).
 --
--- * marketing_media                 — originales de la Biblioteca (inmutables, nunca se borran).
+-- * marketing_media                 — originales de la Biblioteca (no se sobrescriben; borrado controlado y auditado).
+-- * marketing_media_events          — auditoría de la Biblioteca (subida, clasificación, consentimiento, borrado).
 -- * marketing_media_derivatives     — derivados (anonimizado, adaptado con IA, miniatura, render).
 -- * marketing_generation_jobs       — trabajos asíncronos de generación (mezcla real/IA, coste, estado).
 -- * marketing_generation_job_events — historial inmutable de cambios de estado de cada trabajo.
@@ -16,14 +17,13 @@
 -- Reglas de estado y de mezcla: espejo de services/marketing_jobs_domain.py (prueba de sincronía).
 -- Idempotente. No borra ni renombra nada. No activa nada para ningún tenant.
 -- =====================================================================
-
 -- ---------- límites nuevos (los define el operador, nunca el tenant) ----------
 -- 0 = nada permitido (valor por defecto: cerrado). null = sin límite. Ver docs/AITA_MARKETING_PHASE2.md.
 alter table public.marketing_settings
   add column if not exists ai_generation_enabled boolean not null default false,
   add column if not exists max_upload_bytes bigint not null default 52428800
       check (max_upload_bytes between 0 and 524288000),
-  add column if not exists library_storage_limit_bytes bigint default 0
+  add column if not exists library_storage_limit_bytes bigint default 1073741824
       check (library_storage_limit_bytes is null or library_storage_limit_bytes between 0 and 1099511627776),
   add column if not exists monthly_generation_job_limit integer default 0
       check (monthly_generation_job_limit is null or monthly_generation_job_limit between 0 and 10000),
@@ -35,7 +35,6 @@ alter table public.marketing_settings
       check (monthly_generated_video_seconds_limit is null or monthly_generated_video_seconds_limit between 0 and 1000000),
   add column if not exists monthly_ai_cost_limit numeric(10,2) default 0
       check (monthly_ai_cost_limit is null or monthly_ai_cost_limit between 0 and 100000);
-
 -- ---------- Biblioteca: originales ----------
 create table if not exists public.marketing_media (
   id                uuid primary key default gen_random_uuid(),
@@ -56,38 +55,64 @@ create table if not exists public.marketing_media (
   uploaded_by       uuid not null,
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now(),
+  -- validación del formato (firma/cabeceras) y escaneo antivirus son cosas DISTINTAS
+  validation_status   text not null default 'pending' check (validation_status in ('pending','passed','failed')),
+  malware_scan_status text not null default 'not_scanned'
+                      check (malware_scan_status in ('not_scanned','unavailable','pending','clean','infected','error')),
+  malware_scanner     text check (malware_scanner is null or length(malware_scanner) <= 60),
+  malware_scanned_at  timestamptz,
   contains_people   boolean,                                   -- null = desconocido
+  contains_minors   boolean,                                   -- null = desconocido
   people_policy     text not null default 'exclude'
                     check (people_policy in ('exclude','anonymize','consented','no_people')),
   consent_status    text not null default 'unknown'
                     check (consent_status in ('unknown','not_required','pending','granted','revoked')),
+  consent_updated_by uuid,
+  consent_updated_at timestamptz,
   processing_status text not null default 'uploaded'
-                    check (processing_status in ('uploaded','scanning','ready','rejected','processing','failed','archived')),
+                    check (processing_status in ('uploaded','scanning','ready','rejected','processing','failed',
+                                                 'archived','deleted')),
+  deleted_by        uuid,
+  deleted_at        timestamptz,
+  delete_reason     text check (delete_reason is null or length(delete_reason) <= 300),
   metadata          jsonb not null default '{}'::jsonb,
   unique (id, tenant_id),
   unique (storage_bucket, storage_path),
   -- la ruta pertenece a ESTE tenant y a ESTE archivo
   check (split_part(storage_path, '/', 1) = tenant_id::text and split_part(storage_path, '/', 3) = id::text),
   -- coherencia de la política de personas
-  check (people_policy <> 'no_people' or contains_people is false),
-  check (people_policy <> 'consented' or consent_status = 'granted')
+  check (people_policy <> 'no_people' or (contains_people is false and contains_minors is not true)),
+  check (people_policy <> 'consented' or consent_status = 'granted'),
+  -- si puede haber menores (o no se sabe) y hay o puede haber personas: siempre excluido
+  check (people_policy = 'exclude' or contains_people is false or contains_minors is false),
+  -- un consentimiento retirado excluye el archivo
+  check (consent_status <> 'revoked' or people_policy = 'exclude'),
+  -- sin escáner real nunca puede figurar como limpio
+  check (malware_scan_status <> 'clean' or (malware_scanner is not null and malware_scanned_at is not null)),
+  -- un archivo solo está listo si pasó la validación de formato
+  check (processing_status not in ('ready','processing') or validation_status = 'passed'),
+  -- borrado controlado: quién y cuándo
+  check ((processing_status = 'deleted') = (deleted_by is not null and deleted_at is not null))
 );
 create index if not exists marketing_media_tenant_idx on public.marketing_media(tenant_id, processing_status, created_at desc);
-create unique index if not exists marketing_media_checksum_idx on public.marketing_media(tenant_id, checksum);
+create unique index if not exists marketing_media_checksum_idx on public.marketing_media(tenant_id, checksum)
+  where processing_status <> 'deleted';
 drop trigger if exists marketing_media_touch on public.marketing_media;
 create trigger marketing_media_touch before update on public.marketing_media
   for each row execute function public.touch_updated_at();
 
--- El original es inmutable: solo cambian clasificación, consentimiento, estado y metadatos. Nunca se borra.
+-- El original no se SOBRESCRIBE: ruta, checksum, tamaño, tipo, autor y fecha son fijos. Sí puede
+-- ELIMINARSE de forma controlada (estado 'deleted' + auditoría); la fila queda como registro.
+-- No se puede eliminar si lo usa un trabajo activo.
 create or replace function private.marketing_media_guard()
 returns trigger language plpgsql set search_path = '' as $$
 declare allowed text[];
 begin
   if tg_op = 'DELETE' then
-    raise exception 'marketing originals are never deleted (archive instead)' using errcode = '42501';
+    raise exception 'use controlled deletion (status deleted) to keep the audit trail' using errcode = '42501';
   end if;
   if tg_op = 'INSERT' then
-    if new.processing_status <> 'uploaded' then
+    if new.processing_status <> 'uploaded' or new.deleted_at is not null then
       raise exception 'new media must start as uploaded' using errcode = '23514';
     end if;
     return new;
@@ -99,28 +124,38 @@ begin
       old.checksum, old.uploaded_by, old.created_at, old.original_filename) then
     raise exception 'marketing original is immutable' using errcode = '42501';
   end if;
+  if old.processing_status = 'deleted' then
+    raise exception 'deleted media cannot change' using errcode = '42501';
+  end if;
   if new.processing_status is distinct from old.processing_status then
     allowed := case old.processing_status
-      when 'uploaded'   then array['scanning','ready','rejected']
-      when 'scanning'   then array['ready','rejected','failed']
-      when 'ready'      then array['processing','archived']
+      when 'uploaded'   then array['scanning','ready','rejected','deleted']
+      when 'scanning'   then array['ready','rejected','failed','deleted']
+      when 'ready'      then array['processing','archived','deleted']
       when 'processing' then array['ready','failed']
-      when 'failed'     then array['ready','archived']
-      when 'rejected'   then array['archived']
-      when 'archived'   then array['ready']
+      when 'failed'     then array['ready','archived','deleted']
+      when 'rejected'   then array['archived','deleted']
+      when 'archived'   then array['ready','deleted']
       else array[]::text[] end;
     if not (new.processing_status = any (allowed)) then
       raise exception 'invalid media status % -> %', old.processing_status, new.processing_status using errcode = '23514';
     end if;
+    if new.processing_status = 'deleted' and exists (
+         select 1 from public.marketing_generation_inputs i
+           join public.marketing_generation_jobs j on j.id = i.job_id and j.tenant_id = i.tenant_id
+          where i.tenant_id = new.tenant_id and i.media_id = new.id
+            and j.status in ('draft','awaiting_generation_approval','queued','processing')) then
+      raise exception 'media is used by an active generation job' using errcode = '23514';
+    end if;
   end if;
   return new;
 end $$;
-revoke all on function private.marketing_media_guard() from public, anon, authenticated;
 drop trigger if exists marketing_media_guard on public.marketing_media;
 create trigger marketing_media_guard before insert or update or delete on public.marketing_media
   for each row execute function private.marketing_media_guard();
-
 -- ---------- Biblioteca: derivados (nunca sobrescriben el original) ----------
+-- Mientras la anonimización sea simulada, un derivado es 'mock_only' (o 'awaiting_processing'):
+-- nunca 'ready', nunca entra en un trabajo y nunca sale hacia proveedores.
 create table if not exists public.marketing_media_derivatives (
   id                   uuid primary key default gen_random_uuid(),
   tenant_id            uuid not null references public.tenants(id) on delete restrict,
@@ -136,8 +171,10 @@ create table if not exists public.marketing_media_derivatives (
   byte_size            bigint check (byte_size is null or byte_size >= 0),
   width                integer, height integer, duration_ms integer,
   checksum             text check (checksum is null or checksum ~ '^[0-9a-f]{64}$'),
-  status               text not null default 'pending'
-                       check (status in ('pending','needs_review','ready','rejected','failed')),
+  status               text not null default 'awaiting_processing'
+                       check (status in ('awaiting_processing','mock_only','needs_review','ready','rejected',
+                                         'failed','deleted')),
+  is_mock              boolean not null default false,
   detection_confidence numeric(4,3) check (detection_confidence is null or detection_confidence between 0 and 1),
   review_required      boolean not null default true,
   reviewed_by          uuid,
@@ -147,8 +184,11 @@ create table if not exists public.marketing_media_derivatives (
   metadata             jsonb not null default '{}'::jsonb,
   unique (id, tenant_id),
   unique (storage_path),
-  -- un anonimizado solo queda "listo" si una persona lo revisó
-  check (status <> 'ready' or kind <> 'anonymized' or (reviewed_by is not null and reviewed_at is not null)),
+  -- un derivado simulado nunca puede pasar por real
+  check (not is_mock or status in ('mock_only','rejected','deleted')),
+  -- un anonimizado solo queda "listo" si es real, tiene archivo y una persona lo revisó
+  check (status <> 'ready' or kind <> 'anonymized' or (not is_mock and storage_path is not null
+                                                        and reviewed_by is not null and reviewed_at is not null)),
   constraint marketing_media_derivatives_media_fk foreign key (media_id, tenant_id)
     references public.marketing_media(id, tenant_id) on delete restrict
 );
@@ -158,21 +198,38 @@ create or replace function private.marketing_derivative_guard()
 returns trigger language plpgsql set search_path = '' as $$
 begin
   if tg_op = 'DELETE' then
-    raise exception 'marketing derivatives are never deleted' using errcode = '42501';
+    raise exception 'use controlled deletion (status deleted)' using errcode = '42501';
   end if;
-  if (new.tenant_id, new.media_id, new.kind, new.method, new.created_by, new.created_at)
-     is distinct from (old.tenant_id, old.media_id, old.kind, old.method, old.created_by, old.created_at)
+  if (new.tenant_id, new.media_id, new.kind, new.method, new.created_by, new.created_at, new.is_mock)
+     is distinct from (old.tenant_id, old.media_id, old.kind, old.method, old.created_by, old.created_at, old.is_mock)
      or (old.storage_path is not null and new.storage_path is distinct from old.storage_path)
      or (old.checksum is not null and new.checksum is distinct from old.checksum) then
     raise exception 'marketing derivative identity is immutable' using errcode = '42501';
   end if;
+  if old.status = 'deleted' and new.status is distinct from old.status then
+    raise exception 'deleted derivative cannot change' using errcode = '42501';
+  end if;
   return new;
 end $$;
-revoke all on function private.marketing_derivative_guard() from public, anon, authenticated;
 drop trigger if exists marketing_derivative_guard on public.marketing_media_derivatives;
 create trigger marketing_derivative_guard before update or delete on public.marketing_media_derivatives
   for each row execute function private.marketing_derivative_guard();
-
+-- ---------- auditoría de la Biblioteca (solo inserción) ----------
+create table if not exists public.marketing_media_events (
+  id            uuid primary key default gen_random_uuid(),
+  tenant_id     uuid not null references public.tenants(id) on delete restrict,
+  media_id      uuid not null,
+  derivative_id uuid,
+  action        text not null check (action in ('upload','classify','consent_revoke','archive','restore',
+                                                'anonymize_request','delete','storage_removed','storage_remove_failed')),
+  actor_id      uuid,
+  actor_role    text check (actor_role is null or actor_role in ('owner','manager','system')),
+  detail        jsonb not null default '{}'::jsonb,
+  created_at    timestamptz not null default now(),
+  constraint marketing_media_events_media_fk foreign key (media_id, tenant_id)
+    references public.marketing_media(id, tenant_id) on delete restrict
+);
+create index if not exists marketing_media_events_media_idx on public.marketing_media_events(tenant_id, media_id, created_at);
 -- ---------- trabajos de generación ----------
 create table if not exists public.marketing_generation_jobs (
   id                uuid primary key default gen_random_uuid(),
@@ -261,6 +318,18 @@ begin
     if new.status = 'queued' and (new.approved_at is null or new.approved_by is null) then
       raise exception 'generation approval required' using errcode = '23514';
     end if;
+    -- al entrar en cola o empezar: las entradas siguen permitidas (consentimiento retirado, menores,
+    -- archivo eliminado o excluido → bloqueo inmediato)
+    if new.status in ('queued','processing') and exists (
+         select 1 from public.marketing_generation_inputs i
+           join public.marketing_media m on m.id = i.media_id and m.tenant_id = i.tenant_id
+          where i.job_id = new.id and i.tenant_id = new.tenant_id
+            and (m.processing_status <> 'ready'
+                 or (m.people_policy = 'exclude' and m.contains_people is not false)
+                 or (m.people_policy = 'consented' and m.consent_status <> 'granted')
+                 or (m.contains_people is not false and m.contains_minors is not false))) then
+      raise exception 'generation inputs are no longer allowed' using errcode = '23514';
+    end if;
   elsif old.status in ('succeeded','failed','cancelled') and (new.real_media_percent, new.ai_media_percent,
         new.result_metadata, new.error_code, new.completed_at)
         is distinct from (old.real_media_percent, old.ai_media_percent, old.result_metadata, old.error_code, old.completed_at) then
@@ -268,7 +337,6 @@ begin
   end if;
   return new;
 end $$;
-revoke all on function private.marketing_job_transition() from public, anon, authenticated;
 drop trigger if exists marketing_job_transition on public.marketing_generation_jobs;
 create trigger marketing_job_transition before insert or update on public.marketing_generation_jobs
   for each row execute function private.marketing_job_transition();
@@ -276,11 +344,9 @@ create trigger marketing_job_transition before insert or update on public.market
 create or replace function private.marketing_no_delete()
 returns trigger language plpgsql set search_path = '' as $$
 begin raise exception 'marketing generation history is immutable' using errcode = '42501'; end $$;
-revoke all on function private.marketing_no_delete() from public, anon, authenticated;
 drop trigger if exists marketing_generation_jobs_no_delete on public.marketing_generation_jobs;
 create trigger marketing_generation_jobs_no_delete before delete on public.marketing_generation_jobs
   for each row execute function private.marketing_no_delete();
-
 -- ---------- historial inmutable de los trabajos ----------
 create table if not exists public.marketing_generation_job_events (
   id          uuid primary key default gen_random_uuid(),
@@ -299,7 +365,6 @@ create table if not exists public.marketing_generation_job_events (
 );
 create index if not exists marketing_generation_job_events_job_idx
   on public.marketing_generation_job_events(tenant_id, job_id, created_at);
-
 -- ---------- entradas, salidas y uso ----------
 create table if not exists public.marketing_generation_inputs (
   id            uuid primary key default gen_random_uuid(),
@@ -321,6 +386,27 @@ create table if not exists public.marketing_generation_inputs (
     references public.marketing_media_derivatives(id, tenant_id) on delete restrict
 );
 create index if not exists marketing_generation_inputs_job_idx on public.marketing_generation_inputs(tenant_id, job_id);
+-- Solo entran archivos listos y permitidos; nunca un derivado simulado ni uno sin revisar.
+create or replace function private.marketing_input_guard()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  if new.media_id is not null and not exists (
+       select 1 from public.marketing_media m where m.id = new.media_id and m.tenant_id = new.tenant_id
+          and m.processing_status = 'ready' and m.validation_status = 'passed'
+          and not (m.people_policy = 'exclude' and m.contains_people is not false)
+          and not (m.contains_people is not false and m.contains_minors is not false)) then
+    raise exception 'media not allowed as generation input' using errcode = '23514';
+  end if;
+  if new.derivative_id is not null and not exists (
+       select 1 from public.marketing_media_derivatives d where d.id = new.derivative_id and d.tenant_id = new.tenant_id
+          and d.status = 'ready' and not d.is_mock) then
+    raise exception 'derivative not allowed as generation input' using errcode = '23514';
+  end if;
+  return new;
+end $$;
+drop trigger if exists marketing_input_guard on public.marketing_generation_inputs;
+create trigger marketing_input_guard before insert on public.marketing_generation_inputs
+  for each row execute function private.marketing_input_guard();
 
 create table if not exists public.marketing_generation_outputs (
   id            uuid primary key default gen_random_uuid(),
@@ -368,11 +454,11 @@ create index if not exists marketing_model_usage_tenant_idx on public.marketing_
 create or replace function private.marketing_append_only()
 returns trigger language plpgsql set search_path = '' as $$
 begin raise exception '% is append-only', tg_table_name using errcode = '42501'; end $$;
-revoke all on function private.marketing_append_only() from public, anon, authenticated;
 do $$
 declare t text;
 begin
-  foreach t in array array['marketing_generation_job_events','marketing_generation_inputs','marketing_model_usage'] loop
+  foreach t in array array['marketing_generation_job_events','marketing_generation_inputs','marketing_model_usage',
+                           'marketing_media_events'] loop
     execute format('drop trigger if exists %I on public.%I', t || '_append_only', t);
     execute format('create trigger %I before update or delete on public.%I for each row execute function private.marketing_append_only()',
                    t || '_append_only', t);
@@ -382,11 +468,14 @@ drop trigger if exists marketing_generation_outputs_no_delete on public.marketin
 create trigger marketing_generation_outputs_no_delete before delete on public.marketing_generation_outputs
   for each row execute function private.marketing_no_delete();
 
+-- Las funciones de los triggers no las ejecuta nadie directamente.
+revoke all on function private.marketing_media_guard(), private.marketing_derivative_guard(), private.marketing_job_transition(),
+  private.marketing_no_delete(), private.marketing_input_guard(), private.marketing_append_only() from public, anon, authenticated;
 -- ---------- RLS y mínimo privilegio (mismo patrón que Fase 1) ----------
 do $$
 declare t text;
 begin
-  foreach t in array array['marketing_media','marketing_media_derivatives','marketing_generation_jobs',
+  foreach t in array array['marketing_media','marketing_media_derivatives','marketing_media_events','marketing_generation_jobs',
                            'marketing_generation_job_events','marketing_generation_inputs',
                            'marketing_generation_outputs','marketing_model_usage'] loop
     execute format('alter table public.%I enable row level security', t);
@@ -398,7 +487,6 @@ begin
     execute format('grant select, insert, update, delete on public.%I to service_role', t);
   end loop;
 end $$;
-
 -- ---------- bucket privado: se añade WebM (los demás tipos se conservan) ----------
 do $$ begin
   if exists (select 1 from pg_namespace where nspname = 'storage') then
