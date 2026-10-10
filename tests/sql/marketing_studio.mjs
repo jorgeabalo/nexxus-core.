@@ -74,7 +74,7 @@ ok(s.monthly_post_limit === 8 && s.monthly_reel_limit === 4 && s.plan_code === '
 ok(s.ai_generation_enabled === false, 'IA apagada por defecto');
 for (const k of ['monthly_generation_job_limit', 'monthly_regeneration_limit',
   'monthly_generated_image_limit', 'monthly_generated_video_seconds_limit']) ok(Number(s[k]) === 0, `${k} = 0 por defecto`);
-ok(Number(s.library_storage_limit_bytes) === 1073741824, 'Biblioteca: 1 GiB por defecto (no consume generación)');
+ok(Number(s.library_storage_limit_bytes) === 0, 'Biblioteca no habilitada por defecto (la cuota la fija el operador)');
 ok(Number(s.monthly_ai_cost_limit) === 0, 'coste IA = 0 por defecto');
 await sys(`update marketing_settings set monthly_generation_job_limit = -1 where tenant_id = '${TA}'`, [], '23514');
 await sys(`update marketing_settings set max_upload_bytes = 999999999999 where tenant_id = '${TA}'`, [], '23514');

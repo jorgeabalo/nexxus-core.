@@ -258,3 +258,36 @@ def _mp4_info(data: bytes) -> Tuple[Optional[int], Optional[int], Optional[int]]
             i += size
     walk(0, len(data), 0)
     return width, height, duration
+
+
+# ---------------------------------------------------------------- Range (vista previa de vídeo)
+_RANGE = re.compile(r"^bytes=(\d*)-(\d*)$")
+
+
+class RangeNotSatisfiable(Exception):
+    pass
+
+
+def parse_range(header: Optional[str], size: int) -> Optional[Tuple[int, int]]:
+    """Un solo rango "bytes=a-b" / "bytes=a-" / "bytes=-n" → (inicio, fin) inclusivos dentro del archivo.
+    Sin cabecera → None (archivo completo). Varios rangos → None (se ignora y se envía completo, RFC 9110).
+    Rango imposible o mal formado → RangeNotSatisfiable (416)."""
+    if not header:
+        return None
+    h = header.strip().replace(" ", "")
+    if "," in h and h.lower().startswith("bytes="):
+        return None
+    m = _RANGE.match(h.lower())
+    if not m or size <= 0 or (not m.group(1) and not m.group(2)):
+        raise RangeNotSatisfiable()
+    a, b = m.group(1), m.group(2)
+    if not a:                                        # sufijo: los últimos n bytes
+        n = int(b)
+        if n == 0:
+            raise RangeNotSatisfiable()
+        return max(size - n, 0), size - 1
+    start = int(a)
+    end = int(b) if b else size - 1
+    if start >= size or end < start:
+        raise RangeNotSatisfiable()
+    return start, min(end, size - 1)

@@ -120,16 +120,20 @@ class SupabaseAdmin:
     def storage_download(self, bucket: str, key: str) -> bytes:
         return self._storage("GET", f"authenticated/{bucket}/{key}").content
 
-    def storage_stream(self, bucket: str, key: str, chunk_size: int = 65536):
-        """Descarga en trozos (sin cargar el archivo entero en memoria) para entregarlo por el backend.
+    def storage_stream(self, bucket: str, key: str, chunk_size: int = 65536, byte_range=None):
+        """Descarga en trozos (nunca el archivo entero en memoria) para entregarlo por el backend.
+        byte_range=(inicio, fin) inclusivos → se pide a Storage con Range; si Storage lo ignorara y
+        devolviera el archivo completo (200), se recorta aquí mismo mientras se transmite.
         Ninguna URL de Storage llega al navegador ni a los logs."""
         if not self.enabled:
             raise RuntimeError("Supabase storage disabled")
+        headers = {"apikey": self._key, "Authorization": f"Bearer {self._key}"}
+        if byte_range:
+            headers["Range"] = f"bytes={int(byte_range[0])}-{int(byte_range[1])}"
         client = httpx.Client(timeout=httpx.Timeout(60.0, connect=5.0))
         try:
             r = client.send(client.build_request("GET", f"{self.url}/storage/v1/object/authenticated/{bucket}/{key}",
-                                                 headers={"apikey": self._key, "Authorization": f"Bearer {self._key}"}),
-                            stream=True)
+                                                 headers=headers), stream=True)
         except Exception as e:
             client.close()
             raise RuntimeError(f"Supabase storage STREAM: {type(e).__name__}") from None
@@ -137,10 +141,22 @@ class SupabaseAdmin:
             r.close()
             client.close()
             raise RuntimeError(f"Supabase storage STREAM -> {r.status_code}")
+        skip = int(byte_range[0]) if (byte_range and r.status_code == 200) else 0
+        want = (int(byte_range[1]) - int(byte_range[0]) + 1) if byte_range else None
 
         def chunks():
+            nonlocal skip, want
             try:
-                yield from r.iter_bytes(chunk_size)
+                for chunk in r.iter_bytes(chunk_size):
+                    if skip:
+                        cut = min(skip, len(chunk))
+                        chunk, skip = chunk[cut:], skip - cut
+                    if want is not None:
+                        chunk, want = chunk[:want], want - min(want, len(chunk))
+                    if chunk:
+                        yield chunk
+                    if want == 0:
+                        break
             finally:
                 r.close()
                 client.close()

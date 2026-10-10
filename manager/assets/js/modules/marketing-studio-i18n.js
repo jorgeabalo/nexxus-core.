@@ -3,6 +3,8 @@ import { getLang } from '../i18n.js';
 
 const T = {
   es: {
+    libDisabled: 'Biblioteca no habilitada en este plan.', libDisabledHint: 'El operador debe asignar espacio de almacenamiento.',
+    libFull: 'Límite de almacenamiento alcanzado.', noLimit: 'sin límite', libWorksAnyway: 'La Biblioteca no consume generación.',
     files: 'Archivos', minorsShort: 'Menores', containsMinors: '¿Puede haber menores de edad?', minorsHint: 'Si hay o puede haber menores, o no lo sabes, el archivo queda excluido.',
     revokeConsent: 'Retirar consentimiento', revoked: 'Consentimiento retirado: el archivo queda excluido.',
     del: 'Eliminar', delTitle: 'Eliminar archivo', delReason: 'Motivo (queda en la auditoría)',
@@ -75,6 +77,7 @@ const T = {
     byOrigin: 'Escenas por origen', events: 'Historial', outputs: 'Resultados', mock: 'simulado', close: 'Cerrar',
     admin: 'Catálogo técnico de modelos (sin claves)', enabled: 'activo', disabled: 'apagado', priceUnverified: 'precio sin verificar',
     err: {
+      library_disabled: 'Biblioteca no habilitada en este plan.',
       minors_excluded: 'Puede haber menores (o no se sabe): el archivo queda excluido.',
       consent_revoked: 'El consentimiento fue retirado: ese archivo ya no se puede usar.',
       media_in_use: 'No se puede eliminar: lo usa un trabajo activo. Cancélalo o espera a que termine.',
@@ -111,6 +114,8 @@ const T = {
     },
   },
   en: {
+    libDisabled: 'Library not enabled on this plan.', libDisabledHint: 'The operator must assign storage space.',
+    libFull: 'Storage limit reached.', noLimit: 'no limit', libWorksAnyway: 'The Library does not use generation.',
     files: 'Files', minorsShort: 'Minors', containsMinors: 'Could minors be visible?', minorsHint: 'If minors are (or may be) visible, or you are not sure, the file is excluded.',
     revokeConsent: 'Revoke consent', revoked: 'Consent revoked: the file is now excluded.',
     del: 'Delete', delTitle: 'Delete file', delReason: 'Reason (kept in the audit log)',
@@ -182,6 +187,7 @@ const T = {
     byOrigin: 'Scenes by origin', events: 'History', outputs: 'Outputs', mock: 'simulated', close: 'Close',
     admin: 'Technical model catalog (no keys)', enabled: 'on', disabled: 'off', priceUnverified: 'price not verified',
     err: {
+      library_disabled: 'Library not enabled on this plan.',
       minors_excluded: 'Minors may be visible (or unknown): the file is excluded.',
       consent_revoked: 'Consent was revoked: that file can no longer be used.',
       media_in_use: 'Cannot delete: an active job uses it. Cancel it or wait until it finishes.',

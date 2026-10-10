@@ -50,7 +50,7 @@ class StudioDB(FakeDB):
             self.tables[t] = []
         for s in self.tables["marketing_settings"]:
             s.update({"ai_generation_enabled": True, "max_upload_bytes": 10_000_000,
-                      "library_storage_limit_bytes": 50_000_000, "monthly_generation_job_limit": 5,
+                      "library_storage_limit_bytes": 1073741824, "monthly_generation_job_limit": 5,   # 1 GiB explícito
                       "monthly_regeneration_limit": 2, "monthly_generated_image_limit": 10,
                       "monthly_generated_video_seconds_limit": 600, "monthly_ai_cost_limit": 1})
         self.storage, self.streamed, self.removed = {}, [], []
@@ -60,9 +60,11 @@ class StudioDB(FakeDB):
             raise RuntimeError("Supabase storage POST -> 409: Duplicate")     # x-upsert=false
         self.storage[(bucket, key)] = (data, mime)
 
-    def storage_stream(self, bucket, key, chunk_size=65536):
+    def storage_stream(self, bucket, key, chunk_size=65536, byte_range=None):
         data = self.storage[(bucket, key)][0]
-        self.streamed.append(key)
+        self.streamed.append((key, byte_range))
+        if byte_range:
+            data = data[byte_range[0]:byte_range[1] + 1]
         return iter([data[i:i + chunk_size] for i in range(0, len(data), chunk_size)])
 
     def storage_remove(self, bucket, key):
@@ -232,8 +234,27 @@ def test_too_large_and_storage_limit(lib, db):
     assert err(up, lib) == "file_too_large"
     db.tables["marketing_settings"][0].update({"max_upload_bytes": 10_000, "library_storage_limit_bytes": 50})
     assert err(up, lib) == "file_too_large"
-    db.tables["marketing_settings"][0]["library_storage_limit_bytes"] = 0
+    db.tables["marketing_settings"][0]["library_storage_limit_bytes"] = len(PNG)
+    up(lib)
+    assert lib.library(jwt(OWNER), T1)["storage"]["state"] == "full"
     assert err(lib.upload_limit, jwt(OWNER), T1) == "limit_library_storage"
+
+
+@pytest.mark.parametrize("limit,used,state", [(0, 0, "disabled"), (None, 10, "unlimited"), (100, 10, "enabled"),
+                                              (100, 100, "full")])
+def test_library_states(limit, used, state):
+    from services import marketing_jobs_domain as jd
+    assert jd.library_state(limit, used) == state
+
+
+def test_library_disabled_by_default_until_operator_sets_quota(lib, db):
+    db.tables["marketing_settings"][0]["library_storage_limit_bytes"] = 0
+    data = lib.library(jwt(OWNER), T1)
+    assert data["storage"]["state"] == "disabled" and data["can_upload"] is False
+    assert err(lib.upload_limit, jwt(OWNER), T1) == "library_disabled"
+    assert err(up, lib) == "library_disabled" and db.storage == {}
+    db.tables["marketing_settings"][0]["library_storage_limit_bytes"] = None        # null = sin límite
+    assert lib.library(jwt(OWNER), T1)["storage"]["state"] == "unlimited" and up(lib)["id"]
 
 
 @pytest.mark.parametrize("name", ["../../etc/passwd.png", "..\\..\\x.png", "/abs/olute.png", "a/../../b.png",
@@ -265,8 +286,8 @@ def test_duplicate_upload_reuses_original(lib, db):
 
 def test_preview_is_streamed_by_backend_only_for_own_tenant(lib, db):
     m = up(lib)
-    chunks, mime = lib.content(jwt(OWNER), T1, m["id"])
-    assert b"".join(chunks) == PNG and mime == "image/png"
+    res = lib.content(jwt(OWNER), T1, m["id"])
+    assert res["status"] == 200 and b"".join(res["chunks"]) == PNG and res["headers"]["Content-Type"] == "image/png"
     # el owner de T1 es manager de T2: aun así no puede ver el archivo de T1 pasando T2
     assert err(lib.content, jwt(OWNER), T2, m["id"]) == "not_found"
     assert err(lib.content, jwt(OTHER), T2, m["id"]) == "not_found"

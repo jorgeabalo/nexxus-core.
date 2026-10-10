@@ -88,31 +88,54 @@ class LibraryService(StudioBase):
             m["privacy_class"] = pv.original_class(m)
             m["usable"] = pv.usable_media(m) is None and m["privacy_class"] != "restricted"
             m["derivatives"] = [x for x in ders if x["media_id"] == m["id"]]
-        st = c.settings
-        return {"items": items, "storage": {"used_bytes": self._used_bytes(c), "limit_bytes": st["library_storage_limit_bytes"],
-                                            "max_upload_bytes": st["max_upload_bytes"]},
+        st, used = c.settings, self._used_bytes(c)
+        state = jd.library_state(st["library_storage_limit_bytes"], used)
+        return {"items": items, "storage": {"used_bytes": used, "limit_bytes": st["library_storage_limit_bytes"],
+                                            "max_upload_bytes": st["max_upload_bytes"], "state": state},
                 "warnings": list(pv.WARNINGS), "enabled": st["marketing_enabled"],
-                "can_upload": bool(st["marketing_enabled"]), "malware_scanner": self.scanner.name,
+                "can_upload": bool(st["marketing_enabled"]) and state in ("enabled", "unlimited"),
+                "generation_enabled": jd.generation_enabled(st), "malware_scanner": self.scanner.name,
                 "anonymization": "simulated"}
 
-    def content(self, jwt: str, tenant_id: str, media_id: str, derivative_id: str = ""):
-        """(trozos, mime) del archivo de ESTE tenant, entregado por el backend (mismo origen)."""
+    def content(self, jwt: str, tenant_id: str, media_id: str, derivative_id: str = "",
+                range_header: Optional[str] = None, head: bool = False) -> Dict[str, Any]:
+        """Vista previa entregada por el backend (mismo origen), con HEAD y Range para poder avanzar y
+        retroceder en el vídeo. CADA petición (también HEAD y cada Range) vuelve a validar sesión, rol,
+        módulo, tenant, estado del archivo, que no esté eliminado y que la ruta sea de este tenant.
+        Devuelve {status, headers, chunks}; chunks es None en HEAD y en 416. Nunca carga el archivo entero."""
         c = self.ctx(jwt, tenant_id)
         m = self._media(c, media_id)
-        path, mime = m["storage_path"], m["mime_type"]
+        if m.get("validation_status") != "passed" or m["processing_status"] in ("rejected", "deleted"):
+            raise PortalError("not_found", 404)
+        path, mime, size = m["storage_path"], m["mime_type"], m.get("byte_size")
         if derivative_id:
-            der = self._one(c, "marketing_media_derivatives", derivative_id, DER_COLS)
+            der = self._one(c, "marketing_media_derivatives", derivative_id, DER_COLS + ",byte_size")
             if der["media_id"] != m["id"] or der["status"] == "deleted" or not der.get("storage_path"):
                 raise PortalError("not_found", 404)
-            path, mime = der["storage_path"], der.get("mime_type") or "application/octet-stream"
+            path, mime, size = der["storage_path"], der.get("mime_type"), der.get("byte_size")
         path = self._path(c, path)
-        if mime not in mf.MIME_TO_EXT:
+        if mime not in mf.MIME_TO_EXT or not size or int(size) <= 0:
             raise PortalError("not_found", 404)
+        size = int(size)
+        base = {"Accept-Ranges": "bytes", "Content-Type": mime}
         try:
-            return self.db.storage_stream(BUCKET, path), mime
+            rng = mf.parse_range(range_header, size)
+        except mf.RangeNotSatisfiable:
+            return {"status": 416, "headers": {**base, "Content-Range": f"bytes */{size}", "Content-Length": "0"},
+                    "chunks": None}
+        start, end = rng if rng else (0, size - 1)
+        headers = {**base, "Content-Length": str(end - start + 1)}
+        if rng:
+            headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+        status = 206 if rng else 200
+        if head:
+            return {"status": status, "headers": headers, "chunks": None}
+        try:
+            chunks = self.db.storage_stream(BUCKET, path, byte_range=(start, end) if rng else None)
         except Exception as e:
             logger.error(f"MARKETING_PREVIEW_ERROR {type(e).__name__}")
             raise PortalError("storage_unavailable", 503)
+        return {"status": status, "headers": headers, "chunks": chunks}
 
     # ------------------------------------------------------------------ subir
     def upload_limit(self, jwt: str, tenant_id: str) -> int:
@@ -122,6 +145,8 @@ class LibraryService(StudioBase):
         limit = min(int(c.settings["max_upload_bytes"] or 0), mf.HARD_MAX_BYTES)
         storage = c.settings["library_storage_limit_bytes"]
         if storage is not None:
+            if int(storage) <= 0:
+                raise PortalError("library_disabled", 403)          # el operador aún no la habilitó
             limit = min(limit, max(int(storage) - self._used_bytes(c), 0))
             if limit <= 0:
                 raise PortalError("limit_library_storage", 409)

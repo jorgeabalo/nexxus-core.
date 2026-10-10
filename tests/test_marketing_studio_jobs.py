@@ -131,6 +131,8 @@ def test_golden_age_defaults_block_generation_but_library_works(db):
     s.update(jd.GEN_DEFAULTS)
     lib = LibraryService(db, now=NOW)
     studio = StudioService(db, now=NOW, router=MarketingAIRouter(env={}))
+    assert err(up, lib) == "library_disabled"                  # ni siquiera la Biblioteca está habilitada
+    s["library_storage_limit_bytes"] = 1073741824              # el operador autoriza 1 GiB (solo Biblioteca)
     m = up(lib)                                             # subir y clasificar no consume generación
     no_people(lib, m)
     assert studio.overview(jwt(OWNER), T1)["generation_enabled"] is False

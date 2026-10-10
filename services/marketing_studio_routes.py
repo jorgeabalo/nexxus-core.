@@ -8,7 +8,7 @@ from typing import Callable
 from urllib.parse import unquote
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 from services.marketing_domain import DomainError
@@ -87,17 +87,21 @@ def build_router(get_db: Callable) -> APIRouter:
         mime = (request.headers.get("content-type") or "").split(";")[0].strip()
         return await call(lambda: lib().upload(jw, tenant_id, name, mime, bytes(buf)))
 
-    @r.get(f"{P}/library/{{media_id}}/content")
+    @r.api_route(f"{P}/library/{{media_id}}/content", methods=["GET", "HEAD"])
     async def content(request: Request, media_id: str, tenant_id: str = "", derivative_id: str = ""):
-        """Vista previa entregada por el backend (mismo origen, en trozos): el navegador crea un blob y
-        la CSP no necesita abrir media-src/img-src a ningún dominio externo."""
-        res = await call(lambda: lib().content(bearer(request), tenant_id, media_id, derivative_id))
-        if not isinstance(res, tuple):
+        """Vista previa entregada por el backend (mismo origen, en trozos, con HEAD y Range): el navegador
+        crea un blob o reproduce con seeking, y la CSP no necesita abrir media-src/img-src a otros dominios."""
+        head = request.method == "HEAD"
+        res = await call(lambda: lib().content(bearer(request), tenant_id, media_id, derivative_id,
+                                               request.headers.get("range"), head))
+        if not isinstance(res, dict):
             return res
-        chunks, mime = res
-        return StreamingResponse(chunks, media_type=mime, headers={
-            "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Disposition": "inline",
-            "Content-Security-Policy": "default-src 'none'; sandbox", "Cross-Origin-Resource-Policy": "same-origin"})
+        headers = {**res["headers"], "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
+                   "Content-Disposition": "inline", "Cross-Origin-Resource-Policy": "same-origin"}
+        mime = headers.pop("Content-Type")
+        if res["chunks"] is None:
+            return Response(status_code=res["status"], headers=headers, media_type=mime)
+        return StreamingResponse(res["chunks"], status_code=res["status"], headers=headers, media_type=mime)
 
     @r.patch(f"{P}/library/{{media_id}}/privacy")
     async def classify(request: Request, media_id: str):

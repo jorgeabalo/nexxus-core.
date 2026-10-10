@@ -233,16 +233,18 @@ Columnas nuevas en `marketing_settings` (las fija el operador; el tenant no pued
 | `monthly_generated_image_limit` (0) | imágenes generadas estimadas | al aprobar | igual |
 | `monthly_generated_video_seconds_limit` (0) | segundos generados o adaptados con IA | al aprobar | igual |
 | `monthly_ai_cost_limit` (0) | coste real, o el estimado si aún no hay real | al aprobar (reserva) | cancelado/fallido cuenta solo su coste real |
-| `library_storage_limit_bytes` (1 GiB) | bytes de originales no eliminados (incluidos archivados) | al subir | eliminar libera espacio; archivar no |
+| `library_storage_limit_bytes` (0) | bytes de originales no eliminados (incluidos archivados) | al subir | 0 = Biblioteca no habilitada; eliminar libera espacio; archivar no |
 | `max_upload_bytes` (50 MB) | tamaño por archivo | al subir | — |
 
 `null` = sin límite; `0` = nada permitido. El mes es el del huso horario del tenant.
 Con `ai_generation_enabled = false`, `monthly_generation_job_limit = 0` o `monthly_ai_cost_limit = 0`
 **no se aprueba ninguna generación, ni real ni simulada** (`generation_disabled`), y la interfaz muestra
 “Generación no habilitada en este plan”. La Biblioteca (subir, clasificar, eliminar) **no consume generación** y
-funciona con su propio límite de almacenamiento (1 GiB por defecto).
-Golden Age no cambia: sus límites de Fase 1 se conservan y los de generación quedan en 0 hasta que el operador
-decida. El tenant nunca puede elevar sus límites: ningún endpoint escribe `marketing_settings` y `authenticated`
+tiene su propio límite de almacenamiento, que fija el operador: `0` (por defecto) = Biblioteca no habilitada,
+`null` = sin límite. Ninguna empresa recibe espacio automáticamente. La interfaz distingue: Biblioteca no
+habilitada (0), habilitada (usado / límite), límite alcanzado y generación no habilitada (límites de IA en 0).
+Golden Age no cambia: sus límites de Fase 1 se conservan y los nuevos quedan en 0. Tras el merge y la migración,
+el operador autorizará por separado su cuota (p. ej. 1 GiB). El tenant nunca puede elevar sus límites: ningún endpoint escribe `marketing_settings` y `authenticated`
 solo tiene SELECT (probado en SQL).
 
 ## 9b. Ejecución asíncrona

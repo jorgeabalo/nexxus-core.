@@ -23,7 +23,7 @@ alter table public.marketing_settings
   add column if not exists ai_generation_enabled boolean not null default false,
   add column if not exists max_upload_bytes bigint not null default 52428800
       check (max_upload_bytes between 0 and 524288000),
-  add column if not exists library_storage_limit_bytes bigint default 1073741824
+  add column if not exists library_storage_limit_bytes bigint default 0
       check (library_storage_limit_bytes is null or library_storage_limit_bytes between 0 and 1099511627776),
   add column if not exists monthly_generation_job_limit integer default 0
       check (monthly_generation_job_limit is null or monthly_generation_job_limit between 0 and 10000),

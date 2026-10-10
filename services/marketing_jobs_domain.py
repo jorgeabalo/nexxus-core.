@@ -49,9 +49,10 @@ PUBLIC_ERRORS = ("provider_disabled", "provider_unavailable", "budget_exceeded",
 # endpoint que escriba marketing_settings y RLS/privilegios lo impiden).
 GEN_LIMIT_KEYS = ("monthly_generation_job_limit", "monthly_regeneration_limit", "monthly_generated_image_limit",
                   "monthly_generated_video_seconds_limit", "monthly_ai_cost_limit")
-# La Biblioteca no consume generación: almacenamiento propio (1 GiB por defecto) y tamaño por archivo.
+# La Biblioteca no consume generación: tiene su propio límite de almacenamiento, que fija el operador.
+# 0 = Biblioteca no habilitada (por defecto: ninguna empresa recibe espacio automáticamente); null = sin límite.
 GEN_DEFAULTS: Dict[str, Any] = {"ai_generation_enabled": False, "max_upload_bytes": 52428800,
-                                "library_storage_limit_bytes": 1073741824, **{k: 0 for k in GEN_LIMIT_KEYS}}
+                                "library_storage_limit_bytes": 0, **{k: 0 for k in GEN_LIMIT_KEYS}}
 
 
 def check_media_transition(current: str, target: str) -> None:
@@ -111,3 +112,12 @@ def generation_enabled(settings: Dict[str, Any]) -> bool:
     """Para la interfaz: ¿el plan permite generar algo (real o simulado)?"""
     return (settings.get("ai_generation_enabled") is True and settings.get("monthly_generation_job_limit", 0) != 0
             and settings.get("monthly_ai_cost_limit", 0) != 0)     # presupuesto 0 = nada, ni siquiera el mock
+
+
+def library_state(limit: Optional[int], used: int) -> str:
+    """Estado de la Biblioteca para la interfaz: disabled (0) · unlimited (null) · full · enabled."""
+    if limit is None:
+        return "unlimited"
+    if int(limit) <= 0:
+        return "disabled"
+    return "full" if used >= int(limit) else "enabled"
