@@ -17,11 +17,12 @@ import * as claudia from './modules/claudia.js';
 import * as payments from './modules/payments.js';
 import * as team from './modules/team.js';
 import * as accounting from './modules/accounting.js';
+import * as marketing from './modules/marketing.js';
 import * as comingSoon from './modules/coming-soon.js';
 
 // Vista de cada módulo. El orden del menú, qué está habilitado y qué ve cada
 // rol se deciden en nav.js (tenants.modules + rol del usuario).
-const VIEWS = { dashboard, members, schedule, claudia, payments, team, accounting };
+const VIEWS = { dashboard, members, schedule, claudia, payments, team, accounting, marketing };
 export const MODULES = CATALOG.map(m => ({ ...m, view: m.live ? VIEWS[m.key] : comingSoon }));
 
 const app = document.getElementById('app');

@@ -6,6 +6,8 @@
 
 // Orden del menú. `key` = ruta (#/key) y clave en tenants.modules; no se cambian.
 // `live` = el módulo ya tiene vista; si no, se muestra como "Próximamente".
+// `roles` = tope de roles que pueden abrirlo aunque tenants.settings.role_modules
+// diga otra cosa (el backend aplica el mismo tope).
 export const CATALOG = [
   { key: 'dashboard', icon: 'dashboard', live: true },
   { key: 'members', icon: 'members', live: true },
@@ -15,7 +17,7 @@ export const CATALOG = [
   { key: 'accounting', icon: 'accounting', live: true },
   { key: 'team', icon: 'user', live: true },
   { key: 'inventory', icon: 'inventory', live: false },
-  { key: 'marketing', icon: 'marketing', live: false },
+  { key: 'marketing', icon: 'marketing', live: true, roles: ['owner', 'manager'] },
   { key: 'claudia', icon: 'claudia', live: true },
   { key: 'settings', icon: 'settings', live: false },
   { key: 'agents', icon: 'agents', live: false, menu: false },   // ruta conservada; fuera del menú
@@ -41,6 +43,8 @@ export function tenantEnabled(tenant, key) {
 }
 
 export function roleAllows(role, key, tenant) {
+  const mod = CATALOG.find(m => m.key === key);
+  if (mod && mod.roles && !mod.roles.includes(role)) return false;
   if (role === 'owner') return true;
   const max = ROLE_MAX[role];
   if (!Array.isArray(max) || !max.includes(key)) return false;

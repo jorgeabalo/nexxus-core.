@@ -385,6 +385,10 @@ async def manager_team_cancel_invite(request: Request, invite_id: str):
 from services.accounting_routes import build_router as _accounting_router
 app.include_router(_accounting_router(lambda: member_portal.db if member_portal else None))
 
+# AITA Marketing (/api/manager/marketing/*): solo owner/manager; Fase 1 no publica en redes.
+from services.marketing_routes import build_router as _marketing_router
+app.include_router(_marketing_router(lambda: member_portal.db if member_portal else None))
+
 
 @app.get("/api/manager/sms-diagnostics")
 async def manager_sms_diagnostics(request: Request):

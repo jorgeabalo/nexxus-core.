@@ -428,3 +428,58 @@ h3.m0 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color
 .sidebar select.input.sb-tenant { width: 100%; min-height: 40px; background: rgba(255,255,255,.08); color: #fff; border-color: rgba(201,162,39,.35); }
 .sidebar .sb-tenant option { color: #0F1B2D; background: #fff; }
 @media (max-width: 720px) { .sb-tenant { display: block; } }
+
+/* ---------- AITA Marketing ---------- */
+.mk-notice { margin-bottom: 8px; }
+.mk-body { display: grid; gap: 20px; }
+.kpis.mk-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.mk-usage { margin-top: 12px; }
+.mk-usage-head { display: flex; justify-content: space-between; font-size: 14px; color: var(--text-2); }
+.mk-meter { height: 8px; border-radius: 4px; background: var(--muted-bg); overflow: hidden; margin-top: 6px; }
+.mk-meter > span { display: block; height: 100%; background: var(--brand-accent); }
+.mk-meter.full > span { background: var(--bad); }
+.badge.mk-s-idea, .badge.mk-s-draft, .badge.mk-s-archived { background: var(--muted-bg); color: var(--text-2); }
+.badge.mk-s-generating, .badge.mk-s-scheduled, .badge.mk-s-publishing { background: var(--info-bg); color: var(--info); }
+.badge.mk-s-review { background: var(--warn-bg); color: var(--warn); }
+.badge.mk-s-approved, .badge.mk-s-published { background: var(--ok-bg); color: var(--ok); }
+.badge.mk-s-rejected, .badge.mk-s-failed { background: var(--bad-bg); color: var(--bad); }
+.mk-checks { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.mk-check { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+.mk-swatch { display: flex; gap: 8px; align-items: center; }
+.mk-color { width: 44px; height: 38px; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+.mk-logo { display: flex; align-items: center; gap: 10px; }
+.mk-logo img { max-height: 48px; max-width: 160px; object-fit: contain; }
+.mk-inherited { background: var(--brand-accent-soft); padding: 8px 12px; border-radius: var(--radius-sm); }
+.mk-detail { display: grid; gap: 12px; }
+.mk-detail-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mk-detail-head h3 { margin: 0; flex: 1 1 auto; }
+.mk-rows { display: grid; gap: 6px; }
+.mk-row { display: grid; grid-template-columns: 160px 1fr; gap: 10px; font-size: 14px; white-space: pre-wrap; }
+.mk-k { color: var(--text-3); }
+.mk-actions { display: grid; gap: 10px; padding: 12px; background: var(--surface-2); border-radius: var(--radius-sm); }
+.mk-history { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 14px; }
+.mk-comment { color: var(--text-2); font-style: italic; }
+.mk-cal .mk-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.mk-wd { font-size: 12px; font-weight: 600; color: var(--text-3); text-transform: uppercase; padding: 4px; }
+.mk-day { min-height: 96px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px; display: flex; flex-direction: column; gap: 4px; background: var(--surface); }
+.mk-day.out { background: var(--surface-2); opacity: .6; }
+.mk-day.today { border-color: var(--brand-accent); box-shadow: inset 0 0 0 1px var(--brand-accent); }
+.mk-num { font-size: 12px; color: var(--text-3); }
+.mk-chip { text-align: left; border: 0; border-left: 3px solid var(--text-3); border-radius: 6px; background: var(--muted-bg); padding: 4px 6px; cursor: pointer; display: grid; gap: 1px; font: inherit; }
+.mk-chip:focus-visible { outline: 2px solid var(--brand-accent); }
+.mk-chip-title { font-size: 12px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mk-chip-meta { font-size: 11px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mk-chip.mk-s-review { border-left-color: var(--warn); }
+.mk-chip.mk-s-approved, .mk-chip.mk-s-published { border-left-color: var(--ok); }
+.mk-chip.mk-s-scheduled, .mk-chip.mk-s-publishing { border-left-color: var(--info); }
+.mk-chip.mk-s-rejected, .mk-chip.mk-s-failed { border-left-color: var(--bad); }
+@media (max-width: 1280px) { .kpis.mk-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 720px) {
+  .kpis.mk-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mk-row { grid-template-columns: 1fr; gap: 2px; }
+  /* En el teléfono el calendario se lee como lista: solo días con contenido. */
+  .mk-cal .mk-grid { grid-template-columns: 1fr; }
+  .mk-wd, .mk-day.empty-day, .mk-day.out { display: none; }
+  .mk-day { min-height: 0; }
+}
+.mk-body .card-head select.input { width: auto; max-width: 220px; }

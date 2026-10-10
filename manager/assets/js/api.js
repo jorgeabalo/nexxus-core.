@@ -236,6 +236,27 @@ export const api = {
     exportReport(tenantId, start, end, format, lang) { return blob(`/api/manager/accounting/export?${qs({ tenant_id: tenantId, start, end, format, lang })}`); },
   },
 
+  // ----- AITA Marketing (backend: solo owner/manager; valida tenant y reglas de estado) -----
+  marketing: {
+    dashboard(tenantId) { return backend('GET', `/api/manager/marketing/dashboard?${qs({ tenant_id: tenantId })}`); },
+    brand(tenantId) { return backend('GET', `/api/manager/marketing/brand?${qs({ tenant_id: tenantId })}`); },
+    saveBrand(tenantId, values) { return backend('PUT', '/api/manager/marketing/brand', { ...values, tenant_id: tenantId }); },
+    campaigns(tenantId) { return backend('GET', `/api/manager/marketing/campaigns?${qs({ tenant_id: tenantId })}`); },
+    createCampaign(tenantId, values) { return backend('POST', '/api/manager/marketing/campaigns', { ...values, tenant_id: tenantId }); },
+    updateCampaign(tenantId, id, values) { return backend('PATCH', `/api/manager/marketing/campaigns/${encodeURIComponent(id)}`, { ...values, tenant_id: tenantId }); },
+    contentList(tenantId, { status, campaignId } = {}) {
+      return backend('GET', `/api/manager/marketing/content?${qs({ tenant_id: tenantId, status, campaign_id: campaignId })}`);
+    },
+    content(tenantId, id) { return backend('GET', `/api/manager/marketing/content/${encodeURIComponent(id)}?${qs({ tenant_id: tenantId })}`); },
+    createContent(tenantId, values) { return backend('POST', '/api/manager/marketing/content', { ...values, tenant_id: tenantId }); },
+    updateContent(tenantId, id, values) { return backend('PATCH', `/api/manager/marketing/content/${encodeURIComponent(id)}`, { ...values, tenant_id: tenantId }); },
+    transition(tenantId, id, to, { comment, scheduledAt } = {}) {
+      return backend('POST', `/api/manager/marketing/content/${encodeURIComponent(id)}/transition`,
+        { tenant_id: tenantId, to, comment: comment || null, scheduled_at: scheduledAt || null });
+    },
+    calendar(tenantId, start, end) { return backend('GET', `/api/manager/marketing/calendar?${qs({ tenant_id: tenantId, start, end })}`); },
+  },
+
   // ----- plan de entrenamiento (RLS: staff del mismo gym) -----
   async trainingPlan(tenantId, memberId) {
     const plan = must(await sb.from('training_plans').select('id, title, notes, updated_at')

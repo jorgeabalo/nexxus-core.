@@ -312,3 +312,61 @@ Tests: `tests/test_accounting.py` y `tests/sql/test_accounting.sql`.
   navegador (nunca el de la empresa anterior).
 * **Estado del sistema:** punto discreto que comprueba `/api/manager/config` cada minuto.
 * Pruebas: `tests/test_nexxus_manager.py` y `node --test tests/js/nav.test.mjs tests/js/i18n.test.mjs`.
+
+# AITA Marketing (Fase 1: fundación)
+
+Módulo nativo del Manager (`#/marketing`, pestañas `overview|content|calendar|campaigns|brand`).
+Solo **owner** y **manager** (tope fijo en `nav.js` → `roles` y en el backend; staff y socios: 403,
+aunque `settings.role_modules` incluya `marketing`). Nexxus es la única interfaz: los motores
+(Postiz, ComfyUI/Wan, Remotion, changedetection.io/SerpBear/Google Places) irán detrás de los
+adaptadores de `services/marketing_providers.py`; hoy todos están **desactivados** y no hacen red.
+
+| Pieza | Archivo |
+|---|---|
+| Migración | `supabase/migrations/20261009120000_aita_marketing.sql` |
+| Reglas de estado y límites (puras) | `services/marketing_domain.py` |
+| Servicio (rol, tenant, transiciones, historial, cola) | `services/marketing.py` |
+| Rutas `/api/manager/marketing/*` | `services/marketing_routes.py` |
+| Adaptadores (Publisher, Creative, ReelRenderer, CompetitorData) | `services/marketing_providers.py` |
+| Vista | `manager/assets/js/modules/marketing*.js` |
+
+**Estados:** idea, draft, generating, review, approved, rejected, scheduled, publishing, published,
+failed, archived. Las transiciones están en `TRANSITIONS` (Python) y en el trigger
+`private.marketing_content_transition` (SQL); un test comprueba que coinciden. Nada pasa a
+`scheduled` sin estar `approved`; `publishing/published/failed/generating` solo los moverá el sistema.
+Rechazar exige observación. Cada cambio queda en `marketing_approval_events` (inmutable).
+
+**Puerta única (`services/marketing_gate.py`, aplicada en `MarketingService.ctx` a todos los endpoints):**
+Marketing solo se abre si `tenants.modules.marketing` es exactamente `true`. Ausente, `null`, `"true"`, `1` o
+`modules` mal formado → `403 marketing_disabled`, sin consultar ninguna tabla `marketing_*` (en producción
+pueden no existir hasta aplicar la migración). Habilitado pero sin tablas → `503 marketing_unavailable`, sin
+detalles; solo ese error (PostgREST `PGRST205`/`42P01`): RLS, permisos o conexión siguen siendo `500`.
+El orden es: sesión válida → rol owner/manager (staff y socios: `403 forbidden`) → módulo → tablas.
+
+**Escritura:** los usuarios solo **leen** por RLS (owner/manager de su tenant); toda escritura pasa por
+el backend (service role) tras validar rol, tenant, reglas y límites.
+
+**Brand Kit:** si no hay perfil guardado, se muestra (sin guardarlo) lo que el tenant activo ya tiene:
+`branding.business_name`/`name`, `color_primary`, `color_accent`, idioma y teléfono. El logo del tenant
+se usa por referencia (misma validación que `safeLogoUrl`); el Brand Kit solo guarda rutas locales
+(`/media/…`), nunca base64, SVG ni URLs externas.
+
+**Programar (Fase 1):** crea una fila por red en `marketing_publications` con `idempotency_key`
+(`<content>:<canal>:<fecha>`) y estado `pending` (proveedor `disabled`). No se publica nada.
+
+**Configuración comercial** (`marketing_settings`, la fija el operador, no el tenant):
+```sql
+-- Activar Marketing para un tenant con su plan (ejemplo: 8 publicaciones al mes)
+update public.marketing_settings
+   set marketing_enabled = true, approval_required = true, plan_code = 'starter',
+       monthly_post_limit = 8, monthly_image_limit = null, monthly_reel_limit = 4,
+       connected_channel_limit = 1, competitor_limit = 3
+ where tenant_id = (select id from public.tenants where slug = 'TENANT_SLUG');
+-- y que aparezca en el menú si el tenant lo tenía apagado
+update public.tenants set modules = jsonb_set(modules, '{marketing}', 'true') where slug = 'TENANT_SLUG';
+```
+`null` = sin límite; `0` = nada permitido. Cuentan las piezas `scheduled/publishing/published` del mes
+(zona horaria del tenant): imágenes = image + carousel; reels = reel + video.
+
+Pruebas: `tests/test_marketing.py`, `tests/test_marketing_http.py`, `node --test tests/js/marketing.test.mjs`
+y `NODE_PATH=… node tests/sql/marketing.mjs` (RLS y triggers en PGlite).
