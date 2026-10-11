@@ -6,12 +6,9 @@ idempotencia; bloqueo por el límite del operador; concurrencia; mocks con costo
 import inspect
 import socket
 import threading
-from types import SimpleNamespace
 
 import pytest
-from fastapi.testclient import TestClient
 
-import main
 from services import marketing_jobs_domain as jd
 from services.marketing_ai_router import MarketingAIRouter, MockProvider, OmniRouteAdapter, DisabledLocalTools
 from services.marketing_library import LibraryService
@@ -177,28 +174,22 @@ def test_client_material_preferred_by_default():
 
 
 def test_http_never_exposes_internal_costs_or_providers(monkeypatch, db):
-    monkeypatch.setattr(main, "member_portal", SimpleNamespace(db=db))
-    c = TestClient(main.app)
+    """La preparación interna (trabajo, costos, proveedor, modelo) nunca sale por la API del tenant."""
+    from marketing_planner_client import plan_body, planner_client
+    db.tables["marketing_settings"][0].update(ai_generation_enabled=True, monthly_ai_cost_limit=20)
+    c = planner_client(monkeypatch, db)
     H = {"Authorization": f"Bearer jwt-{OWNER}"}
-    body = {"tenant_id": T1, "brief": {"objective": "brand", "audience": "general", "style": "calm", "duration_seconds": 15},
-            "real_media_percent": 0, "ai_media_percent": 100, "quality_tier": "draft", "maximum_cost": 1}
-    jid = c.post("/api/manager/marketing/jobs", json=body, headers=H).json()["id"]
-    for action, extra in (("estimate", {}), ("approve", {"confirm": True}), ("process", {})):
-        assert c.post(f"/api/manager/marketing/jobs/{jid}/{action}", json={"tenant_id": T1, **extra}, headers=H).status_code == 200
-    texts = [c.get(f"/api/manager/marketing/jobs/{jid}?tenant_id={T1}", headers=H).text,
-             c.get(f"/api/manager/marketing/jobs?tenant_id={T1}", headers=H).text,
-             c.get(f"/api/manager/marketing/studio?tenant_id={T1}", headers=H).text]
+    out = c.post("/api/manager/marketing/content/plan", json=plan_body(), headers=H)
+    assert out.status_code == 200 and out.json()["content"]["display_status"] == "ready_for_review"
+    job = db.tables["marketing_generation_jobs"][0]
+    assert job["selected_provider"] and job["estimated_cost"] is not None          # existe por dentro
+    cid = out.json()["content"]["id"]
+    texts = [out.text, c.get(f"/api/manager/marketing/content/{cid}?tenant_id={T1}", headers=H).text,
+             c.get(f"/api/manager/marketing/content?tenant_id={T1}", headers=H).text,
+             c.get(f"/api/manager/marketing/dashboard?tenant_id={T1}", headers=H).text]
     for t in texts:
         for leak in ("mock-media-v1", "selected_provider", "selected_model", "provider_job_id", "price_source",
                      "billing_unit", "model_id", "omniroute", "catalog_version", "production_methods", "subtasks",
-                     "unit_price", "margin", "global_budget", "global_aita_budget"):
+                     "unit_price", "margin", "global_budget", "global_aita_budget", "maximum_cost", "estimated_cost",
+                     "reserved_cost", "actual_cost", "worker_id", job["id"]):
             assert leak not in t, leak
-    job = c.get(f"/api/manager/marketing/jobs/{jid}?tenant_id={T1}", headers=H).json()
-    assert set(job["cost"]) == {"currency", "estimated", "reserved", "actual"}
-    assert job["cost"]["reserved"] == 0 and job["cost"]["actual"] == 0
-    assert all(set(e) <= {"id", "action", "from_status", "to_status", "actor_role", "created_at"}
-               for e in job["events"])
-    assert all("storage_path" not in o and "metadata" not in o and "worker_id" not in o for o in job["outputs"])
-    ov = c.get(f"/api/manager/marketing/studio?tenant_id={T1}", headers=H).json()
-    assert set(ov["budget"]) == {"enabled", "currency", "assigned", "used", "reserved", "available", "warning", "available_pct"}
-    assert "providers" not in ov and "catalog" not in ov and "demo_mode" not in ov

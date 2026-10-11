@@ -1,8 +1,8 @@
 // AITA Marketing (Fase 2) — Biblioteca multimedia privada.
 // Subir, ver (URL firmada de corta duración → blob en memoria), clasificar personas,
 // crear versiones anonimizadas (siempre con revisión humana) y archivar. Nunca se borra nada.
-import { el, clear, card, table, openModal, field, select, toast, badge, fmtDateTime } from '../ui.js';
-import { errorNotice } from './marketing-ui.js';
+import { el, clear, card, table, openModal, field, select, toast, badge } from '../ui.js';
+import { errorNotice, when } from './marketing-ui.js';
 import { api } from '../api.js';
 import { s, sErr } from './marketing-studio-i18n.js';
 import { ACCEPT, PEOPLE_POLICIES, ANON_METHODS, privacyClass, fmtBytes } from './marketing-studio-state.js';
@@ -150,7 +150,7 @@ function retentionCell(ctx, m, plan, reload) {
       catch (x) { toast(sErr(x), 'error'); e.target.value = ''; }
     } });
   return el('div', { class: `mk-ret${r.warning ? ' mk-ret-warn' : ''}` },
-    el('span', {}, r.expires_at ? fmtDateTime(r.expires_at) : '—'),
+    el('span', {}, r.expires_at ? when(r.expires_at) : '—'),
     r.warning ? el('span', { class: 'badge mk-s-review' }, s('expiresIn', r.days_left)) : null,
     m.retention_status === 'protected_by_workflow' ? el('span', { class: 'hint' }, s('protectedByWorkflow')) : null,
     sel, el('span', { class: 'hint' }, s('retentionMax', plan ? plan.max_days : 30)));
@@ -171,26 +171,27 @@ export async function libraryView(ctx, reload) {
     } catch (e) { status.textContent = sErr(e); } finally { fileInput.value = ''; }
   });
   const st = data.storage;
-  // Estados distintos: Biblioteca no habilitada (0) · habilitada (usado/límite) · límite alcanzado · sin límite.
+  const size = (b) => fmtBytes(b).replace(/\.0 /, ' ');                 // "1 GB", no "1.0 GB"
+  // Estados: incluida, espacio en preparación (0) · habilitada (usado/límite) · límite alcanzado · sin límite.
   const quota = {
-    disabled: el('p', { class: 'error-box mk-notice', role: 'status', dataset: { state: 'disabled' } },
+    disabled: el('p', { class: 'mk-note', role: 'status', dataset: { state: 'disabled' } },
       el('strong', {}, s('libDisabled')), ' ', s('libDisabledHint')),
     full: el('p', { class: 'error-box mk-notice', role: 'status', dataset: { state: 'full' } },
       el('strong', {}, s('libFull')), ` ${fmtBytes(st.used_bytes)} / ${fmtBytes(st.limit_bytes)}`),
-    enabled: el('p', { class: 'hint', dataset: { state: 'enabled' } },
-      `${s('storage')}: ${fmtBytes(st.used_bytes)} / ${fmtBytes(st.limit_bytes)}`),
+    enabled: el('p', { class: 'hint', dataset: { state: 'enabled' } }, s('libUsage', size(st.used_bytes), size(st.limit_bytes))),
     unlimited: el('p', { class: 'hint', dataset: { state: 'unlimited' } }, `${s('storage')}: ${fmtBytes(st.used_bytes)} · ${s('noLimit')}`),
   }[st.state];
   // Desglose: un archivo vencido es invisible e irrecuperable, pero ocupa espacio hasta la eliminación física.
   const parts = st.state === 'disabled' && !st.used_bytes ? null : el('p', { class: 'hint', dataset: { storage: 'breakdown' } },
-    [`${s('stActive')}: ${fmtBytes(st.active_bytes || 0)}`, `${s('stExpired')}: ${fmtBytes(st.expired_pending_bytes || 0)}`,
-      `${s('stReserved')}: ${fmtBytes(st.reserved_bytes || 0)}`,
-      `${s('stAvailable')}: ${st.available_bytes == null ? s('noLimit') : fmtBytes(st.available_bytes)}`].join(' · '));
+    [`${s('stActive')}: ${size(st.active_bytes || 0)}`, `${s('stExpired')}: ${size(st.expired_pending_bytes || 0)}`,
+      `${s('stReserved')}: ${size(st.reserved_bytes || 0)}`,
+      `${s('stAvailable')}: ${st.available_bytes == null ? s('noLimit') : size(st.available_bytes)}`].join(' · '));
   const expiredHint = st.expired_pending_bytes > 0
     ? el('p', { class: 'mk-note', dataset: { storage: 'expired-hint' } }, s('stExpiredHint')) : null;
   const head = el('div', { class: 'mk-lib-head' },
     el('p', {}, s('libIntro')),
     quota, parts, expiredHint,
+    el('p', { class: 'hint', dataset: { storage: 'temporary' } }, s('libTemporary', data.retention?.default_days || 30)),
     st.state === 'disabled' ? null : el('p', { class: 'hint' }, `${s('formats')} ${fmtBytes(st.max_upload_bytes)}.`),
     data.generation_enabled ? null : el('p', { class: 'hint', dataset: { state: 'generation-off' } }, `${s('genNotEnabled')}. ${s('libWorksAnyway')}`),
     el('p', { class: 'mk-note' }, s('scanNote')),
@@ -209,7 +210,7 @@ export async function libraryView(ctx, reload) {
     { label: s('status'), render: m => badge(m.processing_status, s(`ms_${m.processing_status}`)) },
     { label: s('scan'), render: m => el('span', { class: 'mk-scan' }, m.validation_status === 'passed' ? `${s('formatOk')} · ` : '',
       s(`scan_${m.malware_scan_status || 'not_scanned'}`)) },
-    { label: s('created_at'), render: m => fmtDateTime(m.created_at) },
+    { label: s('created_at'), render: m => when(m.created_at) },
     { label: s('expires'), render: m => retentionCell(ctx, m, data.retention, reload) },
     { label: s('actions'), render: m => el('div', { class: 'btn-row mk-lib-actions' },
       el('button', { class: 'btn btn-sm', type: 'button', onclick: () => showPreview(ctx, m) }, s('preview')),

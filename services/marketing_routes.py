@@ -13,8 +13,12 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
-from services.marketing import MarketingService
+from services.marketing_plan import MarketingPlanService
 from services.member_portal import PortalError
+
+# Alias estable para los tests y las integraciones que sustituyen el servicio
+# al construir el router. La implementación activa incluye el plan público.
+MarketingService = MarketingPlanService
 
 logger = logging.getLogger(__name__)
 P = "/api/manager/marketing"
@@ -23,7 +27,7 @@ P = "/api/manager/marketing"
 def build_router(get_db: Callable) -> APIRouter:
     r = APIRouter()
 
-    def svc() -> MarketingService:
+    def svc() -> MarketingPlanService:
         db = get_db()
         if db is None:
             raise PortalError("portal_not_configured", 503)
@@ -55,6 +59,32 @@ def build_router(get_db: Callable) -> APIRouter:
     @r.get(f"{P}/dashboard")
     async def dashboard(request: Request, tenant_id: str = ""):
         return await call(lambda: svc().dashboard(bearer(request), tenant_id))
+
+    # ---------- ampliaciones de publicaciones (sin cobro real: se registran para la factura) ----------
+    @r.post(f"{P}/publication-addons/request")
+    async def request_publication_addon(request: Request):
+        b = await body(request)
+        return await call(lambda: svc().request_addon(bearer(request), tid(b), b))
+
+    @r.post(f"{P}/publication-addons/authorize")
+    async def authorize_publication_addon(request: Request):
+        b = await body(request)
+        return await call(lambda: svc().authorize_addon(bearer(request), tid(b), b))
+
+    @r.post(f"{P}/publication-addons/{{addon_id}}/{{action}}")
+    async def publication_addon_action(request: Request, addon_id: str, action: str):
+        b = await body(request)
+        actions = {"approve": lambda s: s.decide_addon(bearer(request), tid(b), addon_id, True, b),
+                   "decline": lambda s: s.decide_addon(bearer(request), tid(b), addon_id, False, b),
+                   "cancel": lambda s: s.cancel_addon(bearer(request), tid(b), addon_id, b)}
+        if action not in actions:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        return await call(lambda: actions[action](svc()))
+
+    @r.put(f"{P}/publication-addons/permissions")
+    async def publication_addon_permissions(request: Request):
+        b = await body(request)
+        return await call(lambda: svc().set_purchase_permission(bearer(request), tid(b), b))
 
     # ---------- Brand Kit ----------
     @r.get(f"{P}/brand")
@@ -91,6 +121,17 @@ def build_router(get_db: Callable) -> APIRouter:
         b = await body(request)
         return await call(lambda: svc().create_content(bearer(request), tid(b), b))
 
+    @r.post(f"{P}/content/plan")
+    async def plan_content(request: Request):
+        b = await body(request)
+        key = request.headers.get("idempotency-key", "")                # obligatoria (doble clic, reintentos)
+        return await call(lambda: svc().plan_content(bearer(request), tid(b), b, key))
+
+    @r.post(f"{P}/content/{{content_id}}/retry")
+    async def retry_content(request: Request, content_id: str):
+        b = await body(request)
+        return await call(lambda: svc().retry_content(bearer(request), tid(b), content_id))
+
     @r.get(f"{P}/content/{{content_id}}")
     async def content(request: Request, content_id: str, tenant_id: str = ""):
         return await call(lambda: svc().content(bearer(request), tenant_id, content_id))
@@ -105,6 +146,31 @@ def build_router(get_db: Callable) -> APIRouter:
         b = await body(request)
         return await call(lambda: svc().transition(bearer(request), tid(b), content_id, str(b.get("to") or ""),
                                                    b.get("comment"), b.get("scheduled_at")))
+
+    # ---------- modo de control: revisar antes de publicar / piloto automático ----------
+    @r.get(f"{P}/autopilot")
+    async def autopilot(request: Request, tenant_id: str = ""):
+        return await call(lambda: svc().autopilot().status(bearer(request), tenant_id))
+
+    @r.post(f"{P}/autopilot/preview")
+    async def autopilot_preview(request: Request):
+        b = await body(request)
+        return await call(lambda: svc().autopilot().preview(bearer(request), tid(b), b))
+
+    @r.post(f"{P}/autopilot/activate")
+    async def autopilot_activate(request: Request):
+        b = await body(request)
+        return await call(lambda: svc().autopilot().activate(bearer(request), tid(b), b))
+
+    @r.post(f"{P}/autopilot/pause")
+    async def autopilot_pause(request: Request):
+        b = await body(request)
+        return await call(lambda: svc().autopilot().pause(bearer(request), tid(b)))
+
+    @r.put(f"{P}/autopilot/permissions")
+    async def autopilot_permissions(request: Request):
+        b = await body(request)
+        return await call(lambda: svc().autopilot().set_permission(bearer(request), tid(b), b))
 
     # ---------- calendario ----------
     @r.get(f"{P}/calendar")

@@ -28,6 +28,7 @@ from services.marketing_mix import confirm_mix, plan_scenes, suggest_mix, valida
 from services.marketing_reel_plan import estimate, validate_brief
 from services.marketing_studio_base import StudioBase
 from services.marketing_worker import JobRunner, WorkerError, all_mock, recheck_inputs
+from services.marketing_publication_plan import summary as publication_summary
 from services.member_portal import PortalError
 
 logger = logging.getLogger(__name__)
@@ -38,7 +39,23 @@ JOB_COLS = ("id,tenant_id,content_id,created_by,task_type,status,real_media_perc
 
 
 INTERNAL_JOB_KEYS = ("selected_provider", "selected_model", "provider_job_id", "router_strategy", "usage",
-                     "lease_owner", "lease_expires_at", "heartbeat_at")
+                     "lease_owner", "lease_expires_at", "heartbeat_at", "attempts", "maximum_cost", "estimated_cost",
+                     "reserved_cost", "actual_cost", "currency", "real_media_percent", "ai_media_percent")
+PLAN_INTERNAL = ("real_media_percent", "ai_media_percent", "approx_real_percent")
+
+
+def creation_mode(j: Dict[str, Any]) -> str:
+    """Las dos modalidades públicas. Trabajos anteriores: con material real = Biblioteca + IA."""
+    mode = ((j.get("request_metadata") or {}).get("creation_mode"))
+    if mode in ("library_ai", "fully_ai"):
+        return mode
+    return "library_ai" if int(j.get("real_media_percent") or 0) > 0 else "fully_ai"
+
+
+def public_overview(ov: Dict[str, Any]) -> Dict[str, Any]:
+    """El tenant solo ve si puede generar y su plan de publicaciones: ni presupuesto de IA en USD, ni costos,
+    ni límites técnicos por formato, ni porcentajes real/IA."""
+    return {"generation_enabled": ov.get("generation_enabled") is True, "publication_plan": ov.get("publication_plan")}
 
 
 def public_job(j: Dict[str, Any]) -> Dict[str, Any]:
@@ -46,13 +63,14 @@ def public_job(j: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(j, dict):
         return j
     out = {k: v for k, v in j.items() if k not in INTERNAL_JOB_KEYS}
-    out["cost"] = {"currency": j.get("currency") or "USD", "estimated": j.get("estimated_cost"),
-                   "reserved": j.get("reserved_cost"), "actual": j.get("actual_cost")}
-    meta = dict(out.get("request_metadata") or {})
+    out["creation_mode"] = creation_mode(j)
+    meta = {k: v for k, v in (out.get("request_metadata") or {}).items() if not k.startswith("mix_")}
     est = meta.get("estimate")
     if isinstance(est, dict):
-        meta["estimate"] = {"estimated_cost": est.get("estimated_cost"), "currency": est.get("currency"),
-                            "plan": est.get("plan"), "full_ai": est.get("full_ai"),
+        plan = est.get("plan")
+        if isinstance(plan, dict):
+            plan = {k: v for k, v in plan.items() if k not in PLAN_INTERNAL}
+        meta["estimate"] = {"plan": plan, "full_ai": est.get("full_ai"),
                             "generated_images": est.get("generated_images"),
                             "generated_video_seconds": est.get("generated_video_seconds")}
     out["request_metadata"] = meta
@@ -136,6 +154,7 @@ class StudioService(StudioBase):
                 "budget": budget,
                 "generation_enabled": enabled,
                 "usage": usage, "suggestion": suggest_mix(len(media), usable),
+                "publication_plan": publication_summary(self.db, c, self._usage(c)["posts"]),
                 "presets": [list(p) for p in ((100, 0), (75, 25), (50, 50), (25, 75), (0, 100))]}
 
     def preview_mix(self, jwt: str, tenant_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
@@ -170,12 +189,22 @@ class StudioService(StudioBase):
         c = self.ctx(jwt, tenant_id)
         self._writable(c)
         brief = validate_brief(body.get("brief") or {})
-        mix = confirm_mix(c.role, body.get("real_media_percent"), body.get("ai_media_percent"))
+        mode = body.get("creation_mode")
+        if mode == "fully_ai" and (body.get("media_ids") or body.get("derivative_ids")):
+            raise PortalError("fully_ai_uses_no_media", 400)          # todo con IA: ningún archivo real
+        if mode == "library_ai":
+            mix, adapt_real = confirm_mix(c.role, 100, 0), True
+        elif mode == "fully_ai":
+            mix, adapt_real = confirm_mix(c.role, 0, 100), False
+        else:                                                           # compatibilidad con trabajos anteriores
+            mix = confirm_mix(c.role, body.get("real_media_percent"), body.get("ai_media_percent"))
+            adapt_real = body.get("adapt_real") is True
         quality = body.get("quality_tier") if body.get("quality_tier") in jd.QUALITY_TIERS else None
         if not quality:
             raise PortalError("invalid_quality_tier", 400)
         try:
-            max_cost = round(float(body.get("maximum_cost")), 2)
+            raw_max = body.get("maximum_cost")
+            max_cost = round(float(jd.ai_budget(c.settings) if raw_max is None else raw_max), 2)
         except (TypeError, ValueError):
             raise PortalError("invalid_maximum_cost", 400)
         if not (0 <= max_cost <= 10000):
@@ -208,7 +237,8 @@ class StudioService(StudioBase):
             "tenant_id": c.tenant_id, "created_by": c.user["id"], "task_type": "reel", "status": "draft",
             **mix, "quality_tier": quality, "people_policy": people, "maximum_cost": max_cost, "currency":
             self.router.catalog.currency, "idempotency_key": key, "regeneration_of": regen,
-            "request_metadata": {"brief": brief, "scenes": scenes, "adapt_real": body.get("adapt_real") is True,
+            "request_metadata": {"brief": brief, "scenes": scenes, "adapt_real": adapt_real,
+                                 "creation_mode": mode if mode in ("library_ai", "fully_ai") else None,
                                  "privacy_class": inputs["privacy_class"], "real_kinds": inputs["kinds"],
                                  "malware_clean": inputs["malware_clean"],
                                  "mix_confirmed_by": c.user["id"], "mix_confirmed_at": c.now.isoformat()}})

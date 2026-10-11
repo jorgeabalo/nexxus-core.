@@ -36,7 +36,7 @@ futuro, un transporte de OmniRoute inyectado explícitamente.
    estructura (truncados, polyglot, metadatos imposibles); construye la ruta; sube con `x-upsert: false`;
    guarda checksum, quién y cuándo, `validation_status = passed` y `malware_scan_status = unavailable`.
 2. **Clasificar** personas y menores: `contains_people`, `contains_minors` (sí/no/no sé) + `people_policy` + `consent_status`.
-3. **Elegir mezcla** real/IA (preset o personalizada en pasos de 5 %), ver la aproximación en escenas/segundos.
+3. **Elegir uno de dos modos**: usar la Biblioteca y mejorar el material con IA, o generar todo con IA.
 4. **Guion** (gancho, mensaje, CTA) con filtro de afirmaciones prohibidas.
 5. **Estimar**: el router elige modelo por subtarea → `awaiting_generation_approval` con coste estimado.
 6. **Aprobar generación** (casilla de confirmación explícita) → se comprueban límites del mes → `queued`.
@@ -323,23 +323,18 @@ de 80 USD por tenant (voz, IA de Claudia, infraestructura…), que irá en otro 
 * Un Reel 100 % IA se marca (`full_ai`), muestra su costo estimado y nunca se inicia sin aprobación explícita.
   Prioridad económica: material del cliente → local → plantillas/FFmpeg → modelos pequeños → imagen →
   imagen-a-vídeo → texto-a-vídeo como último recurso; la sugerencia por defecto usa el material del cliente.
-* Interfaz: "Presupuesto de generación con IA" / "AI generation budget". Deshabilitado: "La generación con IA no
-  está habilitada en tu plan." Habilitado: Disponible este mes · Utilizado · Reservado · Disponible (+ avisos 25/10/0 %).
-  La API devuelve solo `{enabled, currency, assigned, used, reserved, available, warning, available_pct}` (o
-  `{enabled: false}`); por trabajo, costo estimado, reservado y real (categoría `ai_generation`). Proveedor, modelo,
-  estrategia, catálogo y precios unitarios son **internos**: se guardan, pero la API no los devuelve.
+* La interfaz del tenant no muestra presupuestos técnicos, costos de IA, proveedores, modelos, estrategias,
+  catálogos ni precios unitarios. Solo muestra su cantidad mensual de publicaciones y el uso del plan.
 
-## 5. Mezcla real / IA
+## 5. Dos modos de creación
 
-* Presets 100/0, 75/25, 50/50, 25/75, 0/100 y personalizado en pasos de 5 % (el dominio admite cualquier
-  entero 0–100 múltiplo de 5). Real + IA = 100 en Python y en un `check` de la tabla.
-* Conversión: escenas reales = reparto por **resto mayor** de `escenas × %real / 100`; los segundos se reparten
-  igual entre escenas (el total cuadra exacto). Se muestra como **aproximación** antes de generar.
+* **Biblioteca + IA:** usa únicamente archivos elegidos por el owner/manager, conserva el original y crea una
+  adaptación separada conforme al Brand Kit.
+* **Todo con IA:** no usa fotos ni vídeos reales de la Biblioteca.
+* Internamente se conservan los porcentajes 100/0 y 0/100 para compatibilidad, auditoría y reglas de la base.
 * Origen de cada escena: `client_original`, `client_ai_adapted` (si se marca “adaptar con IA”) o `ai_generated`.
   La interfaz muestra escenas y segundos por origen.
-* La IA puede **sugerir** una mezcla (marcada como sugerencia, nunca se aplica sola). Solo owner/manager confirman;
-  la mezcla confirmada se guarda en el trabajo y queda **congelada al aprobar** (trigger). Una regeneración que la
-  cambia exige `mix_reconfirmed: true`.
+* Solo owner/manager pueden elegir el modo y aprobar. El modo queda congelado al aprobar.
 
 Adaptaciones permitidas: iluminación, encuadre 9:16, fondo/decoración, transiciones, textos y CTA (composición
 determinista). No permitidas: resultados físicos falsos, alterar cuerpos/identidad/edad/etnia, testimonios

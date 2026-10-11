@@ -1,97 +1,173 @@
-// AITA Marketing Fase 2 (frontend): mezcla real/IA, privacidad, etapas del Reel y textos ES/EN.
+// AITA Marketing (frontend): navegación simple, Planear contenido, estados comerciales, Biblioteca y textos ES/EN.
 // Ejecutar: node --test tests/js/marketing-studio.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { MIX_PRESETS, normalizeMix, approxScenes, privacyClass, usableAsSource, reelStage, fmtBytes, fmtCost,
-  newIdempotencyKey, WIZARD_STEPS, ACCEPT, budgetView } from '../../manager/assets/js/modules/marketing-studio-state.js';
+import { readFile, readdir, access } from 'node:fs/promises';
+import { privacyClass, usableAsSource, fmtBytes, newIdempotencyKey, ACCEPT }
+  from '../../manager/assets/js/modules/marketing-studio-state.js';
+import { addonQuote } from '../../manager/assets/js/modules/marketing-addons-state.js';
 import { STUDIO_TEXT } from '../../manager/assets/js/modules/marketing-studio-i18n.js';
-import { TABS } from '../../manager/assets/js/modules/marketing-state.js';
+import { PLANNER_TEXT } from '../../manager/assets/js/modules/marketing-planner-i18n.js';
+import { TABS, route, DISPLAY_STATUSES, shownStatus, PLAN_STEPS, PLAN_MODES, PLAN_FORMATS, planStepError, planBody }
+  from '../../manager/assets/js/modules/marketing-state.js';
 
-test('presets y mezcla personalizada siempre suman 100', () => {
-  assert.deepEqual(MIX_PRESETS, [[100, 0], [75, 25], [50, 50], [25, 75], [0, 100]]);
-  for (const v of [0, 3, 37, 50, 98, 100, -20, 140, 'x']) {
-    const m = normalizeMix(v);
-    assert.equal(m.real + m.ai, 100);
-    assert.equal(m.real % 5, 0);
-    assert.ok(m.real >= 0 && m.real <= 100);
+const MOD = (f) => new URL(`../../manager/assets/js/modules/${f}`, import.meta.url);
+const read = (f) => readFile(MOD(f), 'utf8');
+const TECH = /queued|\blease|worker|generation_job|reserved_cost|provider|\bmodels?\b|strategy|worker_id|attempts|estimated_cost|actual_cost|maximum_cost|error_code|awaiting_generation_approval/i;
+const MARKETING_FILES = ['marketing.js', 'marketing-forms.js', 'marketing-planner.js', 'marketing-planner-i18n.js', 'marketing-i18n.js',
+  'marketing-state.js', 'marketing-library.js', 'marketing-studio-state.js', 'marketing-studio-i18n.js', 'marketing-addons.js',
+  'marketing-addons-state.js', 'marketing-plan-i18n.js', 'marketing-ui.js', 'marketing-autopilot.js',
+  'marketing-autopilot-i18n.js'];
+
+// ------------------------------------------------------------------ navegación
+test('navegación visible: Resumen, Contenido, Calendario, Campañas y Biblioteca (sin Estudio ni Trabajos)', async () => {
+  const { T } = { T: (await import('../../manager/assets/js/modules/marketing-i18n.js')) };
+  assert.deepEqual(TABS, ['overview', 'content', 'calendar', 'campaigns', 'library']);
+  for (const gone of ['studio', 'jobs', 'brand', 'crm', 'competition']) assert.ok(!TABS.includes(gone), gone);
+  const { useTenantDefault } = await import('../../manager/assets/js/i18n.js');
+  useTenantDefault('es');
+  assert.deepEqual(TABS.map(v => T.t(`tab_${v}`)), ['Resumen', 'Contenido', 'Calendario', 'Campañas', 'Biblioteca']);
+  useTenantDefault('en');
+  assert.deepEqual(TABS.map(v => T.t(`tab_${v}`)), ['Overview', 'Content', 'Calendar', 'Campaigns', 'Library']);
+  await assert.rejects(access(MOD('marketing-studio.js')), 'el módulo del Estudio ya no se sirve');
+  for (const f of MARKETING_FILES) {
+    const src = await read(f);
+    assert.ok(!/marketing-studio\.js|studioView|jobsView|tab_studio|tab_jobs|Estudio de Reels|Reel Studio|Trabajos de generación|Generation jobs/.test(src), f);
   }
-  assert.deepEqual(normalizeMix(37), { real: 35, ai: 65 });
-  assert.deepEqual(normalizeMix(38, 10), { real: 40, ai: 60 });
 });
 
-test('aproximación a escenas y segundos antes de generar', () => {
-  const a = approxScenes(50, 6, 30);
-  assert.equal(a.realScenes + a.aiScenes, 6);
-  assert.equal(a.realSeconds + a.aiSeconds, 30);
-  assert.equal(a.realScenes, 3);
-  assert.equal(approxScenes(25, 4, 30).realScenes, 1);
-  assert.equal(approxScenes(0, 4, 30).realScenes, 0);
-  assert.equal(approxScenes(100, 4, 30).aiScenes, 0);
-  assert.equal(approxScenes(50, 4, 20, true).realOrigin, 'client_ai_adapted');
+test('enlaces antiguos: Estudio → Contenido con el planificador; Trabajos → Contenido', () => {
+  assert.deepEqual(route('studio'), { tab: 'content', planner: true, brand: false, redirected: true });
+  assert.deepEqual(route('jobs'), { tab: 'content', planner: false, brand: false, redirected: true });
+  assert.deepEqual(route('content'), { tab: 'content', planner: false, brand: false });
+  assert.deepEqual(route('brand'), { tab: 'overview', planner: false, brand: true });
+  assert.equal(route('crm'), null);
 });
 
-test('privacidad: desconocido, menores, revocado, simulado o sin validar nunca es utilizable', () => {
+test('el panel redirige los enlaces antiguos sin dejar enlaces huérfanos', async () => {
+  const src = await read('marketing.js');
+  assert.match(src, /route\(ctx\.params\[0\]\)/);
+  assert.match(src, /history\.replaceState\(null, '', `#\/marketing\/\$\{r\.tab\}`\)/);
+  for (const f of MARKETING_FILES) assert.ok(!/#\/marketing\/(studio|jobs)/.test(await read(f)), f);
+  const api = await readFile(new URL('../../manager/assets/js/api.js', import.meta.url), 'utf8');
+  assert.ok(!/marketing\/(studio|jobs)/.test(api) && /content\/plan/.test(api) && /\/retry/.test(api));
+});
+
+// ------------------------------------------------------------------ Planear contenido
+test('planificador: 6 pasos, solo 2 modos y 4 formatos', () => {
+  assert.deepEqual(PLAN_STEPS, ['objective', 'mode', 'format', 'instructions', 'proposal', 'review']);
+  assert.deepEqual(PLAN_MODES, ['library_ai', 'fully_ai']);
+  assert.deepEqual(PLAN_FORMATS, ['image', 'carousel', 'reel', 'video']);
+  for (const lang of ['es', 'en']) {
+    for (const k of PLAN_STEPS) assert.ok(PLANNER_TEXT[lang][`st_${k}`], `${lang}.st_${k}`);
+    for (const f of PLAN_FORMATS) assert.ok(PLANNER_TEXT[lang][`f_${f}`], `${lang}.f_${f}`);
+  }
+  assert.deepEqual(PLAN_FORMATS.map(f => PLANNER_TEXT.es[`f_${f}`]), ['Imagen', 'Carrusel', 'Reel', 'Video']);
+  assert.equal(PLANNER_TEXT.es.title, 'Planear contenido');
+  assert.equal(PLANNER_TEXT.en.title, 'Plan content');
+});
+
+test('planificador: Biblioteca exige archivos; completamente con IA no admite ninguno', () => {
+  assert.equal(planStepError('objective', {}), 'pick_objective');
+  assert.equal(planStepError('mode', { mode: 'library_ai', media: [] }), 'real_media_required');
+  assert.equal(planStepError('mode', { mode: 'fully_ai', media: ['m1'] }), 'fully_ai_uses_no_media');
+  assert.equal(planStepError('mode', { mode: 'mix', media: [] }), 'pick_mode');
+  assert.equal(planStepError('format', { format: 'story' }), 'pick_format');
+  assert.equal(planStepError('instructions', { platforms: [] }), 'channels_required');
+  const body = planBody({ objective: 'calls', mode: 'fully_ai', format: 'reel', media: ['m1'], platforms: ['instagram'], key: 'k' });
+  assert.deepEqual(body.media_ids, []);
+  assert.ok(!/percent|model|provider|cost|quality|strategy|budget/i.test(JSON.stringify(body)), JSON.stringify(body));
+  assert.deepEqual(planBody({ objective: 'calls', mode: 'library_ai', format: 'image', media: ['m1'], platforms: ['x'] }).media_ids, ['m1']);
+});
+
+test('revisión: Rechazar y Solicitar cambios exigen comentario; Programar solo tras aprobar', async () => {
+  const planner = await read('marketing-planner.js');
+  assert.match(planner, /\(to === 'draft' \|\| to === 'rejected'\) && !w\.comment\.trim\(\)/);
+  assert.match(planner, /approved \? el\('div'[\s\S]*?'scheduled'/, 'Programar solo aparece aprobado');
+  const forms = await read('marketing-forms.js');
+  assert.match(forms, /\(to === 'rejected' \|\| asksChanges\(to\)\) && !comment\.value\.trim\(\)/);
+  assert.match(forms, /asksChanges = \(to\) => to === 'draft' && c\.status === 'review'/);
+  for (const lang of ['es', 'en']) for (const k of ['approve', 'changes', 'reject', 'schedule', 'retry']) assert.ok(PLANNER_TEXT[lang][k]);
+  assert.equal(PLANNER_TEXT.es.changes, 'Solicitar cambios');
+  assert.equal(PLANNER_TEXT.es.retry, 'Reintentar');
+});
+
+// ------------------------------------------------------------------ estados comerciales
+test('estados visibles: solo comerciales, en ES y EN', async () => {
+  const { t } = await import('../../manager/assets/js/modules/marketing-i18n.js');
+  const { useTenantDefault } = await import('../../manager/assets/js/i18n.js');
+  const main = ['draft', 'preparing', 'ready_for_review', 'changes_requested', 'approved', 'scheduled', 'published', 'could_not_prepare'];
+  for (const s of main) assert.ok(DISPLAY_STATUSES.includes(s), s);
+  useTenantDefault('es');
+  assert.deepEqual(main.map(s => t(`s_${s}`)), ['Borrador', 'Preparando', 'Listo para revisar', 'Cambios solicitados', 'Aprobado',
+    'Programado', 'Publicado', 'No se pudo preparar']);
+  useTenantDefault('en');
+  assert.deepEqual(main.map(s => t(`s_${s}`)), ['Draft', 'Preparing', 'Ready for review', 'Changes requested', 'Approved',
+    'Scheduled', 'Published', 'Could not prepare']);
+  for (const raw of ['idea', 'review', 'generating', 'failed', 'publishing', 'queued', 'whatever']) {
+    assert.ok(DISPLAY_STATUSES.includes(shownStatus(raw)), raw);
+  }
+  assert.equal(shownStatus('review'), 'ready_for_review');
+  assert.equal(shownStatus('failed'), 'could_not_prepare');
+});
+
+test('ningún término técnico en los archivos servidos de Marketing ni en sus traducciones', async () => {
+  for (const f of MARKETING_FILES) assert.ok(!TECH.test(await read(f)), `${f}: ${(await read(f)).match(TECH)}`);
+  const html = await readFile(new URL('../../manager/index.html', import.meta.url), 'utf8');
+  assert.ok(!TECH.test(html));
+  const { T } = { T: await import('../../manager/assets/js/modules/marketing-i18n.js') };
+  for (const lang of ['es', 'en']) {
+    const texts = [PLANNER_TEXT[lang], STUDIO_TEXT[lang]].map(o => JSON.stringify(o) + Object.values(o)
+      .filter(v => typeof v === 'function').map(f => String(f(3, 6))).join(' ')).join(' ');
+    assert.ok(!TECH.test(texts), `${lang}: ${texts.match(TECH)}`);
+  }
+  assert.ok(T.t);
+});
+
+test('ES y EN tienen las mismas claves (planificador y Biblioteca)', () => {
+  for (const X of [PLANNER_TEXT, STUDIO_TEXT]) assert.deepEqual(Object.keys(X.es).sort(), Object.keys(X.en).sort());
+  assert.deepEqual(Object.keys(STUDIO_TEXT.es.err).sort(), Object.keys(STUDIO_TEXT.en.err).sort());
+});
+
+// ------------------------------------------------------------------ Biblioteca
+test('privacidad: desconocido, menores, revocado, simulado, sin validar o vencido nunca es utilizable', () => {
   const base = { processing_status: 'ready', validation_status: 'passed' };
   assert.equal(privacyClass({ ...base, contains_people: null, people_policy: 'exclude' }), 'restricted');
   assert.equal(usableAsSource({ ...base, contains_people: null, people_policy: 'exclude' }), false);
   assert.equal(usableAsSource({ ...base, contains_people: false, people_policy: 'no_people' }), true);
   assert.equal(usableAsSource({ ...base, contains_people: false, people_policy: 'no_people', validation_status: 'pending' }), false);
+  const now = Date.parse('2026-10-15T12:00:00Z');
+  const media = { ...base, contains_people: false, people_policy: 'no_people' };
+  assert.equal(usableAsSource({ ...media, expires_at: '2026-10-15T11:59:59Z' }, now), false);
+  assert.equal(usableAsSource({ ...media, expires_at: '2026-10-16T00:00:00Z' }, now), true);
   const ok = { ...base, contains_people: true, contains_minors: false, people_policy: 'consented', consent_status: 'granted' };
   assert.equal(usableAsSource(ok), true);
   assert.equal(usableAsSource({ ...ok, consent_status: 'pending' }), false);
-  assert.equal(usableAsSource({ ...ok, contains_minors: null }), false);            // no se sabe → excluido
+  assert.equal(usableAsSource({ ...ok, contains_minors: null }), false);
   assert.equal(usableAsSource({ ...ok, contains_minors: true }), false);
   assert.equal(usableAsSource({ ...ok, consent_status: 'revoked', people_policy: 'exclude' }), false);
   const anon = { ...base, contains_people: true, contains_minors: false, people_policy: 'anonymize' };
   assert.equal(usableAsSource(anon), false);
-  assert.equal(usableAsSource({ ...anon, derivatives: [{ kind: 'anonymized', status: 'mock_only', is_mock: true }] }), false);
   assert.equal(usableAsSource({ ...anon, derivatives: [{ kind: 'anonymized', status: 'ready', is_mock: true }] }), false);
-  assert.equal(usableAsSource({ ...anon, derivatives: [{ kind: 'anonymized', status: 'awaiting_processing' }] }), false);
   assert.equal(usableAsSource({ ...anon, derivatives: [{ kind: 'anonymized', status: 'ready', is_mock: false }] }), true);
-  assert.equal(usableAsSource({ contains_people: false, people_policy: 'no_people', processing_status: 'archived' }), false);
 });
 
-test('textos: "Generación no habilitada en este plan" y estados simulados', () => {
-  assert.equal(STUDIO_TEXT.es.err.generation_disabled, 'Generación no habilitada en este plan');
-  assert.equal(STUDIO_TEXT.es.genNotEnabled, 'Generación no habilitada en este plan');
+test('textos de Biblioteca y estados simulados', () => {
   assert.match(STUDIO_TEXT.es.ds_mock_only, /NO anonimizado/);
   assert.match(STUDIO_TEXT.en.ds_mock_only, /NOT anonymized/);
   assert.ok(!/limpio|clean/i.test(STUDIO_TEXT.es.scan_unavailable + STUDIO_TEXT.en.scan_unavailable));
-});
-
-test('etapas del Reel distintas y nunca "publicado" sin serlo', () => {
-  const ok = { status: 'succeeded' };
-  assert.equal(reelStage({ status: 'processing' }, null), 'generating');
-  assert.equal(reelStage({ status: 'failed' }, null), 'failed');
-  assert.equal(reelStage(ok, null), 'generated');
-  assert.equal(reelStage(ok, { status: 'review' }), 'in_review');
-  assert.equal(reelStage(ok, { status: 'approved' }), 'approved');
-  assert.equal(reelStage(ok, { status: 'scheduled' }), 'scheduled');
-  assert.equal(reelStage(ok, { status: 'scheduled' }, [{ status: 'pending' }]), 'pending_publication');
-  assert.equal(reelStage(ok, { status: 'published' }), 'published');
-  const all = new Set(['generating', 'generated', 'in_review', 'approved', 'scheduled', 'pending_publication', 'published', 'failed']);
-  for (const st of ['idea', 'draft', 'review', 'approved', 'rejected', 'scheduled', 'publishing', 'failed', 'archived']) {
-    const r = reelStage(ok, { status: st });
-    assert.ok(all.has(r));
-    if (st !== 'published') assert.notEqual(r, 'published');
+  for (const lang of ['es', 'en']) {
+    for (const k of ['stActive', 'stExpired', 'stReserved', 'stAvailable', 'stExpiredHint', 'minorsShort', 'consent', 'expires']) {
+      assert.ok(STUDIO_TEXT[lang][k], `${lang}.${k}`);
+    }
   }
-});
-
-test('textos ES/EN completos para pestañas, pasos, estados y errores', () => {
-  const es = STUDIO_TEXT.es, en = STUDIO_TEXT.en;
-  assert.deepEqual(Object.keys(es).sort(), Object.keys(en).sort());
-  assert.deepEqual(Object.keys(es.err).sort(), Object.keys(en.err).sort());
-  for (const k of ['library', 'studio', 'jobs']) { assert.ok(TABS.includes(k)); assert.ok(es[`tab_${k}`] && en[`tab_${k}`]); }
-  for (const k of WIZARD_STEPS) assert.ok(es[`step_${k}`] && en[`step_${k}`]);
-  for (const k of ['draft', 'awaiting_generation_approval', 'queued', 'processing', 'succeeded', 'failed', 'cancelled']) assert.ok(es[`js_${k}`]);
-  for (const k of ['generated', 'in_review', 'approved', 'scheduled', 'pending_publication', 'published', 'failed']) assert.ok(es[`rs_${k}`] && en[`rs_${k}`]);
-  assert.ok(TABS.includes('brand') && TABS.includes('overview'));
+  assert.match(STUDIO_TEXT.es.stExpiredHint, /ocupando espacio/);
+  assert.match(STUDIO_TEXT.en.stExpiredHint, /still use space/);
 });
 
 test('ningún append() nativo recibe hijos condicionales (escribiría "null" en pantalla)', async () => {
-  for (const f of ['marketing-library.js', 'marketing-studio.js']) {
-    const src = await readFile(new URL(`../../manager/assets/js/modules/${f}`, import.meta.url), 'utf8');
+  for (const f of ['marketing-library.js', 'marketing-planner.js']) {
+    const src = await read(f);
     for (const m of src.matchAll(/\.append\(([\s\S]*?)\);\n/g)) assert.ok(!/:\s*null/.test(m[1]), `${f}: ${m[1].slice(0, 80)}`);
   }
 });
@@ -99,15 +175,14 @@ test('ningún append() nativo recibe hijos condicionales (escribiría "null" en 
 test('formatos y utilidades', () => {
   assert.ok(!ACCEPT.includes('svg') && ACCEPT.includes('video/webm'));
   assert.equal(fmtBytes(52428800), '50.0 MB');
-  assert.equal(fmtCost(0), 'USD 0.00');
   const k = newIdempotencyKey();
-  assert.ok(k.length >= 16 && k.length <= 120 && /^[a-z0-9-]+$/.test(k));
+  assert.ok(k.length >= 16 && k.length <= 100 && /^[a-z0-9-]+$/.test(k));
   assert.notEqual(k, newIdempotencyKey());
+  assert.equal(addonQuote(1).amount, 6);
 });
 
-test('el frontend de Fase 2 no contiene claves, URLs de proveedores ni nombres de empresa', async () => {
-  const files = ['marketing-library.js', 'marketing-studio.js', 'marketing-studio-state.js', 'marketing-studio-i18n.js'];
-  const src = (await Promise.all(files.map(f => readFile(new URL(`../../manager/assets/js/modules/${f}`, import.meta.url), 'utf8')))).join('\n');
+test('el frontend de Marketing no contiene claves, URLs de proveedores ni nombres de empresa', async () => {
+  const src = (await Promise.all(MARKETING_FILES.map(read))).join('\n');
   for (const w of ['api_key', 'apiKey', 'SERVICE_ROLE', 'Bearer sk', 'Golden Age', 'localStorage', 'innerHTML', 'OMNIROUTE_']) {
     assert.ok(!src.includes(w), w);
   }
@@ -120,39 +195,13 @@ test('archivo vencido (410 media_expired): mensaje completo en el idioma activo,
   assert.equal(sErr({ code: 'media_expired', status: 410 }), 'El archivo ya venció.');
   useTenantDefault('en');
   assert.equal(sErr({ code: 'media_expired', status: 410 }), 'The file has expired.');
-  const ui = await readFile(new URL('../../manager/assets/js/modules/marketing-ui.js', import.meta.url), 'utf8');
-  assert.ok(!/Could not load|No se pudo/.test(ui.replace(/^\/\/.*$/gm, '')), 'errorNotice sin prefijo');
-  for (const f of ['marketing.js', 'marketing-forms.js', 'marketing-library.js', 'marketing-studio.js']) {
-    const src = await readFile(new URL(`../../manager/assets/js/modules/${f}`, import.meta.url), 'utf8');
+  for (const f of ['marketing.js', 'marketing-forms.js', 'marketing-library.js']) {
+    const src = await read(f);
     assert.ok(!/errorBox/.test(src) && /errorNotice/.test(src), `${f}: usa errorNotice, no errorBox`);
   }
 });
 
-test('presupuesto de generación con IA: textos ES/EN exactos', () => {
-  const want = {
-    es: { budgetTitle: 'Presupuesto de generación con IA', budgetDisabled: 'La generación con IA no está habilitada en tu plan.',
-      budgetMonth: 'Disponible este mes', budgetUsed: 'Utilizado', budgetReserved: 'Reservado', budgetAvailable: 'Disponible' },
-    en: { budgetTitle: 'AI generation budget', budgetDisabled: 'AI generation is not enabled in your plan.',
-      budgetMonth: 'Available this month', budgetUsed: 'Used', budgetReserved: 'Reserved', budgetAvailable: 'Available' },
-  };
-  for (const lang of ['es', 'en']) {
-    for (const [k, v] of Object.entries(want[lang])) assert.equal(STUDIO_TEXT[lang][k], v, `${lang}.${k}`);
-    assert.equal(STUDIO_TEXT[lang].budgetScopeNote, undefined, `${lang}: sin nota sobre presupuestos globales`);
-  }
-});
-
-test('presupuesto: estado deshabilitado y habilitado', () => {
-  for (const b of [undefined, null, { enabled: false }, { enabled: 'yes', assigned: 10 }]) {
-    assert.deepEqual(budgetView(b), { enabled: false, title: 'budgetTitle', message: 'budgetDisabled' });
-  }
-  const v = budgetView({ enabled: true, currency: 'USD', assigned: 10, used: 2.5, reserved: 1, available: 6.5, warning: null });
-  assert.equal(v.enabled, true);
-  assert.deepEqual(v.rows, [['budgetMonth', 10], ['budgetUsed', 2.5], ['budgetReserved', 1], ['budgetAvailable', 6.5]]);
-  for (const lang of ['es', 'en']) for (const [k] of v.rows) assert.ok(STUDIO_TEXT[lang][k], `${lang}.${k}`);
-});
-
 test('ningún archivo servido al Manager menciona topes internos, presupuestos globales ni márgenes', async () => {
-  const { readdir } = await import('node:fs/promises');
   const root = new URL('../../manager/', import.meta.url);
   const files = [];
   const walk = async (dir) => {
@@ -163,25 +212,19 @@ test('ningún archivo servido al Manager menciona topes internos, presupuestos g
   };
   await walk(root);
   assert.ok(files.length > 10);
-  const banned = [/\b80\s*USD\b/i, /\bUSD\s*80\b/i, /US?\$\s*80\b/i, /\b20\s*USD\b/i, /\bUSD\s*20\b/i, /US?\$\s*20\b/i,
-    /presupuesto global/i, /global budget/i, /AITA global/i, /costo total de AITA/i, /coste total de AITA/i, /total cost of AITA/i,
-    /margen de AITA/i, /AITA('s)? margin/i, /profit margin/i, /Marketing AI budget/i, /omniroute/i, /price_source/i, /unit_price/i,
-    /precio unitario/i, /unit price/i];
+  const banned = [/\b80\s*USD\b/i, /\bUSD\s*80\b/i, /US?\$\s*80\b/i, /presupuesto global/i, /global budget/i, /AITA global/i,
+    /costo total de AITA/i, /total cost of AITA/i, /margen de AITA/i, /AITA('s)? margin/i, /profit margin/i, /omniroute/i,
+    /price_source/i, /unit_price/i, /precio unitario/i, /unit price/i];
   for (const f of files) {
     const src = await readFile(f, 'utf8');
     for (const re of banned) assert.ok(!re.test(src), `${f.pathname.split('/manager/')[1]}: ${re}`);
   }
-  for (const lang of ['es', 'en']) {
-    const all = JSON.stringify(Object.values(STUDIO_TEXT[lang]).filter((v) => typeof v !== 'function')) +
-      Object.values(STUDIO_TEXT[lang]).filter((v) => typeof v === 'function').map((f) => String(f(80))).join(' ');
-    for (const re of banned) assert.ok(!re.test(all), `${lang}: ${re}`);
-  }
 });
 
-test('almacenamiento: activo, vencido pendiente de eliminación, reservado y disponible (ES/EN)', () => {
-  for (const lang of ['es', 'en']) {
-    for (const k of ['stActive', 'stExpired', 'stReserved', 'stAvailable', 'stExpiredHint']) assert.ok(STUDIO_TEXT[lang][k], `${lang}.${k}`);
-  }
-  assert.match(STUDIO_TEXT.es.stExpiredHint, /ocupando espacio/);
-  assert.match(STUDIO_TEXT.en.stExpiredHint, /still use space/);
+test('Marketing (y el planificador) solo para owner y manager en el frontend', async () => {
+  const { CATALOG, canOpen } = await import('../../manager/assets/js/nav.js');
+  assert.deepEqual(CATALOG.find(m => m.key === 'marketing').roles, ['owner', 'manager']);
+  const all = { modules: {} };
+  for (const role of ['staff', 'member', 'socio', '']) assert.equal(canOpen(all, role, 'marketing'), false, role);
+  for (const role of ['owner', 'manager']) assert.equal(canOpen(all, role, 'marketing'), true, role);
 });

@@ -10,10 +10,10 @@ function must({ data, error }) {
   if (error) throw error;
   return data;
 }
-async function backend(method, path, body, retried = false) {
+async function backend(method, path, body, retried = false, extra = {}) {
   const token = (await sb.auth.getSession()).data.session?.access_token;
   const res = await fetch(path, {
-    method, headers: { Authorization: `Bearer ${token || ''}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    method, headers: { Authorization: `Bearer ${token || ''}`, ...(body ? { 'Content-Type': 'application/json' } : {}), ...extra },
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
@@ -21,7 +21,7 @@ async function backend(method, path, body, retried = false) {
     // El token puede pertenecer a una sesión ya cerrada: se renueva una vez;
     // si no se puede, se cierra la sesión para volver a entrar.
     const { error } = await sb.auth.refreshSession();
-    if (!error) return backend(method, path, body, true);
+    if (!error) return backend(method, path, body, true, extra);
     await sb.auth.signOut();
   }
   if (!res.ok) { const e = new Error(data.error || `HTTP ${res.status}`); e.code = data.error; throw e; }
@@ -239,6 +239,21 @@ export const api = {
   // ----- AITA Marketing (backend: solo owner/manager; valida tenant y reglas de estado) -----
   marketing: {
     dashboard(tenantId) { return backend('GET', `/api/manager/marketing/dashboard?${qs({ tenant_id: tenantId })}`); },
+    // Ampliaciones: `kind` = 'request' (solicitud) o 'authorize' (owner o manager con permiso delegado).
+    // Nunca se envía el precio: lo calcula la base de datos.
+    submitPublicationAddon(tenantId, kind, spec, idempotencyKey) {
+      return backend('POST', `/api/manager/marketing/publication-addons/${kind === 'authorize' ? 'authorize' : 'request'}`, {
+        tenant_id: tenantId, ...spec, idempotency_key: idempotencyKey, confirm: true,
+      });
+    },
+    publicationAddonAction(tenantId, addonId, action) {
+      return backend('POST', `/api/manager/marketing/publication-addons/${encodeURIComponent(addonId)}/${action}`,
+        { tenant_id: tenantId, confirm: true });
+    },
+    setPurchasePermission(tenantId, managersCanAuthorize) {
+      return backend('PUT', '/api/manager/marketing/publication-addons/permissions',
+        { tenant_id: tenantId, managers_can_authorize: managersCanAuthorize });
+    },
     brand(tenantId) { return backend('GET', `/api/manager/marketing/brand?${qs({ tenant_id: tenantId })}`); },
     saveBrand(tenantId, values) { return backend('PUT', '/api/manager/marketing/brand', { ...values, tenant_id: tenantId }); },
     campaigns(tenantId) { return backend('GET', `/api/manager/marketing/campaigns?${qs({ tenant_id: tenantId })}`); },
@@ -254,8 +269,22 @@ export const api = {
       return backend('POST', `/api/manager/marketing/content/${encodeURIComponent(id)}/transition`,
         { tenant_id: tenantId, to, comment: comment || null, scheduled_at: scheduledAt || null });
     },
+    // La clave de idempotencia la exige el backend: un doble clic o un reintento nunca crea dos contenidos.
+    planContent(tenantId, values, key) {
+      return backend('POST', '/api/manager/marketing/content/plan', { ...values, tenant_id: tenantId }, false, { 'Idempotency-Key': key });
+    },
+    autopilot(tenantId) { return backend('GET', `/api/manager/marketing/autopilot?${qs({ tenant_id: tenantId })}`); },
+    autopilotPreview(tenantId, rules) { return backend('POST', '/api/manager/marketing/autopilot/preview', { ...rules, tenant_id: tenantId }); },
+    autopilotActivate(tenantId, rules) {
+      return backend('POST', '/api/manager/marketing/autopilot/activate', { tenant_id: tenantId, rules, confirm: true });
+    },
+    autopilotPause(tenantId) { return backend('POST', '/api/manager/marketing/autopilot/pause', { tenant_id: tenantId }); },
+    autopilotPermission(tenantId, value) {
+      return backend('PUT', '/api/manager/marketing/autopilot/permissions', { tenant_id: tenantId, managers_can_manage: value });
+    },
+    retryContent(tenantId, id) { return backend('POST', `/api/manager/marketing/content/${encodeURIComponent(id)}/retry`, { tenant_id: tenantId }); },
     calendar(tenantId, start, end) { return backend('GET', `/api/manager/marketing/calendar?${qs({ tenant_id: tenantId, start, end })}`); },
-    // Fase 2: Biblioteca privada, Estudio de Reels y trabajos de generación (todo por el backend).
+    // Biblioteca privada (archivos temporales, privacidad y reproducción; todo por el backend).
     library(tenantId) { return backend('GET', `/api/manager/marketing/library?${qs({ tenant_id: tenantId })}`); },
     // El archivo va como cuerpo (no multipart): el backend aplica el límite antes de leerlo.
     async upload(tenantId, file) {
@@ -285,14 +314,6 @@ export const api = {
     anonymize(tenantId, id, method) { return backend('POST', `/api/manager/marketing/library/${encodeURIComponent(id)}/anonymize`, { tenant_id: tenantId, method }); },
     reviewDerivative(tenantId, id, approve) {
       return backend('POST', `/api/manager/marketing/library/derivatives/${encodeURIComponent(id)}/review`, { tenant_id: tenantId, approve, confirm_reviewed: approve });
-    },
-    studio(tenantId) { return backend('GET', `/api/manager/marketing/studio?${qs({ tenant_id: tenantId })}`); },
-    mixPreview(tenantId, values) { return backend('POST', '/api/manager/marketing/studio/mix-preview', { ...values, tenant_id: tenantId }); },
-    jobs(tenantId) { return backend('GET', `/api/manager/marketing/jobs?${qs({ tenant_id: tenantId })}`); },
-    job(tenantId, id) { return backend('GET', `/api/manager/marketing/jobs/${encodeURIComponent(id)}?${qs({ tenant_id: tenantId })}`); },
-    createJob(tenantId, values) { return backend('POST', '/api/manager/marketing/jobs', { ...values, tenant_id: tenantId }); },
-    jobAction(tenantId, id, action, values = {}) {
-      return backend('POST', `/api/manager/marketing/jobs/${encodeURIComponent(id)}/${encodeURIComponent(action)}`, { ...values, tenant_id: tenantId });
     },
   },
 
