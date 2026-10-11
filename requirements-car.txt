@@ -1,0 +1,5 @@
+# Isolated AITA Car demo: no Anthropic, Stripe, Twilio or Supabase keys needed.
+fastapi==0.115.6
+uvicorn==0.24.0
+httpx==0.28.1
+pytest==9.1.1

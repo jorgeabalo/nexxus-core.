@@ -235,3 +235,14 @@ Para preguntas o reportar bugs, contacta a Jorge.
 **Versión**: 1.0.1
 **Última actualización**: Agosto 2026
 **Status**: MVP funcional para un solo negocio / bajo volumen. Revisar sección "Pendiente para producción real" antes de escalar a múltiples clientes.
+
+
+## AITA Car — demo local aislada
+
+Nueva vertical con interfaz móvil, GPS, viajes, gastos, mantenimiento, OBD y seguridad simulados, y Nexxus contextual. Ver [arquitectura, pruebas y demo](docs/AITA_CAR.md). No se monta en producción.
+
+```sh
+AITA_CAR_DEMO=1 python3 -m car.demo
+```
+
+Abrir http://127.0.0.1:8011/car. Requiere las dependencias de `requirements-car.txt`.
