@@ -22,6 +22,7 @@ import json
 import os
 import signal
 import sys
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -99,7 +100,8 @@ def providers_disabled(env: Optional[Dict[str, str]] = None) -> bool:
     return not provider_enabled("omniroute", env) and not provider_enabled("local_ffmpeg", env)
 
 
-def run_worker(db, max_jobs: int, lease_seconds: int, env: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+def run_worker(db, max_jobs: int, lease_seconds: int, env: Optional[Dict[str, str]] = None,
+               heartbeat_seconds: Optional[float] = None, stop_event: Optional[threading.Event] = None) -> Dict[str, Any]:
     from services.marketing_ai_router import MarketingAIRouter, default_adapters
     from services.marketing_worker import JobRunner
     env = os.environ if env is None else env
@@ -107,7 +109,10 @@ def run_worker(db, max_jobs: int, lease_seconds: int, env: Optional[Dict[str, st
         return {"status": "disabled", "reason": "MARKETING_WORKER_ENABLED"}
     if not providers_disabled(env):
         return {"status": "disabled", "reason": "real_providers_not_allowed"}
-    runner = JobRunner(db, MarketingAIRouter(env=dict(env)), default_adapters(), lease_seconds=int(lease_seconds))
+    runner = JobRunner(db, MarketingAIRouter(env=dict(env)), default_adapters(), lease_seconds=int(lease_seconds),
+                       heartbeat_seconds=heartbeat_seconds)
+    if stop_event is not None:
+        runner.stop_event = stop_event                      # SIGTERM: el trabajo en curso se detiene sin escribir
     results = runner.run_pending(limit=int(max_jobs))
     return {"status": "ok", "worker": runner.worker_id, "processed": len(results),
             "succeeded": sum(1 for r in results if r.get("status") == "succeeded"),
@@ -116,13 +121,14 @@ def run_worker(db, max_jobs: int, lease_seconds: int, env: Optional[Dict[str, st
 
 def run_worker_loop(db, max_jobs: int, lease_seconds: int, poll_seconds: int, max_runtime_seconds: int,
                     env: Optional[Dict[str, str]] = None, sleep=time.sleep, clock=time.monotonic,
-                    stop=lambda: False) -> Dict[str, Any]:
+                    stop=lambda: False, heartbeat_seconds: Optional[float] = None,
+                    stop_event: Optional[threading.Event] = None) -> Dict[str, Any]:
     """Modo continuo (solo con --loop). Rondas de run_worker con espera; se detiene al agotar el tiempo
     máximo, con SIGTERM (stop) o si el worker está deshabilitado."""
     poll, limit = max(int(poll_seconds), 5), max(int(max_runtime_seconds), 1)
     start, rounds, processed = clock(), 0, 0
     while not stop() and clock() - start < limit:
-        res = run_worker(db, max_jobs, lease_seconds, env)
+        res = run_worker(db, max_jobs, lease_seconds, env, heartbeat_seconds, stop_event)
         if res["status"] == "disabled":
             return res
         rounds, processed = rounds + 1, processed + res["processed"]
@@ -130,6 +136,13 @@ def run_worker_loop(db, max_jobs: int, lease_seconds: int, poll_seconds: int, ma
             break
         sleep(poll)
     return {"status": "ok", "mode": "loop", "rounds": rounds, "processed": processed}
+
+
+def install_sigterm(stop_event: threading.Event) -> None:
+    """SIGTERM (p. ej. Railway al detener): el trabajo en curso se detiene sin escribir resultados y el
+    heartbeat se para; el lease vence y otro worker lo retoma o termina en timeout."""
+    if threading.current_thread() is threading.main_thread():
+        signal.signal(signal.SIGTERM, lambda *_: stop_event.set())
 
 
 def main(argv: Optional[List[str]] = None, db=None) -> int:
@@ -148,10 +161,18 @@ def main(argv: Optional[List[str]] = None, db=None) -> int:
     wm.add_argument("--loop", dest="loop", action="store_true", help="continuo (NO predeterminado; aumenta costos)")
     w.set_defaults(loop=False)
     w.add_argument("--max-jobs", type=int, default=20)
-    w.add_argument("--lease-seconds", type=int, default=120)
+    w.add_argument("--lease-seconds", type=int, default=120, help="30–900")
+    w.add_argument("--heartbeat-seconds", type=float, default=None, help="como mucho lease/3 (por defecto lease/3)")
     w.add_argument("--poll-seconds", type=int, default=30)
     w.add_argument("--max-runtime-seconds", type=int, default=3300)
     a = ap.parse_args(argv)
+    if a.cmd == "worker":
+        from services.marketing_lease import validate
+        try:
+            validate(a.lease_seconds, a.heartbeat_seconds)       # lease demasiado corto o heartbeat >= lease/3: no
+        except ValueError as e:
+            print(json.dumps({"status": "error", "reason": "invalid_lease", "detail": str(e)}))
+            return 2
     db = db or _db()
     if db is None:
         print(json.dumps({"status": "error", "reason": "database_not_configured"}))
@@ -160,13 +181,14 @@ def main(argv: Optional[List[str]] = None, db=None) -> int:
         for line in run_retention(db, a.apply, a.batch_size, a.max_batches):
             print(json.dumps(line, default=str))
         return 0
+    stop_event = threading.Event()
+    install_sigterm(stop_event)
     if a.loop:
-        stopping = []
-        signal.signal(signal.SIGTERM, lambda *_: stopping.append(1))
         res = run_worker_loop(db, a.max_jobs, a.lease_seconds, a.poll_seconds, a.max_runtime_seconds,
-                              stop=lambda: bool(stopping))
+                              stop=stop_event.is_set, heartbeat_seconds=a.heartbeat_seconds, stop_event=stop_event)
     else:
-        res = {**run_worker(db, a.max_jobs, a.lease_seconds), "mode": "once"}
+        res = {**run_worker(db, a.max_jobs, a.lease_seconds, heartbeat_seconds=a.heartbeat_seconds,
+                            stop_event=stop_event), "mode": "once"}
     print(json.dumps(res))
     return 2 if res["status"] == "disabled" else 0
 

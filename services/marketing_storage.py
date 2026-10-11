@@ -47,9 +47,11 @@ def expire_abandoned(db) -> int:
     return int(db.rpc("marketing_expire_storage_reservations", {}) or 0)
 
 
-def confirm_output(db, tenant_id: str, job_id: str, size: int) -> Optional[str]:
-    """Antes de registrar un resultado: ¿cabe su tamaño REAL? None si cabe; si no, el motivo."""
-    res = db.rpc("marketing_confirm_output_storage", {"p_tenant": tenant_id, "p_job": job_id, "p_bytes": int(size)}) or {}
+def confirm_output(db, tenant_id: str, job_id: str, size: int, worker_id: str) -> Optional[str]:
+    """Antes de registrar un resultado: ¿cabe su tamaño REAL? Solo el dueño del lease vigente puede
+    confirmarlo (la base lo exige). None si cabe; si no, el motivo."""
+    res = db.rpc("marketing_confirm_output_storage", {"p_tenant": tenant_id, "p_job": job_id, "p_bytes": int(size),
+                                                      "p_worker": worker_id}) or {}
     return None if res.get("status") == "ok" else (res.get("reason") or "storage_quota_exceeded")
 
 

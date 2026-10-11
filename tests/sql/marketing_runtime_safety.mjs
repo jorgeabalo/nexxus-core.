@@ -107,13 +107,25 @@ ok((await one(`select public.marketing_claim_job('${W2}', 60) r`)).r.status === 
 ok((await one(`select public.marketing_job_heartbeat('${J2}','${W2}', 60) r`)).r === null, 'heartbeat ajeno: no');
 ok((await one(`select public.marketing_job_heartbeat('${J2}','${W1}', 60) r`)).r === true, 'heartbeat propio: sí');
 await q(`update marketing_generation_jobs set lease_owner = '${W2}' where id = '${J2}'`, '23514');   // no se roba
-await q(`insert into marketing_generation_outputs (tenant_id, job_id, kind) values ('${TA}','${J2}','script')`);   // lease vigente
+await q(`insert into marketing_generation_outputs (tenant_id, job_id, kind, worker_id) values ('${TA}','${J2}','script','${W1}')`);   // dueño
+await q(`insert into marketing_generation_outputs (tenant_id, job_id, kind, worker_id) values ('${TA}','${J2}','scene','${W2}')`, '23514');   // no dueño
+await q(`insert into marketing_generation_outputs (tenant_id, job_id, kind) values ('${TA}','${J2}','scene')`, '23514');   // sin worker
+const usage = (w, key) => `insert into marketing_model_usage (tenant_id, job_id, provider, model_id, task_type, catalog_version,
+  billing_unit, units, estimated_cost, actual_cost, idempotency_key, status, worker_id) values ('${TA}','${J2}','mock','m','reel','v1',
+  'request',1,0,0,'${key}','not_charged','${w}')`;
+await q(usage(W2, 'usage-key-not-owner-0001'), '23514');                 // un costo solo lo registra el dueño
+await q(usage(W1, 'usage-key-owner-000001'));
+ok((await one(`select public.marketing_confirm_output_storage('${TA}','${J2}', 5, '${W2}') r`)).r.reason === 'lease_lost',
+  'confirmar almacenamiento: solo el dueño');
 await q(`update marketing_generation_jobs set lease_expires_at = now() - interval '1 second' where id = '${J2}'`);
 await q(`update marketing_generation_jobs set status = 'succeeded' where id = '${J2}'`, '23514');   // lease vencido: no termina
-await q(`insert into marketing_generation_outputs (tenant_id, job_id, kind) values ('${TA}','${J2}','scene')`, '23514');
+await q(`insert into marketing_generation_outputs (tenant_id, job_id, kind, worker_id) values ('${TA}','${J2}','scene','${W1}')`, '23514');
+await q(usage(W1, 'usage-key-owner-000002'), '23514');                  // lease vencido: tampoco costos
 const c2 = (await one(`select public.marketing_claim_job('${W2}', 60) r`)).r;
 ok(c2.status === 'claimed' && c2.retry === true && c2.job.attempts === 2 && c2.job.lease_owner === W2, 'reintento');
 ok((await one(`select idempotency_key k from marketing_generation_jobs where id = '${J2}'`)).k === 'job-runtime-key-0002', 'misma clave');
+await q(`insert into marketing_generation_outputs (tenant_id, job_id, kind, worker_id) values ('${TA}','${J2}','scene','${W1}')`, '23514');   // A ya no
+await q(usage(W1, 'usage-key-owner-000003'), '23514');
 await q(`update marketing_generation_jobs set lease_expires_at = now() - interval '1 second', attempts = 3 where id = '${J2}'`);
 ok((await one(`select public.marketing_claim_job('${W1}', 60) r`)).r.status === 'empty', 'sin reintentos disponibles');
 ok((await one(`select public.marketing_timeout_jobs(3) r`)).r === 1, 'timeout');
@@ -137,6 +149,13 @@ const J4 = await job(M5);
 await approve(J4);
 await q(`update marketing_generation_jobs set approved_at = now() - interval '25 hours' where id = '${J4}'`, '23514');   // inmutable
 ok((await one(`select count(*)::int c from marketing_generation_jobs where status = 'queued'`)).c === 1, 'J4 en cola');
+
+// reservas de trabajos: nadie las libera a mano (tampoco un worker que perdió el lease); las de subidas, sí
+await q(`insert into marketing_storage_reservations (tenant_id, reservation_key, kind, bytes, expires_at)
+  values ('${TA}','job:${J4}','generation',10, now() + interval '1 hour'), ('${TA}','upload:manual-0001','upload',10, now() + interval '1 hour')`);
+ok((await one(`select public.marketing_release_storage('${TA}','job:${J4}', false) r`)).r === null, 'reserva de trabajo: no');
+ok((await one(`select status from marketing_storage_reservations where reservation_key = 'job:${J4}'`)).status === 'reserved', 'sigue reservada');
+ok((await one(`select public.marketing_release_storage('${TA}','upload:manual-0001', false) r`)).r.status === 'released', 'subida: sí');
 
 // 3. un solo purgador
 const L = (h, ttl = 60) => one(`select public.marketing_acquire_runtime_lease('retention_runner','${h}', ${ttl}) r`);
@@ -163,6 +182,7 @@ ok((await one(`select count(*)::int c from marketing_settings where monthly_ai_c
 // 5. permisos y definiciones
 for (const role of ['anon', 'authenticated']) {
   for (const f of ['marketing_claim_job(uuid,integer,uuid,integer)', 'marketing_job_heartbeat(uuid,uuid,integer)',
+    'marketing_confirm_output_storage(uuid,uuid,bigint,uuid)',
     'marketing_timeout_jobs(integer)', 'marketing_acquire_runtime_lease(text,uuid,integer)', 'marketing_release_runtime_lease(text,uuid)',
     'marketing_approve_generation(uuid,uuid,uuid,numeric,bigint)']) {
     ok(!(await one(`select has_function_privilege('${role}', 'public.${f}', 'EXECUTE') x`)).x, `${role} no ejecuta ${f}`);

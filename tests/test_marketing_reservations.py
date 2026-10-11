@@ -162,7 +162,8 @@ class WithFiles(MockProvider):
         if not self.sizes:
             return r
         size = self.sizes.pop(0)
-        path = self.path or f"{req.tenant_id}/derivatives/{self.job_id}/render-{len(self.sizes)}.mp4"
+        prefix = (req.output_requirements or {}).get("temp_prefix", "")          # temporales de ESTE intento
+        path = self.path or f"{req.tenant_id}/derivatives/{self.job_id}/{prefix}render-{len(self.sizes)}.mp4"
         self.db.storage[("marketing-assets", path)] = (b"x", "video/mp4")
         return r.__class__(**{**r.__dict__, "output": {**r.output, "files": [
             {"kind": "render", "temp_path": path, "byte_size": size, "mime_type": "video/mp4"}]}})

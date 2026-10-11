@@ -30,12 +30,17 @@ class MarketingRpcMixin:
         """Reserva abierta y no caducada (expires_at > now())."""
         return r["status"] == "reserved" and (not r.get("expires_at") or r["expires_at"] > self.rpc_now)
 
+    def _owns_live_lease(self, job_id, worker):
+        j = next((x for x in self.tables["marketing_generation_jobs"] if x["id"] == job_id), None)
+        return bool(j and j["status"] == "processing" and j.get("lease_expires_at")
+                    and j["lease_expires_at"] > self.rpc_now and worker and j.get("lease_owner") == worker)
+
     def insert(self, table, row):
-        """Emula marketing_output_guard: resultados solo con el trabajo en proceso y lease vigente."""
-        if table == "marketing_generation_outputs":
-            j = next((x for x in self.tables["marketing_generation_jobs"] if x["id"] == row["job_id"]), None)
-            if not j or j["status"] != "processing" or not j.get("lease_expires_at") or j["lease_expires_at"] <= self.rpc_now:
-                raise RuntimeError("outputs require a processing job with a live lease")
+        """Emula marketing_output_guard y marketing_usage_guard: resultados y costos solo del dueño del
+        lease vigente de un trabajo en proceso."""
+        if table in ("marketing_generation_outputs", "marketing_model_usage"):
+            if not self._owns_live_lease(row["job_id"], row.get("worker_id")):
+                raise RuntimeError(f"{table} requires the worker holding a live lease")
         return super().insert(table, row)
 
     def update(self, table, filters, values):
@@ -146,7 +151,8 @@ class MarketingRpcMixin:
 
     def _rpc_marketing_release_storage(self, a):
         for r in self.tables["marketing_storage_reservations"]:
-            if r["tenant_id"] == a["p_tenant"] and r["reservation_key"] == a["p_key"] and self._live(r):
+            if (r["tenant_id"] == a["p_tenant"] and r["reservation_key"] == a["p_key"] and self._live(r)
+                    and not r["reservation_key"].startswith("job:")):        # las de trabajos: solo la base
                 r["status"] = "consumed" if a["p_consumed"] else "released"
                 return {"status": r["status"]}
         return None
@@ -271,6 +277,8 @@ class MarketingRpcMixin:
     def _rpc_marketing_confirm_output_storage(self, a):
         if a["p_bytes"] is None or a["p_bytes"] <= 0:
             return {"status": "rejected", "reason": "invalid_size"}
+        if "p_worker" in a and not self._owns_live_lease(a["p_job"], a["p_worker"]):
+            return {"status": "rejected", "reason": "lease_lost"}
         s = next((x for x in self.tables["marketing_settings"] if x["tenant_id"] == a["p_tenant"]), None)
         if not s:
             return {"status": "rejected", "reason": "library_disabled"}

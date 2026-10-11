@@ -7,6 +7,7 @@
 --    ninguna sesión de reproducción nueva y su vencimiento ya no puede ampliarse.
 -- 2. Worker: reclamo atómico con lease (FOR UPDATE SKIP LOCKED), heartbeat, reintentos limitados que
 --    conservan la idempotency_key y timeout que libera reservas una sola vez y bloquea los resultados.
+--    Resultados, costos y confirmación de almacenamiento: solo el worker dueño del lease vigente.
 -- 3. Purgador: un solo RetentionRunner a la vez (lease en marketing_runtime_leases). No se usa
 --    pg_advisory_lock porque PostgREST reparte las llamadas entre conexiones del pool.
 -- 4. "Marketing AI budget" (SOLO IA de Marketing): desconocido o 0 = cerrado; máximo TEMPORAL de 20 USD/mes
@@ -235,13 +236,17 @@ drop trigger if exists marketing_job_lease_guard on public.marketing_generation_
 create trigger marketing_job_lease_guard before update on public.marketing_generation_jobs
   for each row execute function private.marketing_job_lease_guard();
 
--- Resultados: solo mientras el trabajo está en proceso con lease vigente (un trabajo vencido no produce nada).
+-- Resultados y costos: solo los registra el worker que TIENE el lease vigente de un trabajo en proceso
+-- (un worker que perdió el lease no escribe nada, aunque otro ya lo haya retomado).
+alter table public.marketing_generation_outputs add column if not exists worker_id uuid;
+alter table public.marketing_model_usage add column if not exists worker_id uuid;
 create or replace function private.marketing_output_guard()
 returns trigger language plpgsql set search_path = '' as $$
 begin
-  if not exists (select 1 from public.marketing_generation_jobs j where j.id = new.job_id and j.tenant_id = new.tenant_id
-                   and j.status = 'processing' and j.lease_expires_at > now()) then
-    raise exception 'outputs require a processing job with a live lease' using errcode = '23514';
+  if new.worker_id is null or not exists (
+       select 1 from public.marketing_generation_jobs j where j.id = new.job_id and j.tenant_id = new.tenant_id
+          and j.status = 'processing' and j.lease_owner = new.worker_id and j.lease_expires_at > now()) then
+    raise exception '% requires the worker holding a live lease', tg_table_name using errcode = '23514';
   end if;
   return new;
 end $$;
@@ -249,6 +254,33 @@ revoke all on function private.marketing_output_guard() from public, anon, authe
 drop trigger if exists marketing_output_guard on public.marketing_generation_outputs;
 create trigger marketing_output_guard before insert on public.marketing_generation_outputs
   for each row execute function private.marketing_output_guard();
+drop trigger if exists marketing_usage_guard on public.marketing_model_usage;
+create trigger marketing_usage_guard before insert on public.marketing_model_usage
+  for each row execute function private.marketing_output_guard();
+
+-- Las reservas de trabajos ('job:…') solo las cierra la base cuando el trabajo termina (disparador
+-- marketing_job_storage_release): nadie las libera a mano, tampoco un worker que perdió el lease.
+create or replace function public.marketing_release_storage(p_tenant uuid, p_key text, p_consumed boolean)
+returns jsonb language sql security definer set search_path = '' as $$
+  update public.marketing_storage_reservations set status = case when p_consumed then 'consumed' else 'released' end
+   where tenant_id = p_tenant and reservation_key = p_key and status = 'reserved' and expires_at > now()
+     and reservation_key not like 'job:%'
+  returning jsonb_build_object('status', status) $$;
+
+-- Confirmar el tamaño real de un resultado: solo el dueño del lease vigente (bloquea la fila del trabajo
+-- mientras lo comprueba). La versión de 3 argumentos se conserva para el código ya desplegado.
+create or replace function public.marketing_confirm_output_storage(p_tenant uuid, p_job uuid, p_bytes bigint, p_worker uuid)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+begin
+  perform 1 from public.marketing_generation_jobs j
+   where j.id = p_job and j.tenant_id = p_tenant and j.status = 'processing' and j.lease_owner = p_worker
+     and j.lease_expires_at > now()
+   for update;
+  if not found then
+    return jsonb_build_object('status', 'rejected', 'reason', 'lease_lost');
+  end if;
+  return public.marketing_confirm_output_storage(p_tenant, p_job, p_bytes);
+end $$;
 
 -- Reclamar un trabajo: el más antiguo en cola (o uno en proceso con lease vencido y reintentos
 -- disponibles). FOR UPDATE SKIP LOCKED: dos workers nunca toman el mismo. Si sus entradas ya no
@@ -427,10 +459,14 @@ begin
 end $$;
 
 revoke all on function public.marketing_claim_job(uuid, integer, uuid, integer),
+  public.marketing_release_storage(uuid, text, boolean),
+  public.marketing_confirm_output_storage(uuid, uuid, bigint, uuid),
   public.marketing_job_heartbeat(uuid, uuid, integer), public.marketing_timeout_jobs(integer),
   public.marketing_acquire_runtime_lease(text, uuid, integer), public.marketing_release_runtime_lease(text, uuid),
   public.marketing_approve_generation(uuid, uuid, uuid, numeric, bigint) from public, anon, authenticated;
 grant execute on function public.marketing_claim_job(uuid, integer, uuid, integer),
+  public.marketing_release_storage(uuid, text, boolean),
+  public.marketing_confirm_output_storage(uuid, uuid, bigint, uuid),
   public.marketing_job_heartbeat(uuid, uuid, integer), public.marketing_timeout_jobs(integer),
   public.marketing_acquire_runtime_lease(text, uuid, integer), public.marketing_release_runtime_lease(text, uuid),
   public.marketing_approve_generation(uuid, uuid, uuid, numeric, bigint) to service_role;
