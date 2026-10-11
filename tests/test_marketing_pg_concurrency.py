@@ -28,6 +28,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -246,26 +247,72 @@ def fail(c, j, worker, code="render_failed"):
     return c.execute("select public.marketing_fail_generation(%s, %s, %s, %s, '[]'::jsonb)", (TA, j, worker, code)).fetchone()[0]
 
 
-def test_heartbeat_keeps_long_subtask_against_second_worker(pg):
-    from services.marketing_lease import LeaseKeeper, validate
+class ManualClock:
+    """Reloj monotónico del LeaseKeeper controlado por la prueba (las renovaciones ocurren cuando la prueba lo indica)."""
+    def __init__(self):
+        self.now, self._lock = 1000.0, threading.Lock()
+
+    def __call__(self):
+        with self._lock:
+            return self.now
+
+    def advance(self, seconds):
+        with self._lock:
+            self.now += seconds
+
+
+def test_heartbeat_keeps_long_subtask_against_second_worker(pg, monkeypatch):
+    """Determinista: A reclama; su subtarea sigue bloqueada después del vencimiento original; el keeper renueva cuando
+    la prueba lo indica y PostgreSQL lo registra; B reclama con el lease renovado de A vigente y no lo obtiene; A
+    termina una sola vez. Sin hilos ni conexiones abiertas al final."""
+    from services import marketing_lease as lease_mod
+    clock = ManualClock()
+    monkeypatch.setattr(lease_mod, "time", SimpleNamespace(monotonic=clock, sleep=time.sleep))
     j = _approved_with_storage(pg)
-    with psycopg.connect(pg, autocommit=True) as a, psycopg.connect(pg, autocommit=True) as b:
+    renewed = threading.Event()
+    with psycopg.connect(pg, autocommit=True) as a, psycopg.connect(pg, autocommit=True) as b, \
+            psycopg.connect(pg, autocommit=True) as ka:
         assert a.execute(f"select public.marketing_claim_job('{W1}', {LEASE})").fetchone()[0]["status"] == "claimed"
-        renew = lambda t: a.execute(f"select public.marketing_job_heartbeat('{j}','{W1}', {LEASE})").fetchone()[0]  # noqa: E731
-        rival, t0 = [], time.monotonic()
-        with LeaseKeeper(renew, validate(LEASE), name="pg-a") as keeper:
-            while time.monotonic() - t0 < 2 * LEASE + 5:             # la subtarea dura > 2 × lease
+        # Vencimiento original acortado a 1 s (la base exige leases ≥ 30 s): así B prueba DESPUÉS de ese vencimiento
+        # sin esperar 30 s reales. Solo una renovación del keeper puede mantener el trabajo de A.
+        original = b.execute(f"""update marketing_generation_jobs set lease_expires_at = now() + interval '1 second'
+                                 where id = '{j}' returning lease_expires_at""").fetchone()[0]
+
+        def renew(timeout):
+            ka.execute(f"set statement_timeout = {int(timeout * 1000)}")
+            ok = ka.execute(f"select public.marketing_job_heartbeat('{j}','{W1}', {LEASE})").fetchone()[0]
+            if ok:
+                renewed.set()
+            return ok
+        rival = []
+        with lease_mod.LeaseKeeper(renew, 10, name="pg-a", renew_timeout=5) as keeper:
+            for step in (1, 2):
+                renewed.clear()
+                clock.advance(10)                                            # le toca al keeper
+                assert renewed.wait(5), f"el keeper no renovó en el paso {step}"
+                exp, hb = b.execute(f"select lease_expires_at, heartbeat_at from marketing_generation_jobs where id = '{j}'").fetchone()
+                assert exp > original and hb is not None                     # PostgreSQL registró la renovación
+                deadline = time.monotonic() + 5
+                while not b.execute("select now() > %s", (original,)).fetchone()[0]:   # condición, no tiempo fijo
+                    assert time.monotonic() < deadline
+                    time.sleep(0.05)
                 rival.append(b.execute(f"select public.marketing_claim_job('{W2}', {LEASE})").fetchone()[0]["status"])
-                time.sleep(3)
-            assert not keeper.lost and keeper.renewals >= 5
-            assert finalize(a, j, W1)["status"] == "succeeded"        # sigue siendo el dueño
-        assert rival and set(rival) == {"empty"}                     # B nunca pudo reclamarlo
+                owner = b.execute(f"select lease_owner::text from marketing_generation_jobs where id = '{j}'").fetchone()[0]
+                assert owner == W1                                           # B no lo tomó
+            assert not keeper.lost and keeper.renewals == 2
+        assert keeper.joined and not [t for t in threading.enumerate() if t.name.startswith("lease-keeper")]
+        assert rival == ["empty", "empty"]                                  # B nunca pudo reclamarlo
+        assert finalize(a, j, W1)["status"] == "succeeded"                   # A sigue siendo el dueño: termina
+        assert finalize(a, j, W1)["reason"] == "lease_lost"                  # y una sola vez
         counts = a.execute(f"""select (select count(*) from marketing_generation_outputs where job_id = '{j}'),
                                       (select count(*) from marketing_model_usage where job_id = '{j}'),
                                       (select attempts from marketing_generation_jobs where id = '{j}'),
-                                      (select status from marketing_storage_reservations where reservation_key = 'job:{j}')""").fetchone()
-        assert counts == (1, 1, 1, "consumed")                        # un resultado, un costo, un intento
-    assert not [t for t in threading.enumerate() if t.name.startswith("lease-keeper")]
+                                      (select status from marketing_storage_reservations where reservation_key = 'job:{j}'),
+                                      (select count(*) from marketing_generation_job_events where job_id = '{j}' and action = 'succeed')""").fetchone()
+        assert counts == (1, 1, 1, "consumed", 1)                             # un resultado, un costo, un intento, un cierre
+    with psycopg.connect(pg, autocommit=True) as c:                         # ninguna conexión huérfana
+        assert c.execute("select count(*) from pg_stat_activity where backend_type = 'client backend' "
+                         "and pid <> pg_backend_pid()").fetchone()[0] == 0
 
 
 def test_lost_heartbeat_second_worker_takes_over_and_first_cannot_write(pg):

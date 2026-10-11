@@ -9,9 +9,11 @@ import signal
 import threading
 import time
 from datetime import timedelta
+from types import SimpleNamespace
 
 import pytest
 
+from services import marketing_lease as lease_mod
 from services import marketing_runtime as runtime
 from services.marketing_ai_router import MarketingAIRouter, MockProvider, OmniRouteAdapter, DisabledLocalTools
 from services.marketing_lease import LeaseKeeper, LeaseLost, validate
@@ -122,20 +124,83 @@ class Long(MockProvider):
             {"kind": "render", "temp_path": mine, "byte_size": 1, "mime_type": "video/mp4"}, *extra]}})
 
 
-def test_long_subtask_keeps_ownership_against_a_second_worker(studio, db):
+class ManualClock:
+    """Reloj monotónico del LeaseKeeper controlado por la prueba: cada renovación ocurre cuando la prueba avanza el
+    reloj (no cuando el sistema operativo programa el hilo) y su duración medida no depende de la carga."""
+    def __init__(self):
+        self.now, self._lock = 1000.0, threading.Lock()
+
+    def __call__(self):
+        with self._lock:
+            return self.now
+
+    def advance(self, seconds):
+        with self._lock:
+            self.now += seconds
+
+
+def test_long_subtask_keeps_ownership_against_a_second_worker(studio, db, monkeypatch):
+    """Determinista (sin depender de sleeps): A tiene el lease; su subtarea queda bloqueada más allá del vencimiento
+    original; el keeper renueva cuando la prueba avanza su reloj y la base lo registra; B intenta reclamar con el
+    lease renovado de A vigente y nunca lo consigue; A se libera y deja un solo resultado, costo y cierre."""
+    clock = ManualClock()
+    monkeypatch.setattr(lease_mod, "time", SimpleNamespace(monotonic=clock, sleep=time.sleep))
     j = approved_job(studio)
+    renewed, real_hb, renewals = threading.Event(), db._rpc_marketing_job_heartbeat, []
+
+    def heartbeat(a):
+        ok = real_hb(a)
+        if ok and threading.current_thread().name.startswith("lease-keeper"):
+            renewals.append(job(db, j["id"])["lease_expires_at"])
+            renewed.set()
+        return ok
+    db._rpc_marketing_job_heartbeat = heartbeat
+    entered, release = threading.Event(), threading.Event()
+
+    class Blocked(MockProvider):
+        def submit(self, req, model):
+            if not entered.is_set():
+                entered.set()
+                assert release.wait(10), "la prueba nunca liberó la subtarea"
+            return super().submit(req, model)
     rival = JobRunner(db, MarketingAIRouter(env={}), ADAPTERS(), now=NOW, worker_id=B, lease_seconds=30)
-    longp = Long(db, steps=6, step_seconds=20, rival=rival)                       # 120 s > 2 × 30 s
-    a = JobRunner(db, MarketingAIRouter(env={}), {**ADAPTERS(), "mock": longp}, now=NOW, worker_id=A,
-                  lease_seconds=30, heartbeat_seconds=0.005)
-    out = a.run_pending(limit=1)
-    assert out[0]["status"] == "succeeded" and job(db, j["id"])["lease_owner"] == A
-    assert longp.rival_claims and set(longp.rival_claims) == {"empty"}             # B nunca pudo
+    a = JobRunner(db, MarketingAIRouter(env={}), {**ADAPTERS(), "mock": Blocked()}, now=NOW, worker_id=A,
+                  lease_seconds=30, heartbeat_seconds=10)
+    out = []
+    worker = threading.Thread(target=lambda: out.extend(a.run_pending(limit=1)), name="worker-a")
+    worker.start()
+    try:
+        assert entered.wait(10)                                                    # A tiene el trabajo y está bloqueado
+        r = job(db, j["id"])
+        assert r["status"] == "processing" and r["lease_owner"] == A
+        original = r["lease_expires_at"]                                           # NOW + 30 s
+        rival_claims, expires = [], original
+        for step in (1, 2, 3):                                                     # 75 s en total > 2 × lease
+            at(db, seconds=25 * step)                                              # siempre dentro del lease vigente
+            renewed.clear()
+            clock.advance(10)                                                      # le toca al keeper (cada 10 s)
+            assert renewed.wait(5), f"el keeper no renovó en el paso {step}"
+            assert renewals[-1] > expires and db.rpc_now < renewals[-1]           # la base registró la renovación
+            expires = renewals[-1]
+            rival_claims.append(rival.claim()["status"])                           # B lo intenta con A vigente
+            assert job(db, j["id"])["lease_owner"] == A
+        assert db.rpc_now > original and len(renewals) == 3                        # más allá del vencimiento original
+        assert rival_claims == ["empty", "empty", "empty"]                         # B nunca lo obtuvo
+    finally:
+        release.set()
+        worker.join(10)
+    assert not worker.is_alive() and out[0]["status"] == "succeeded"
+    r = job(db, j["id"])
+    assert r["status"] == "succeeded" and r["lease_owner"] == A and r["attempts"] == 1
     usage = [u for u in db.tables["marketing_model_usage"] if u["job_id"] == j["id"]]
-    assert len({u["idempotency_key"] for u in usage}) == len(usage) and all(u["worker_id"] == A for u in usage)
+    assert usage and len({u["idempotency_key"] for u in usage}) == len(usage) and {u["worker_id"] for u in usage} == {A}
     renders = [o for o in db.tables["marketing_generation_outputs"] if o["job_id"] == j["id"] and o["kind"] == "render"]
-    assert len(renders) == 1                                                        # un solo resultado
-    assert keeper_threads() == []
+    assert len(renders) == 1                                                       # un solo resultado
+    closes = [e for e in db.tables["marketing_generation_job_events"] if e["job_id"] == j["id"] and e.get("action") == "succeed"]
+    assert len(closes) == 1                                                        # un solo cierre
+    assert next(x for x in db.tables["marketing_storage_reservations"]
+                if x["reservation_key"] == f"job:{j['id']}")["status"] == "consumed"
+    assert keeper_threads() == []                                                  # ningún hilo vivo
 
 
 def test_lease_lost_during_subtask_writes_nothing_and_cleans_only_own_temps(studio, db):
