@@ -39,7 +39,7 @@ async function enter(){const c=await runtime;clearContext();await api('/start','
 bind('enter',enter);
 bind('logout',async()=>{if(active)throw Error('Finaliza el viaje antes de salir.');stopGPS();clearContext();await api('/logout','POST',{});$('app').hidden=true;$('onboarding').hidden=true;$('login').hidden=false;});
 $('vehicle').addEventListener('change',async()=>{clearContext();vid=$('vehicle').value;try{await refresh();}catch(e){msg(e.message);}});
-$('plan').addEventListener('change',async()=>{try{await api('/demo-plan','PUT',{plan:$('plan').value});await refresh();msg('Plan actualizado. Acceso de prueba sin cobro.');}catch(e){msg(e.message);}});
+
 for(const btn of document.querySelectorAll('[data-tab]'))btn.addEventListener('click',()=>{for(const p of document.querySelectorAll('[data-panel]'))p.hidden=p.dataset.panel!==btn.dataset.tab;for(const b of document.querySelectorAll('[data-tab]'))b.classList.toggle('selected',b===btn);});
 const path=()=>'/vehicles/'+vid;
 bind('simulate',async()=>{simGenerating=true;try{active=await api(path()+'/trips','POST',{source:'simulated'});tripStatus();const start=Date.now()/1000-1200;for(let i=0;i<6;i++){active=await api(path()+`/trips/${active.id}/points`,'POST',{lat:41.88+i*.008,lon:-87.63+i*.004,accuracy:5,timestamp:start+i*180});tripStatus();}msg('Ruta simulada lista. Puedes finalizar el viaje.');}finally{simGenerating=false;tripStatus();}});
@@ -69,7 +69,7 @@ $('language').addEventListener('change',async()=>{clearExpenseProposal();lang=$(
 
 $('onboarding-form').addEventListener('submit',async e=>{
  e.preventDefault();const btn=$('onboarding-submit');btn.disabled=true;$('onboarding-error').textContent='';
- try{const data=Object.fromEntries(new FormData(e.target));data.year=Number(data.year);data.initial_odometer=Number(data.initial_odometer);const result=await api('/onboarding','POST',data);vid=result.vehicle.id;clearContext();await refresh();$('onboarding').hidden=true;$('app').hidden=false;msg('Onboarding completado');}catch(error){$('onboarding-error').textContent=tr(error.message);}finally{btn.disabled=false;}
+ try{const data=Object.fromEntries(new FormData(e.target));data.year=Number(data.year);data.initial_odometer=Number(data.initial_odometer);data.additional_vehicles=onboardingCars;const result=await api('/onboarding','POST',data);vid=result.vehicle.id;clearContext();await refresh();$('onboarding').hidden=true;$('app').hidden=false;msg('Onboarding completado');}catch(error){$('onboarding-error').textContent=tr(error.message);}finally{btn.disabled=false;}
 });
 bind('onboarding-exit',async()=>{await api('/logout','POST',{});$('onboarding').hidden=true;$('login').hidden=false;state=null;});
 $('distance-unit').addEventListener('change',()=>{const form=$('vehicle-form');const previous=form.dataset.unit||unit();const next=$('distance-unit').value;const factor=next==='km'&&previous==='mi'?1.609344:next==='mi'&&previous==='km'?1/1.609344:1;for(const name of ['odometer','oil_due'])form.elements[name].value=(Number(form.elements[name].value)*factor).toFixed(1);form.dataset.unit=next;$('odometer-label').textContent=tr('Odómetro')+' ('+next+')';});
@@ -137,7 +137,7 @@ bind('confirm-expense',async()=>{
  await api(path()+'/expenses','POST',{amount:proposal.amount,category:proposal.category,note:proposal.note});clearExpenseProposal();await refresh();$('answer').textContent=tr('Gasto guardado');msg('Gasto guardado');
 });
 
-bind('add-car-top',()=>{if(active)throw Error('Finaliza el viaje antes de crear otro vehículo');document.querySelector('[data-tab="settings"]').click();$('new-vehicle').click();$('catalog-make').scrollIntoView({behavior:'smooth',block:'center'});$('catalog-make').focus();});
+
 
 for(const entry of VEHICLE_CATALOG){const o=document.createElement('option');o.value=entry.make;o.textContent=entry.make;$('catalog-make').append(o);}
 $('catalog-make').addEventListener('change',()=>{
@@ -156,3 +156,11 @@ async function loadConnectors(){
  $('connector-status').textContent=tr('Mapas y música: acceso externo. OBD: sin conexión. Pantalla del carro: requiere integración nativa. Nexxus: datos locales; IA requiere proveedor.');
 }
 $('connector-form').addEventListener('submit',async e=>{e.preventDefault();try{await api('/connectors','PUT',{maps:$('connector-maps').value,music:$('connector-music').value,obd_name:$('connector-obd').value,projection:$('connector-projection').value,assistant:$('connector-assistant').value});await loadConnectors();msg('Preferencias de conectores guardadas');}catch(e){msg(e.message);}});
+
+let onboardingCars=[];
+bind('onboarding-add-car',()=>{
+ const form=$('onboarding-form');const car={};for(const key of ['make','model','year','initial_odometer','distance_unit']){const el=form.elements[key];if(!el.reportValidity())return;car[key]=el.value;}
+ if(onboardingCars.length>=9)throw Error('Límite de 10 vehículos');car.year=Number(car.year);car.initial_odometer=Number(car.initial_odometer);onboardingCars.push(car);
+ const row=document.createElement('div');row.className='row';const text=document.createElement('span');text.textContent=car.make+' '+car.model+' '+car.year+' · '+car.initial_odometer+' '+car.distance_unit;const remove=document.createElement('button');remove.type='button';remove.textContent=tr('Quitar');remove.addEventListener('click',()=>{onboardingCars=onboardingCars.filter(x=>x!==car);row.remove();});row.append(text,remove);$('onboarding-car-list').append(row);
+ for(const key of ['make','model','year','initial_odometer'])form.elements[key].value='';form.elements.make.focus();msg('Carro añadido. Completa el siguiente carro antes de guardar.');
+});

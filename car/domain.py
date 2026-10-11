@@ -58,7 +58,16 @@ class Profile(AddressFields):
     address: str | None = Field(default=None, min_length=5, max_length=300)
     phone: str | None = Field(default=None, min_length=7, max_length=30, pattern=r'^\+?[0-9 () .-]+$')
 
+class OnboardingVehicle(Input):
+    make: str = Field(min_length=1,max_length=60)
+    model: str = Field(min_length=1,max_length=60)
+    year: int = Field(ge=1980,le=2030)
+    initial_odometer: float = Field(ge=0,le=2000000)
+    distance_unit: Literal['mi','km']
+
 class Onboarding(AddressFields):
+    plan: Literal['basic','pro'] = 'basic'
+    additional_vehicles: list[OnboardingVehicle] = Field(default_factory=list,max_length=9)
     name: str = Field(min_length=1, max_length=80)
     address: str = Field(min_length=5, max_length=300)
     phone: str = Field(min_length=7, max_length=30, pattern=r'^\+?[0-9 () .-]+$')

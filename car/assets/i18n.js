@@ -1,5 +1,6 @@
 'use strict';
 const EN = {
+'＋ Agregar otro carro':'＋ Add another car','Mis carros':'My cars','Quitar':'Remove','Carro añadido. Completa el siguiente carro antes de guardar.':'Car added. Complete the next car before saving.',
 '¿Cómo te gusta que te llamen?':'What would you like us to call you?','Calle y número':'Street address','Ciudad':'City','Estado / provincia':'State / province','País':'Country','Ej. Jorge':'e.g. Jorge',
 'Correo electrónico':'Email','Contraseña':'Password','Iniciar sesión sin cobro':'Sign in without charges','Acceso de prueba sin cobro para cuentas habilitadas.':'Trial access without charges for approved accounts.',
 'Tu espacio personal para probar AITA Car. Sin tarjeta y sin cobros. Tus datos se guardan en el servidor de esta cuenta.':'Your personal space to try AITA Car. No card and no charges. Your data is saved on this account’s server.',

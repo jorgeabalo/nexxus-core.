@@ -258,3 +258,15 @@ def test_preferred_name_and_separate_address_fields(c):
     assert r.status_code==200
     for key,value in data.items(): assert c.get('/api/car/dashboard').json()['profile'][key]==value
     assert c.put('/api/car/profile',json={**data,'preferred_name':' '*3}).status_code==422
+
+
+def test_onboarding_registers_family_cars_and_plan(c):
+    c.post('/api/car/start',json={})
+    car={'make':'Kia','model':'Rio','year':2023,'initial_odometer':2000,'distance_unit':'km'}
+    r=c.post('/api/car/onboarding',json={'name':'Jorge Abalo','preferred_name':'Jorge','address':'123 Main Street','phone':'5551234567','make':'Kia','model':'Sportage','year':2021,'initial_odometer':100,'distance_unit':'mi','plan':'pro','additional_vehicles':[car]})
+    assert r.status_code==200
+    d=c.get('/api/car/dashboard').json()
+    assert len(d['vehicles'])==2 and d['profile']['plan']=='pro'
+    rio=next(v for v in d['vehicles'] if v['model']=='Rio')
+    assert rio['odometer']==pytest.approx(2000/1.609344)
+    assert d['profile']['primary_vehicle_id']==r.json()['vehicle']['id']

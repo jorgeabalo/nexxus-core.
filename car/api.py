@@ -44,14 +44,20 @@ def router(store, identity, *, demo=False, obd=None, assistant=None):
             p=store.profile(t)
             if not p: raise HTTPException(401,'Inicia una sesión demo')
             if p.get('onboarding_completed'): raise HTTPException(409,'Onboarding ya completado; edita tu perfil')
-            if len(store.vehicles(t))>=10: raise HTTPException(409,'Límite de 10 vehículos de demo')
+            if len(store.vehicles(t))+1+len(b.additional_vehicles)>10: raise HTTPException(409,'Límite de 10 vehículos')
             odometer=b.initial_odometer / 1.609344 if b.distance_unit=='km' else b.initial_odometer
             v={'id':uid(),'make':b.make,'model':b.model,'year':b.year,'odometer':odometer,
                'initial_odometer':b.initial_odometer,'initial_distance_unit':b.distance_unit,'distance_unit':b.distance_unit,
                'initial_odometer_miles':odometer,'mpg':26,'fuel_price':3.45,'oil_due':odometer+5000,
                'baseline_at':now(),'maintenance_interval_source':'demo_estimate'}
             store.save_vehicle(t,v)
-            p.update(preferred_name=b.preferred_name,city=b.city,state=b.state,country=b.country,
+            for extra in b.additional_vehicles:
+                odo=extra.initial_odometer/(1.609344 if extra.distance_unit=='km' else 1)
+                store.save_vehicle(t,{'id':uid(),'make':extra.make,'model':extra.model,'year':extra.year,
+                    'odometer':odo,'initial_odometer_miles':odo,'initial_odometer':extra.initial_odometer,
+                    'initial_distance_unit':extra.distance_unit,'distance_unit':extra.distance_unit,
+                    'mpg':26,'fuel_price':3.45,'oil_due':odo+5000,'baseline_at':now(),'maintenance_interval_source':'demo_estimate'})
+            p.update(plan=b.plan,preferred_name=b.preferred_name,city=b.city,state=b.state,country=b.country,
                      name=b.name,address=b.address,phone=b.phone,onboarding_completed=True,
                      onboarding_at=now(),primary_vehicle_id=v['id'])
             store.save_profile(t,p)
