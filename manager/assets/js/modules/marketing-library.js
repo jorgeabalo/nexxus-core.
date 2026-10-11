@@ -171,21 +171,21 @@ export async function libraryView(ctx, reload) {
     } catch (e) { status.textContent = sErr(e); } finally { fileInput.value = ''; }
   });
   const st = data.storage;
+  const size = (b) => fmtBytes(b).replace(/\.0 /, ' ');                 // "1 GB", no "1.0 GB"
   // Estados: incluida, espacio en preparación (0) · habilitada (usado/límite) · límite alcanzado · sin límite.
   const quota = {
     disabled: el('p', { class: 'mk-note', role: 'status', dataset: { state: 'disabled' } },
       el('strong', {}, s('libDisabled')), ' ', s('libDisabledHint')),
     full: el('p', { class: 'error-box mk-notice', role: 'status', dataset: { state: 'full' } },
       el('strong', {}, s('libFull')), ` ${fmtBytes(st.used_bytes)} / ${fmtBytes(st.limit_bytes)}`),
-    enabled: el('p', { class: 'hint', dataset: { state: 'enabled' } },
-      `${s('storage')}: ${fmtBytes(st.used_bytes)} / ${fmtBytes(st.limit_bytes)}`),
+    enabled: el('p', { class: 'hint', dataset: { state: 'enabled' } }, s('libUsage', size(st.used_bytes), size(st.limit_bytes))),
     unlimited: el('p', { class: 'hint', dataset: { state: 'unlimited' } }, `${s('storage')}: ${fmtBytes(st.used_bytes)} · ${s('noLimit')}`),
   }[st.state];
   // Desglose: un archivo vencido es invisible e irrecuperable, pero ocupa espacio hasta la eliminación física.
   const parts = st.state === 'disabled' && !st.used_bytes ? null : el('p', { class: 'hint', dataset: { storage: 'breakdown' } },
-    [`${s('stActive')}: ${fmtBytes(st.active_bytes || 0)}`, `${s('stExpired')}: ${fmtBytes(st.expired_pending_bytes || 0)}`,
-      `${s('stReserved')}: ${fmtBytes(st.reserved_bytes || 0)}`,
-      `${s('stAvailable')}: ${st.available_bytes == null ? s('noLimit') : fmtBytes(st.available_bytes)}`].join(' · '));
+    [`${s('stActive')}: ${size(st.active_bytes || 0)}`, `${s('stExpired')}: ${size(st.expired_pending_bytes || 0)}`,
+      `${s('stReserved')}: ${size(st.reserved_bytes || 0)}`,
+      `${s('stAvailable')}: ${st.available_bytes == null ? s('noLimit') : size(st.available_bytes)}`].join(' · '));
   const expiredHint = st.expired_pending_bytes > 0
     ? el('p', { class: 'mk-note', dataset: { storage: 'expired-hint' } }, s('stExpiredHint')) : null;
   const head = el('div', { class: 'mk-lib-head' },

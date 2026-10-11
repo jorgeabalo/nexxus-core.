@@ -26,8 +26,8 @@ BANNED_KEYS = {"selected_provider", "selected_model", "provider", "providers", "
                "router_strategy", "catalog", "catalog_version", "unit_price", "price_source", "billing_unit", "margin",
                "global_budget", "aita_budget", "cap", "limit", "scope", "usage_by_model", "demo_mode", "cost_category"}
 H = {"Authorization": f"Bearer jwt-{OWNER}"}
-PLAN_KEYS = {"included", "added", "total", "used", "available", "offers", "cycle_start", "next_cycle", "active", "pending",
-             "can_authorize", "managers_can_authorize"}
+PLAN_KEYS = {"included", "added", "total", "used", "available", "offers", "cycle_start", "next_cycle", "current", "upcoming",
+             "next_total", "pending", "can_authorize", "managers_can_authorize"}
 
 
 def banned_in(text):
@@ -150,7 +150,8 @@ def test_plan_texts_are_served_and_budget_texts_are_gone(client, lang, texts):
 # ------------------------------------------------------------------ recorrido completo de la API del tenant
 CRAWL_KEYS = BANNED_KEYS | {"worker_id", "lease_owner", "router_strategy", "catalog_version", "amount_cents",
                             "monthly_ai_cost_limit", "maximum_cost", "estimated_cost", "reserved_cost", "actual_cost",
-                            "blocks_8", "blocks_4", "blocks_1", "decided_by", "cancelled_by", "attempts"}
+                            "blocks_8", "blocks_4", "blocks_1", "decided_by", "cancelled_by", "attempts", "billing_line",
+                            "authorized_by", "declined_by", "replaced_by", "invoice", "invoice_status"}
 
 
 def test_every_tenant_response_has_only_commercial_data(client, db):
@@ -184,3 +185,4 @@ def test_every_tenant_response_has_only_commercial_data(client, db):
         assert banned_in(r.text) == [], (r.request.url, banned_in(r.text))
         assert not CRAWL_KEYS & set(keys(r.json())), (r.request.url, CRAWL_KEYS & set(keys(r.json())))
         assert "percent" not in r.text, r.request.url
+        assert "uninvoiced" not in r.text and "Publicaciones adicionales de Marketing" not in r.text, r.request.url

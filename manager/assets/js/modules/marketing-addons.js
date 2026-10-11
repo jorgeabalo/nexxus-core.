@@ -22,6 +22,8 @@ export function planCard(plan) {
   return card(p('plan_title'), el('div', { class: 'card-body' },
     dl([[p('included'), String(plan.included)], [p('added'), String(plan.added || 0)],
       [p('used'), String(plan.used)], [p('available'), String(plan.available)]]),
+    plan.next_total !== null && plan.next_total !== undefined && plan.next_total !== plan.total
+      ? el('p', { class: 'mk-note' }, p('next_total', fmtDay(plan.next_cycle), plan.next_total)) : null,
     el('p', { class: 'hint' }, p('plan_kinds'))));
 }
 
@@ -74,14 +76,16 @@ export function addonSection(ctx, plan, role, reload) {
     }
     function quoteBlock(q) {
       if (!q) return [el('p', { class: 'form-error' }, p('invalid'))];
-      const added = (plan.added || 0) + q.additional;
+      // Una sola ampliación: si ya hay una en este ciclo, la nueva la reemplaza desde el ciclo siguiente.
+      const change = Boolean(plan.current);
       return [
         st.cadence === 'weekly' ? el('p', {}, p('equiv', q.per_week, q.additional)) : null,
+        st.cadence === 'weekly' ? el('p', { class: 'hint', dataset: { note: 'weekly' } }, p('weekly_note')) : null,
         el('p', { class: 'hint' }, p('combo', blocksText(q.blocks))),
-        dl([[p('s_included'), String(plan.included)],
-          [p('s_added'), plan.added ? `${added} (${plan.added} + ${q.additional})` : String(q.additional)],
-          [p('s_total'), String(plan.included + added)], [p('s_price'), fmtPrice(q.amount)],
-          [p('s_start'), fmtDay(localToday())]]),
+        dl([[p('s_included'), String(plan.included)], [p('s_added'), String(q.additional)],
+          [p('s_total'), String(plan.included + q.additional)], [p('s_price'), fmtPrice(q.amount)],
+          [p('s_start'), change ? fmtDay(plan.next_cycle) : fmtDay(localToday())]]),
+        change ? el('p', { class: 'hint', dataset: { note: 'change' } }, p('change_note', fmtDay(plan.next_cycle))) : null,
         el('p', { class: 'mk-note' }, p('recurring')),
         approver ? null : el('p', { class: 'hint' }, p('owner_note')),
         confirmRow(p(approver ? 'confirm_authorize' : 'confirm_request', q.additional, fmtPrice(q.amount)),
@@ -108,16 +112,20 @@ export function addonSection(ctx, plan, role, reload) {
   const rowText = (a) => `${p('row', a.additional_publications, fmtPrice(a.amount))}${a.cadence === 'weekly' ? ` ${p('row_weekly', a.per_week)}` : ''}`;
   const pending = (plan.pending || []).length ? el('div', { class: 'mk-addon-list' }, el('h3', {}, p('pending_title')),
     ...plan.pending.map(a => el('div', { class: 'mk-addon-item' },
-      el('p', {}, rowText(a), a.requested_by_me ? el('span', { class: 'badge' }, p('by_me')) : null),
+      el('p', {}, rowText(a), a.requested_by_me ? [' · ', el('strong', { class: 'mk-addon-state' }, p('by_me'))] : null),
       approver ? confirmRow(p('confirm_authorize', a.additional_publications, fmtPrice(a.amount)), p('approve'),
         act(a.id, 'approve', 'authorized')) : null,
       approver ? el('button', { class: 'btn btn-sm', type: 'button', onclick: (e) => act(a.id, 'decline', 'declined')(e.target) },
         p('decline')) : null))) : null;
-  const active = (plan.active || []).length ? el('div', { class: 'mk-addon-list' }, el('h3', {}, p('active_title')),
-    ...plan.active.map(a => el('div', { class: 'mk-addon-item' },
-      el('p', {}, `${rowText(a)} · ${p('since', fmtDay(a.starts_cycle))}${a.ends_cycle ? ` · ${p('until', fmtDay(a.ends_cycle))}` : ''}`),
-      approver && a.status === 'authorized' ? confirmRow(p('cancel_confirm', a.additional_publications, fmtPrice(a.amount),
-        fmtDay(plan.next_cycle)), p('cancel'), act(a.id, 'cancel', 'cancelled'), 'btn btn-sm') : null))) : null;
+  const mine = [plan.current, plan.upcoming].filter(Boolean);
+  const active = mine.length ? el('div', { class: 'mk-addon-list' }, el('h3', {}, p('active_title')),
+    ...mine.map(a => el('div', { class: 'mk-addon-item', dataset: { state: a.state } },
+      el('p', {}, rowText(a), ' · ', el('strong', { class: 'mk-addon-state' }, p(`state_${a.state}`))),
+      el('p', { class: 'hint' }, [a.state === 'upcoming' ? p('since', fmtDay(a.starts_cycle)) : null,
+        a.ends_cycle ? p('until', fmtDay(a.ends_cycle)) : null].filter(Boolean).join(' · ')),
+      approver && ['active', 'upcoming'].includes(a.state) ? confirmRow(p('cancel_confirm', a.additional_publications,
+        fmtPrice(a.amount), fmtDay(a.state === 'upcoming' ? a.starts_cycle : plan.next_cycle)), p('cancel'),
+      act(a.id, 'cancel', 'cancelled'), 'btn btn-sm') : null))) : null;
   const delegate = role !== 'owner' ? null : el('label', { class: 'mk-check' },
     el('input', { type: 'checkbox', checked: plan.managers_can_authorize === true, onchange: async (e) => {
       try { await M.setPurchasePermission(ctx.tenantId, e.target.checked); toast(p('delegate_saved')); }

@@ -1,7 +1,9 @@
 """Marketing Fase 1 con una cuota pública única de publicaciones."""
+from datetime import datetime
 from typing import Any, Dict
 
 from services.marketing import MarketingService
+from services.member_portal import PortalError
 from services import marketing_publication_plan as pp
 
 
@@ -41,11 +43,27 @@ class MarketingPlanService(MarketingService):
         return pp.set_permission(self.db, self._addon_ctx(jwt, tenant_id), body.get("managers_can_authorize"))
 
     def _schedule_checks(self, c, cur: Dict[str, Any], when: Any) -> str:
+        """Una sola cuota: el límite efectivo DEL MES DE PUBLICACIÓN (incluidas + ampliación vigente en ese ciclo,
+        zona del tenant). Los límites técnicos por formato no forman parte del plan."""
         original = c.settings
-        plan = self.publication_plan(c)
-        c.settings = {**original, "monthly_post_limit": plan["total"],
-                      "monthly_image_limit": None, "monthly_reel_limit": None}
+        at = self._when(c, when) or cur.get("planned_at")
+        limit = None
+        if at:
+            at_dt = datetime.fromisoformat(str(at).replace("Z", "+00:00"))
+            limit = pp.effective_limit(self.db, c, pp.cycle_of(c, at_dt))
+        c.settings = {**original, "monthly_post_limit": limit, "monthly_image_limit": None, "monthly_reel_limit": None}
         try:
             return super()._schedule_checks(c, cur, when)
         finally:
             c.settings = original
+
+    def transition(self, *a, **kw) -> Dict[str, Any]:
+        try:
+            return super().transition(*a, **kw)
+        except PortalError:
+            raise
+        except Exception as e:
+            # La base rechazó por cuota (dos programaciones a la vez): mismo error público que el backend.
+            if "limit_monthly_post_limit" in str(e):
+                raise PortalError("limit_monthly_post_limit", 409)
+            raise

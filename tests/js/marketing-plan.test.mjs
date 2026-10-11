@@ -67,6 +67,9 @@ test('frases exactas de confirmación (ES/EN, singular y plural)', () => {
   assert.match(es.recurring, /recurrente hasta que lo canceles/);
   assert.match(en.recurring, /recurring monthly charge until you cancel/);
   assert.equal(es.ad_title, '¿Necesitas más publicaciones?');
+  assert.equal(es.weekly_note, 'Se distribuirán durante cuatro semanas del ciclo mensual. Una quinta semana no añade publicaciones automáticamente.');
+  assert.equal(en.weekly_note, 'They will be spread over four weeks of the monthly cycle. A fifth week does not add posts automatically.');
+  assert.match(es.change_note('1 de noviembre de 2026'), /^Reemplaza tu ampliación actual a partir del 1 de noviembre de 2026\./);
 });
 
 test('ES y EN tienen las mismas claves', () => {
@@ -82,8 +85,11 @@ test('dos modos de creación, seis objetivos y Biblioteca incluida', () => {
   assert.deepEqual(es, ['Conseguir llamadas', 'Conseguir mensajes', 'Reservar una visita o clase de prueba',
     'Conseguir membresías', 'Reactivar clientes', 'Obtener reseñas']);
   for (const o of OBJECTIVES) assert.ok(STUDIO_TEXT.en[`ob_${o}`], o);
-  assert.match(STUDIO_TEXT.es.libDisabled, /incluida en tu plan/);
-  assert.match(STUDIO_TEXT.en.libDisabled, /included in your plan/);
+  assert.equal(STUDIO_TEXT.es.libDisabled, 'Biblioteca incluida — pendiente de activación');
+  assert.equal(STUDIO_TEXT.en.libDisabled, 'Library included — pending activation');
+  assert.equal(STUDIO_TEXT.es.libUsage('120 MB', '1 GB'), 'Biblioteca incluida — 120 MB utilizados de 1 GB');
+  assert.equal(STUDIO_TEXT.en.libUsage('120 MB', '1 GB'), 'Library included — 120 MB used of 1 GB');
+  for (const lang of ['es', 'en']) assert.ok(!/no disponible|not available in this plan/i.test(STUDIO_TEXT[lang].libDisabled));
   for (const lang of ['es', 'en']) {
     assert.ok(!/no habilitada|not enabled/i.test(STUDIO_TEXT[lang].libDisabled + STUDIO_TEXT[lang].err.library_disabled), lang);
     assert.match(STUDIO_TEXT[lang].libTemporary(30), /30/);
