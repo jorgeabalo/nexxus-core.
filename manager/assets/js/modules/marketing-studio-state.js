@@ -89,3 +89,10 @@ export function fmtCost(v, currency = 'USD') {
 export function newIdempotencyKey(rand = () => Math.random()) {
   return `job-${Date.now().toString(36)}-${Array.from({ length: 16 }, () => Math.floor(rand() * 36).toString(36)).join('')}`;
 }
+
+// Presupuesto de generación con IA: lo que se muestra al tenant (solo lo asignado y su consumo).
+export function budgetView(b) {
+  if (!b || b.enabled !== true) return { enabled: false, title: 'budgetTitle', message: 'budgetDisabled' };
+  return { enabled: true, title: 'budgetTitle', currency: b.currency || 'USD', warning: b.warning || null,
+    rows: [['budgetMonth', b.assigned], ['budgetUsed', b.used], ['budgetReserved', b.reserved], ['budgetAvailable', b.available]] };
+}
