@@ -40,7 +40,22 @@ JOB_COLS = ("id,tenant_id,content_id,created_by,task_type,status,real_media_perc
 
 INTERNAL_JOB_KEYS = ("selected_provider", "selected_model", "provider_job_id", "router_strategy", "usage",
                      "lease_owner", "lease_expires_at", "heartbeat_at", "maximum_cost", "estimated_cost",
-                     "reserved_cost", "actual_cost", "currency")
+                     "reserved_cost", "actual_cost", "currency", "real_media_percent", "ai_media_percent")
+PLAN_INTERNAL = ("real_media_percent", "ai_media_percent", "approx_real_percent")
+
+
+def creation_mode(j: Dict[str, Any]) -> str:
+    """Las dos modalidades públicas. Trabajos anteriores: con material real = Biblioteca + IA."""
+    mode = ((j.get("request_metadata") or {}).get("creation_mode"))
+    if mode in ("library_ai", "fully_ai"):
+        return mode
+    return "library_ai" if int(j.get("real_media_percent") or 0) > 0 else "fully_ai"
+
+
+def public_overview(ov: Dict[str, Any]) -> Dict[str, Any]:
+    """El tenant solo ve si puede generar y su plan de publicaciones: ni presupuesto de IA en USD, ni costos,
+    ni límites técnicos por formato, ni porcentajes real/IA."""
+    return {"generation_enabled": ov.get("generation_enabled") is True, "publication_plan": ov.get("publication_plan")}
 
 
 def public_job(j: Dict[str, Any]) -> Dict[str, Any]:
@@ -48,10 +63,14 @@ def public_job(j: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(j, dict):
         return j
     out = {k: v for k, v in j.items() if k not in INTERNAL_JOB_KEYS}
-    meta = dict(out.get("request_metadata") or {})
+    out["creation_mode"] = creation_mode(j)
+    meta = {k: v for k, v in (out.get("request_metadata") or {}).items() if not k.startswith("mix_")}
     est = meta.get("estimate")
     if isinstance(est, dict):
-        meta["estimate"] = {"plan": est.get("plan"), "full_ai": est.get("full_ai"),
+        plan = est.get("plan")
+        if isinstance(plan, dict):
+            plan = {k: v for k, v in plan.items() if k not in PLAN_INTERNAL}
+        meta["estimate"] = {"plan": plan, "full_ai": est.get("full_ai"),
                             "generated_images": est.get("generated_images"),
                             "generated_video_seconds": est.get("generated_video_seconds")}
     out["request_metadata"] = meta
@@ -171,6 +190,8 @@ class StudioService(StudioBase):
         self._writable(c)
         brief = validate_brief(body.get("brief") or {})
         mode = body.get("creation_mode")
+        if mode == "fully_ai" and (body.get("media_ids") or body.get("derivative_ids")):
+            raise PortalError("fully_ai_uses_no_media", 400)          # todo con IA: ningún archivo real
         if mode == "library_ai":
             mix, adapt_real = confirm_mix(c.role, 100, 0), True
         elif mode == "fully_ai":

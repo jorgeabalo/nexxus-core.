@@ -14,7 +14,7 @@ from starlette.concurrency import run_in_threadpool
 from services.marketing_domain import DomainError
 from services.marketing_library import LibraryService
 from services.marketing_media_stream import COOKIE, MediaStreamService, check_cookie_config, cookie_secure, stream_path
-from services.marketing_studio import StudioService, public_job
+from services.marketing_studio import StudioService, public_job, public_overview
 from services.member_portal import PortalError
 
 logger = logging.getLogger(__name__)
@@ -189,7 +189,8 @@ def build_router(get_db: Callable) -> APIRouter:
     # ---------- Estudio de Reels ----------
     @r.get(f"{P}/studio")
     async def overview(request: Request, tenant_id: str = ""):
-        return await call(lambda: studio().overview(bearer(request), tenant_id))
+        res = await call(lambda: studio().overview(bearer(request), tenant_id))
+        return public_overview(res) if isinstance(res, dict) else res
 
     @r.post(f"{P}/studio/mix-preview")
     async def mix_preview(request: Request):

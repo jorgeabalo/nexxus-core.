@@ -72,6 +72,34 @@ ok((await db.query(`select has_table_privilege('service_role','public.marketing_
 ok(!(await db.query(`select has_table_privilege('service_role','public.marketing_publication_addons','UPDATE') ok`)).rows[0].ok,
   'backend no altera autorizaciones');
 
+// Revisión: precio generado, moneda, clave, rango y escritura del tenant bloqueada aunque sea owner.
+const ins = (cols, vals) => `insert into marketing_publication_addons(tenant_id,cycle_start,additional_publications,requested_by,authorized_by,idempotency_key${cols})
+  values ('${TA}','2026-10-01',1,'${O}','${O}','addon-review-${String(++checks).padStart(6,'0')}'${vals})`;
+await expect(db, ins(',amount_cents', ',1'), '428C9');
+await expect(db, ins(',blocks_1', ',9'), '428C9');
+await expect(db, ins(',currency', ",'EUR'"), '23514');
+await expect(db, `insert into marketing_publication_addons(tenant_id,cycle_start,additional_publications,requested_by,authorized_by,idempotency_key)
+  values ('${TA}','2026-10-01',501,'${O}','${O}','addon-review-toomany')`, '23514');
+await expect(db, `insert into marketing_publication_addons(tenant_id,cycle_start,additional_publications,requested_by,authorized_by,idempotency_key)
+  values ('${TA}','2026-10-01',1,'${O}','${O}','short')`, '23514');
+for (const [sql, what] of [[`insert into marketing_publication_addons(tenant_id,cycle_start,additional_publications,requested_by,authorized_by,idempotency_key)
+    values ('${TA}','2026-10-01',1,'${O}','${O}','addon-owner-direct-01')`, 'insert'],
+  ['update marketing_publication_addons set additional_publications = 1', 'update'],
+  ['delete from marketing_publication_addons', 'delete']]) {
+  await db.exec('begin; set local role authenticated');
+  await db.query("select set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: O })]);
+  try { await db.query(sql); assert.fail(`owner ${what} directo`); } catch (e) { assert.equal(e.code, '42501', `${what}: ${e.message}`); checks++; }
+  finally { await db.exec('rollback'); }
+}
+for (const p of ['UPDATE', 'DELETE', 'TRUNCATE']) {
+  ok(!(await db.query(`select has_table_privilege('service_role','public.marketing_publication_addons','${p}') ok`)).rows[0].ok,
+    `service_role sin ${p}`);
+  ok(!(await db.query(`select has_table_privilege('authenticated','public.marketing_publication_addons','${p}') ok`)).rows[0].ok,
+    `authenticated sin ${p}`);
+}
+ok((await db.query(`select count(*)::int n from marketing_publication_addons where amount_cents <> (blocks_8*3500 + blocks_4*2000 + blocks_1*600)
+  or blocks_8*8 + blocks_4*4 + blocks_1 <> additional_publications`)).rows[0].n === 0, 'bloques exactos y precio coherente');
+
 const db2 = await setup();
 try { await db2.exec(`${MIG}\nselect 1/0;`); assert.fail('debía fallar'); } catch { checks++; }
 ok((await db2.query(`select count(*)::int n from pg_class where relname='marketing_publication_addons'`)).rows[0].n === 0,

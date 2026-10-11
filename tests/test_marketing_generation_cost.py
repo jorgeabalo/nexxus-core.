@@ -201,5 +201,5 @@ def test_http_never_exposes_internal_costs_or_providers(monkeypatch, db):
                for e in job["events"])
     assert all("storage_path" not in o and "metadata" not in o and "worker_id" not in o for o in job["outputs"])
     ov = c.get(f"/api/manager/marketing/studio?tenant_id={T1}", headers=H).json()
-    assert set(ov["budget"]) == {"enabled", "currency", "assigned", "used", "reserved", "available", "warning", "available_pct"}
+    assert set(ov) == {"generation_enabled", "publication_plan"}            # ni presupuesto de IA, costos ni límites técnicos
     assert "providers" not in ov and "catalog" not in ov and "demo_mode" not in ov

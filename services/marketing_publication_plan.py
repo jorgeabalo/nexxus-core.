@@ -69,9 +69,21 @@ def authorize(db, c, additional: Any, confirm: bool, idempotency_key: Any) -> Di
             raise PortalError("idempotency_conflict", 409)
         return {**saved, "id": row["id"], "cycle_start": row["cycle_start"],
                 "authorized_at": row.get("authorized_at")}
-    row = db.insert("marketing_publication_addons", {
-        "tenant_id": c.tenant_id, "cycle_start": cycle_start(c), "additional_publications": q["additional_publications"],
-        "requested_by": c.user["id"], "authorized_by": c.user["id"], "idempotency_key": key})
+    try:
+        row = db.insert("marketing_publication_addons", {
+            "tenant_id": c.tenant_id, "cycle_start": cycle_start(c), "additional_publications": q["additional_publications"],
+            "requested_by": c.user["id"], "authorized_by": c.user["id"], "idempotency_key": key})
+    except Exception:
+        # Doble clic simultáneo: la otra petición ganó el índice único (tenant, clave). Se devuelve la suya
+        # (o conflicto si era otra cantidad); nunca hay dos autorizaciones ni un error 500.
+        again = db.select("marketing_publication_addons", {
+            "tenant_id": f"eq.{c.tenant_id}", "idempotency_key": f"eq.{key}", "select": "*", "limit": "1"}) or []
+        if not again:
+            raise
+        if int(again[0].get("additional_publications") or 0) != q["additional_publications"]:
+            raise PortalError("idempotency_conflict", 409)
+        return {**q, "id": again[0]["id"], "cycle_start": again[0]["cycle_start"],
+                "authorized_at": again[0].get("authorized_at")}
     # PostgreSQL calcula amount_cents: el cliente nunca puede enviar ni modificar el precio.
     if row.get("amount_cents") is not None and int(row["amount_cents"]) != round(q["amount"] * 100):
         raise PortalError("publication_addon_price_mismatch", 500)

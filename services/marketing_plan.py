@@ -15,6 +15,8 @@ class MarketingPlanService(MarketingService):
         out["publication_plan"] = self.publication_plan(c, out["usage"])
         # Una sola cuota pública. Los límites técnicos por formato no forman parte del plan mostrado.
         out["limits"] = {"monthly_post_limit": out["publication_plan"]["total"]}
+        out["usage"] = {"posts": out["usage"]["posts"]}
+        out["settings"] = {k: v for k, v in out["settings"].items() if k not in ("monthly_image_limit", "monthly_reel_limit")}
         return out
 
     def authorize_addon(self, jwt: str, tenant_id: str, body: Dict[str, Any]) -> Dict[str, Any]:

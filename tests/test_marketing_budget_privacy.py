@@ -64,14 +64,15 @@ def settings(db, **kw):
 def test_disabled_budget_shows_nothing_but_disabled(client, db, change):
     settings(db, **change)
     ov = client.get(f"/api/manager/marketing/studio?tenant_id={T1}", headers=H).json()
-    assert ov["budget"] == {"enabled": False}
+    assert set(ov) == {"generation_enabled", "publication_plan"} and ov["generation_enabled"] is False
 
 
-def test_enabled_budget_shows_only_assigned_and_consumption(client, db):
+def test_enabled_shows_only_generation_state_and_publication_plan(client, db):
+    """El presupuesto de IA en USD es interno: el tenant ve publicaciones, no dólares de IA ni límites técnicos."""
     settings(db, ai_generation_enabled=True, monthly_ai_cost_limit=10)
-    b = client.get(f"/api/manager/marketing/studio?tenant_id={T1}", headers=H).json()["budget"]
-    assert b == {"enabled": True, "currency": "USD", "assigned": 10.0, "used": 0.0, "reserved": 0.0, "available": 10.0,
-                 "warning": None, "available_pct": 100}
+    ov = client.get(f"/api/manager/marketing/studio?tenant_id={T1}", headers=H).json()
+    assert set(ov) == {"generation_enabled", "publication_plan"} and ov["generation_enabled"] is True
+    assert set(ov["publication_plan"]) == {"included", "added", "total", "used", "available", "offers"}
     assert jd.budget_summary(10, {"consumed": 2.5, "reserved": 1}) == {
         "enabled": True, "currency": "USD", "assigned": 10.0, "used": 2.5, "reserved": 1.0, "available": 6.5,
         "warning": None, "available_pct": 65}

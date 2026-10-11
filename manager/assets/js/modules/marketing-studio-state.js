@@ -105,6 +105,7 @@ export function modeMix(mode) {
 }
 
 export function modeFromJob(job) {
+  if (CREATION_MODES.includes(job?.creation_mode)) return job.creation_mode;
   return Number(job?.real_media_percent) > 0 ? 'library_ai' : 'fully_ai';
 }
 

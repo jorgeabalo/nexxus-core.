@@ -209,3 +209,27 @@ test('almacenamiento: activo, vencido pendiente de eliminación, reservado y dis
   assert.match(STUDIO_TEXT.es.stExpiredHint, /ocupando espacio/);
   assert.match(STUDIO_TEXT.en.stExpiredHint, /still use space/);
 });
+
+test('revisión #21: modalidad pública, combinación óptima 1..500 y sin porcentajes ni costos en pantalla', async () => {
+  assert.equal(modeFromJob({ creation_mode: 'fully_ai', real_media_percent: 100 }), 'fully_ai');   // la API ya no envía %
+  assert.equal(modeFromJob({ creation_mode: 'library_ai' }), 'library_ai');
+  const best = [0];
+  for (let n = 1; n <= 500; n++) best[n] = Math.min(...[[8, 35], [4, 20], [1, 6]].filter(([s]) => s <= n).map(([s, p]) => p + best[n - s]));
+  for (let n = 1; n <= 500; n++) {
+    const q = addonQuote(n);
+    assert.equal(q.blocks.reduce((a, b) => a + b.size * b.quantity, 0), n);
+    assert.equal(q.amount, best[n], `n=${n}`);
+  }
+  const src = await readFile(new URL('../../manager/assets/js/modules/marketing-studio.js', import.meta.url), 'utf8');
+  assert.ok(!/_media_percent|realPercent|aiPercent|mixExplain|maxCost|costEstimated|costActual|budgetCard/.test(src), 'sin % ni costos');
+  for (const lang of ['es', 'en']) assert.ok(STUDIO_TEXT[lang].err?.fully_ai_uses_no_media || STUDIO_TEXT[lang].errors?.fully_ai_uses_no_media
+    || JSON.stringify(STUDIO_TEXT[lang]).includes('fully_ai_uses_no_media'), lang);
+});
+
+test('revisión #21: Marketing (y sus ampliaciones) solo para owner y manager en el frontend', async () => {
+  const { CATALOG, canOpen } = await import('../../manager/assets/js/nav.js');
+  assert.deepEqual(CATALOG.find(m => m.key === 'marketing').roles, ['owner', 'manager']);
+  const all = { modules: {} };
+  for (const role of ['staff', 'member', 'socio', '']) assert.equal(canOpen(all, role, 'marketing'), false, role);
+  for (const role of ['owner', 'manager']) assert.equal(canOpen(all, role, 'marketing'), true, role);
+});

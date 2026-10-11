@@ -147,11 +147,13 @@ function publicationPlanCard(ctx, plan, reload) {
   const total = Number(plan?.total || 0), used = Number(plan?.used || 0);
   const target = input({ type: 'number', min: String(total + 1), max: String(total + 500),
     value: String(total + 1), class: 'input' });
-  const confirm = input({ type: 'checkbox' });
+  const confirm = el('input', { type: 'checkbox' });
+  const confirmText = el('span');
   const quoteBox = el('div', { class: 'mk-addon-quote', 'aria-live': 'polite' });
   const key = newIdempotencyKey();
   const drawQuote = () => {
     const q = addonQuote(Number(target.value) - total);
+    confirmText.textContent = q ? s('addonConfirm', q.additional, fmtCost(q.amount, q.currency)) : '';
     clear(quoteBox).append(q
       ? el('p', {}, s('addonQuote', Number(target.value), q.additional, fmtCost(q.amount, q.currency)),
         el('span', { class: 'hint' }, ` ${q.blocks.map(b => `${b.quantity}× +${b.size}`).join(' + ')}`))
@@ -166,7 +168,7 @@ function publicationPlanCard(ctx, plan, reload) {
       toast(s('addonAuthorized')); await reload();
     } catch (e) { toast(sErr(e), 'error'); drawQuote(); }
   } }, s('authorizeAddon'));
-  target.addEventListener('input', drawQuote);
+  target.addEventListener('input', () => { confirm.checked = false; drawQuote(); });   // la confirmación es de ESE total
   confirm.addEventListener('change', drawQuote);
   drawQuote();
   return card(s('publicationPlan'), el('div', { class: 'card-body' },
@@ -178,7 +180,7 @@ function publicationPlanCard(ctx, plan, reload) {
     plan.total === null ? null : el('div', { class: 'mk-addon' }, el('h3', {}, s('needMorePublications')),
       el('p', { class: 'hint' }, s('addonOptions')),
       field(s('monthlyTotal'), target), quoteBox,
-      el('label', { class: 'mk-check' }, confirm, el('span', {}, s('addonConfirm'))), buy)));
+      el('label', { class: 'mk-check' }, confirm, confirmText), buy)));
 }
 
 export async function jobsView(ctx, reload, openId) {
