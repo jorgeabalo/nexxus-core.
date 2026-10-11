@@ -1,0 +1,86 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "aita carro",
+      "intents": [
+        {
+          "name": "VehicleQueryIntent",
+          "slots": [
+            {
+              "name": "question",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "consulta {question}",
+            "pregunta {question}"
+          ]
+        },
+        {
+          "name": "RecordExpenseIntent",
+          "slots": [
+            {
+              "name": "amount",
+              "type": "AMAZON.NUMBER"
+            },
+            {
+              "name": "category",
+              "type": "ExpenseCategory"
+            }
+          ],
+          "samples": [
+            "registra {category} por {amount} dólares",
+            "gasté {amount} dólares en {category}"
+          ]
+        },
+        {
+          "name": "AMAZON.YesIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.NoIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": []
+        }
+      ],
+      "types": [
+        {
+          "name": "ExpenseCategory",
+          "values": [
+            {
+              "name": {
+                "value": "gasolina"
+              }
+            },
+            {
+              "name": {
+                "value": "aceite"
+              }
+            },
+            {
+              "name": {
+                "value": "mantenimiento"
+              }
+            },
+            {
+              "name": {
+                "value": "peajes"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

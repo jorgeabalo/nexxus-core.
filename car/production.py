@@ -36,6 +36,8 @@ def create_production(*, origin=None, auth_url=None, auth_key=None, path=None, a
     store=Store(path); app=FastAPI(docs_url=None,redoc_url=None,openapi_url=None)
     auth=httpx.Client(base_url=auth_url.rstrip('/')+'/auth/v1',headers={'apikey':auth_key},timeout=8,transport=transport)
     app.state.store=store
+    alexa_enabled=os.getenv('AITA_CAR_ALEXA_ENABLED','').lower()=='true'
+    alexa_server_paths={'/api/car/alexa','/alexa/token'} if alexa_enabled else set()
     store.db.execute('CREATE TABLE IF NOT EXISTS login_limits (key TEXT PRIMARY KEY, window INTEGER, attempts INTEGER)');store.db.commit()
     @app.on_event('shutdown')
     def close(): auth.close(); store.db.close()
@@ -45,13 +47,19 @@ def create_production(*, origin=None, auth_url=None, auth_key=None, path=None, a
     async def protect(request,call_next):
         if request.url.path!='/health' and request.headers.get('host')!=host: return JSONResponse({'detail':'Host no autorizado'},403)
         if request.method not in ('GET','HEAD','OPTIONS'):
-            if request.headers.get('origin')!=origin: return JSONResponse({'detail':'Origen no autorizado'},403)
+            if request.url.path not in alexa_server_paths and request.headers.get('origin')!=origin: return JSONResponse({'detail':'Origen no autorizado'},403)
             chunks=[]; size=0
             async for chunk in request.stream():
                 size+=len(chunk)
-                if size>16384: return JSONResponse({'detail':'Solicitud demasiado grande'},413)
+                if size>(32768 if request.url.path=='/api/car/alexa' else 16384): return JSONResponse({'detail':'Solicitud demasiado grande'},413)
                 chunks.append(chunk)
             request._body=b''.join(chunks)
+            if request.url.path in alexa_server_paths:
+                window=int(time.time()//60);key='alexa:'+request.url.path
+                with store.transaction():
+                    row=store.db.execute('SELECT attempts FROM login_limits WHERE key=? AND window=?',(key,window)).fetchone()
+                    if row and row[0]>=120:return JSONResponse({'detail':'Límite de solicitudes'},429)
+                    store.db.execute('INSERT INTO login_limits VALUES(?,?,1) ON CONFLICT(key) DO UPDATE SET window=excluded.window,attempts=CASE WHEN window=excluded.window THEN attempts+1 ELSE 1 END',(key,window))
         response=await call_next(request)
         response.headers.update({'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Strict-Transport-Security':'max-age=31536000',
           'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-src https://www.openstreetmap.org; object-src 'none'; frame-ancestors 'none'; base-uri 'self'"})
@@ -67,6 +75,14 @@ def create_production(*, origin=None, auth_url=None, auth_key=None, path=None, a
         if user.get('id') not in allowed: raise HTTPException(403,'Cuenta no habilitada para esta prueba')
         return 'local-'+user['id']
     def identity(request:Request): return checked_user(request.cookies.get(COOKIE))
+    if alexa_enabled:
+        from .alexa_link import AlexaLink
+        from .alexa_transport import alexa_router
+        skill_id=os.getenv('AITA_CAR_ALEXA_SKILL_ID','')
+        if not skill_id.startswith('amzn1.ask.skill.'): raise RuntimeError('Alexa skill ID required')
+        link=AlexaLink(store,os.getenv('AITA_CAR_ALEXA_CLIENT_ID',''),os.getenv('AITA_CAR_ALEXA_CLIENT_SECRET',''),
+          [u.strip() for u in os.getenv('AITA_CAR_ALEXA_REDIRECTS','').split(',') if u.strip()],{'local-'+u for u in allowed})
+        app.include_router(alexa_router(store,identity,link,skill_id))
     @app.post('/api/car/start')
     def login(b:Credentials,request:Request):
         # Persist limits across restarts; never retain passwords or raw email addresses.
