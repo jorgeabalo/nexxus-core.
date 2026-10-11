@@ -141,7 +141,7 @@ def test_exhausted_retries_time_out_once_and_release_everything(studio, db):
     assert RetentionRunner(db, now=NOW).run()["timed_out"] == 0          # una sola vez
     assert ms.used_bytes(db, T1) == 0
     b = studio.overview(jwt(OWNER), T1)["budget"]
-    assert b["reserved"] == 0 and b["consumed"] == 0                    # el costo reservado deja de contar
+    assert b["reserved"] == 0 and b["used"] == 0                        # el costo reservado deja de contar
 
 
 def test_queued_too_long_times_out_and_blocks_outputs(studio, db):

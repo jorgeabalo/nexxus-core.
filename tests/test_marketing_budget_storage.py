@@ -56,16 +56,14 @@ def test_approval_fails_closed_without_calling_the_database(studio, db, value):
     assert "marketing_approve_generation" not in db.rpc_calls[calls:]
 
 
-@pytest.mark.parametrize("value,limit,warning", [(20, 20.0, None), (80, 0.0, "not_enabled"), (None, 0.0, "not_enabled"),
-                                                 (0, 0.0, "not_enabled")])
-def test_budget_summary_never_shows_global_ceiling(value, limit, warning):
-    b = jd.budget_summary(value, {"consumed": 0, "reserved": 0})
-    assert b["limit"] == limit and b["warning"] == warning and b["scope"] == "marketing_ai_budget"
+@pytest.mark.parametrize("value", [80, None, 0, -1, 20.01])
+def test_budget_summary_unknown_or_out_of_range_is_disabled(value):
+    assert jd.budget_summary(value, {"consumed": 0, "reserved": 0}) == {"enabled": False}
 
 
-def test_overview_reports_marketing_only_budget(studio, db):
+def test_overview_reports_only_the_assigned_budget(studio, db):
     b = studio.overview(jwt(OWNER), T1)["budget"]
-    assert b["scope"] == "marketing_ai_budget" and b["limit"] == 20.0
+    assert b["enabled"] is True and b["assigned"] == 20.0 and b["warning"] is None
 
 
 # ------------------------------------------------------------------ almacenamiento

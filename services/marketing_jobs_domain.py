@@ -177,14 +177,14 @@ def warning_level(available: float, limit: Optional[float]) -> Optional[str]:
     return None
 
 
-def budget_summary(limit: Optional[float], usage: Dict[str, float]) -> Dict[str, Any]:
-    """"Marketing AI budget": SOLO el gasto de IA de Marketing del propio tenant (presupuesto, consumido,
-    reservado y disponible). No representa el costo total de AITA del tenant (voz, infraestructura,
-    almacenamiento e IA)."""
-    used, held = round(float(usage.get("consumed") or 0), 4), round(float(usage.get("reserved") or 0), 4)
+def budget_summary(limit: Optional[float], usage: Dict[str, float], enabled: bool = True) -> Dict[str, Any]:
+    """Lo que ve el tenant de su "Presupuesto de generación con IA": SOLO su presupuesto asignado y su consumo.
+    Nunca topes internos, objetivos de costo de AITA, márgenes, proveedores, modelos ni precios unitarios.
+    Deshabilitado (generación cerrada o presupuesto desconocido/0/fuera de tope) → {"enabled": False}."""
     lim = ai_budget({"monthly_ai_cost_limit": limit})              # desconocido/0/fuera de tope → 0 (cerrado)
+    if not enabled or lim <= 0:
+        return {"enabled": False}
+    used, held = round(float(usage.get("consumed") or 0), 4), round(float(usage.get("reserved") or 0), 4)
     avail = max(round(lim - used - held, 4), 0.0)
-    return {"scope": "marketing_ai_budget", "limit": lim, "consumed": used, "reserved": held, "available": avail,
-            "currency": "USD",
-            "warning": warning_level(avail, lim),
-            "available_pct": None if not lim else math.floor(100 * avail / lim)}
+    return {"enabled": True, "currency": "USD", "assigned": lim, "used": used, "reserved": held, "available": avail,
+            "warning": warning_level(avail, lim), "available_pct": math.floor(100 * avail / lim)}

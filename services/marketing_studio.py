@@ -37,15 +37,25 @@ JOB_COLS = ("id,tenant_id,content_id,created_by,task_type,status,real_media_perc
             "result_metadata,error_code,created_at,updated_at,approved_at,completed_at")
 
 
-COST_CATEGORY = "marketing_ai_budget"      # solo el presupuesto de IA de Marketing, NO el global de 80 USD del tenant
+COST_CATEGORY = "ai_generation"            # presupuesto de generación con IA del tenant
+
+
+INTERNAL_JOB_KEYS = ("selected_provider", "selected_model", "provider_job_id", "router_strategy", "usage",
+                     "lease_owner", "lease_expires_at", "heartbeat_at")
+INTERNAL_DETAIL = ("catalog_version", "provider", "model", "model_id", "worker", "unit_price", "price_source")
 
 
 def public_job(j: Dict[str, Any]) -> Dict[str, Any]:
     """Lo que ve el manager: costo estimado, reservado y real y la categoría del costo. Proveedor, modelo,
-    costos unitarios y fuentes de precio son información interna y no se devuelven."""
+    estrategia, catálogo, costos unitarios y fuentes de precio son información interna y no se devuelven."""
     if not isinstance(j, dict):
         return j
-    out = {k: v for k, v in j.items() if k not in ("selected_provider", "selected_model", "provider_job_id")}
+    out = {k: v for k, v in j.items() if k not in INTERNAL_JOB_KEYS}
+    if isinstance(out.get("events"), list):
+        out["events"] = [{**e, "detail": {k: v for k, v in (e.get("detail") or {}).items() if k not in INTERNAL_DETAIL}}
+                         for e in out["events"]]
+    if isinstance(out.get("outputs"), list):
+        out["outputs"] = [{k: v for k, v in o.items() if k != "worker_id"} for o in out["outputs"]]
     out["cost"] = {"category": COST_CATEGORY, "currency": j.get("currency") or "USD",
                    "estimated": j.get("estimated_cost"), "reserved": j.get("reserved_cost"), "actual": j.get("actual_cost")}
     meta = dict(out.get("request_metadata") or {})
@@ -54,7 +64,6 @@ def public_job(j: Dict[str, Any]) -> Dict[str, Any]:
         meta["estimate"] = {"estimated_cost": est.get("estimated_cost"), "currency": est.get("currency"),
                             "plan": est.get("plan"), "full_ai": est.get("full_ai"),
                             "production_methods": est.get("production_methods"),
-                            "catalog_version": est.get("catalog_version"),
                             "generated_video_seconds": est.get("generated_video_seconds"),
                             "subtasks": [{"task_type": t.get("task_type"), "external": t.get("external"),
                                           "privacy_class": t.get("privacy_class"), "units": t.get("units")}
@@ -124,12 +133,13 @@ class StudioService(StudioBase):
         usable = sum(1 for m in media if pv.usable_media(m) is None and pv.original_class(m) in pv.EXTERNAL_OK)
         usage = self._gen_usage(c)
         return {"limits": {k: c.settings.get(k) for k in ("ai_generation_enabled", *jd.GEN_LIMIT_KEYS)},
-                "budget": jd.budget_summary(c.settings.get("monthly_ai_cost_limit"), usage),
+                "budget": jd.budget_summary(c.settings.get("monthly_ai_cost_limit"), usage,
+                                            jd.generation_enabled(c.settings)),
                 "generation_enabled": jd.generation_enabled(c.settings),
                 "usage": usage, "suggestion": suggest_mix(len(media), usable),
-                "catalog": {"catalog_version": self.router.catalog.version}, "presets": [list(p) for p in ((100, 0), (75, 25), (50, 50),
+                "presets": [list(p) for p in ((100, 0), (75, 25), (50, 50),
                                                                                       (25, 75), (0, 100))],
-                "providers": {"omniroute_enabled": bool(self.adapters["omniroute"].enabled()), "mock": True}}
+                "demo_mode": not self.adapters["omniroute"].enabled()}      # sin nombres de proveedores
 
     def preview_mix(self, jwt: str, tenant_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
         self.ctx(jwt, tenant_id)

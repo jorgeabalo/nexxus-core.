@@ -308,8 +308,7 @@ de 80 USD por tenant (voz, IA de Claudia, infraestructura…), que irá en otro 
   (null, 0 o más de 20 = cerrado). El tenant no puede cambiarlo (sin endpoint; SELECT only).
 * **No es** el objetivo de costo total de AITA (80 USD por tenant y mes, que incluye voz, infraestructura,
   almacenamiento y Marketing) y **este cambio no garantiza por sí solo ese límite global**; eso requiere el
-  ledger global (otro PR). La interfaz lo dice: "Presupuesto de IA de Marketing; no representa el costo total
-  de AITA".
+  ledger global (otro PR). **Privado del operador**: nada de esto llega a la API, el Manager, traducciones ni errores.
 * Propuesta para Golden Age cuando se habilite la generación: **10 USD/mes** de Marketing AI (no activado).
 * Cada trabajo conserva: costo máximo estimado (`estimated_cost`), costo reservado (`reserved_cost`, inmutable
   tras aprobar), costo real (`actual_cost`), proveedor/modelo (`selected_provider`, `selected_model` y, por
@@ -324,10 +323,11 @@ de 80 USD por tenant (voz, IA de Claudia, infraestructura…), que irá en otro 
 * Un Reel 100 % IA se marca (`full_ai`), muestra su costo estimado y nunca se inicia sin aprobación explícita.
   Prioridad económica: material del cliente → local → plantillas/FFmpeg → modelos pequeños → imagen →
   imagen-a-vídeo → texto-a-vídeo como último recurso; la sugerencia por defecto usa el material del cliente.
-* Interfaz: "Marketing AI budget" del mes (consumido, reservado, disponible y avisos al 25 %, 10 % y 0 %) con la
-  aclaración de que no es el presupuesto global. En cada trabajo el manager ve **costo estimado, reservado y real y
-  la categoría del costo** (`marketing_ai_budget`). Proveedor y modelo son **información interna**: se guardan en
-  el trabajo y en `marketing_model_usage`, pero la API no los devuelve.
+* Interfaz: "Presupuesto de generación con IA" / "AI generation budget". Deshabilitado: "La generación con IA no
+  está habilitada en tu plan." Habilitado: Disponible este mes · Utilizado · Reservado · Disponible (+ avisos 25/10/0 %).
+  La API devuelve solo `{enabled, currency, assigned, used, reserved, available, warning, available_pct}` (o
+  `{enabled: false}`); por trabajo, costo estimado, reservado y real (categoría `ai_generation`). Proveedor, modelo,
+  estrategia, catálogo y precios unitarios son **internos**: se guardan, pero la API no los devuelve.
 
 ## 5. Mezcla real / IA
 

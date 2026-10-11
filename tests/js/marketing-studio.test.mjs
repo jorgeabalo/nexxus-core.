@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { MIX_PRESETS, normalizeMix, approxScenes, privacyClass, usableAsSource, reelStage, fmtBytes, fmtCost,
-  newIdempotencyKey, WIZARD_STEPS, ACCEPT } from '../../manager/assets/js/modules/marketing-studio-state.js';
+  newIdempotencyKey, WIZARD_STEPS, ACCEPT, budgetView } from '../../manager/assets/js/modules/marketing-studio-state.js';
 import { STUDIO_TEXT } from '../../manager/assets/js/modules/marketing-studio-i18n.js';
 import { TABS } from '../../manager/assets/js/modules/marketing-state.js';
 
@@ -128,10 +128,54 @@ test('archivo vencido (410 media_expired): mensaje completo en el idioma activo,
   }
 });
 
-test('presupuesto: solo IA de Marketing, nunca el costo total de AITA', () => {
-  assert.equal(STUDIO_TEXT.es.budgetScopeNote, 'Presupuesto de IA de Marketing; no representa el costo total de AITA.');
-  assert.equal(STUDIO_TEXT.en.budgetScopeNote, 'Marketing AI budget; it does not represent the total cost of AITA.');
-  for (const lang of ['es', 'en']) assert.ok(!/80/.test(STUDIO_TEXT[lang].budgetScopeNote), lang);
+test('presupuesto de generación con IA: textos ES/EN exactos', () => {
+  const want = {
+    es: { budgetTitle: 'Presupuesto de generación con IA', budgetDisabled: 'La generación con IA no está habilitada en tu plan.',
+      budgetMonth: 'Disponible este mes', budgetUsed: 'Utilizado', budgetReserved: 'Reservado', budgetAvailable: 'Disponible' },
+    en: { budgetTitle: 'AI generation budget', budgetDisabled: 'AI generation is not enabled in your plan.',
+      budgetMonth: 'Available this month', budgetUsed: 'Used', budgetReserved: 'Reserved', budgetAvailable: 'Available' },
+  };
+  for (const lang of ['es', 'en']) {
+    for (const [k, v] of Object.entries(want[lang])) assert.equal(STUDIO_TEXT[lang][k], v, `${lang}.${k}`);
+    assert.equal(STUDIO_TEXT[lang].budgetScopeNote, undefined, `${lang}: sin nota sobre presupuestos globales`);
+  }
+});
+
+test('presupuesto: estado deshabilitado y habilitado', () => {
+  for (const b of [undefined, null, { enabled: false }, { enabled: 'yes', assigned: 10 }]) {
+    assert.deepEqual(budgetView(b), { enabled: false, title: 'budgetTitle', message: 'budgetDisabled' });
+  }
+  const v = budgetView({ enabled: true, currency: 'USD', assigned: 10, used: 2.5, reserved: 1, available: 6.5, warning: null });
+  assert.equal(v.enabled, true);
+  assert.deepEqual(v.rows, [['budgetMonth', 10], ['budgetUsed', 2.5], ['budgetReserved', 1], ['budgetAvailable', 6.5]]);
+  for (const lang of ['es', 'en']) for (const [k] of v.rows) assert.ok(STUDIO_TEXT[lang][k], `${lang}.${k}`);
+});
+
+test('ningún archivo servido al Manager menciona topes internos, presupuestos globales ni márgenes', async () => {
+  const { readdir } = await import('node:fs/promises');
+  const root = new URL('../../manager/', import.meta.url);
+  const files = [];
+  const walk = async (dir) => {
+    for (const e of await readdir(dir, { withFileTypes: true })) {
+      const u = new URL(e.name + (e.isDirectory() ? '/' : ''), dir);
+      if (e.isDirectory()) await walk(u); else if (/\.(html|js|mjs|css|json)$/.test(e.name)) files.push(u);
+    }
+  };
+  await walk(root);
+  assert.ok(files.length > 10);
+  const banned = [/\b80\s*USD\b/i, /\bUSD\s*80\b/i, /US?\$\s*80\b/i, /\b20\s*USD\b/i, /\bUSD\s*20\b/i, /US?\$\s*20\b/i,
+    /presupuesto global/i, /global budget/i, /AITA global/i, /costo total de AITA/i, /coste total de AITA/i, /total cost of AITA/i,
+    /margen de AITA/i, /AITA('s)? margin/i, /profit margin/i, /Marketing AI budget/i, /omniroute/i, /price_source/i, /unit_price/i,
+    /precio unitario/i, /unit price/i];
+  for (const f of files) {
+    const src = await readFile(f, 'utf8');
+    for (const re of banned) assert.ok(!re.test(src), `${f.pathname.split('/manager/')[1]}: ${re}`);
+  }
+  for (const lang of ['es', 'en']) {
+    const all = JSON.stringify(Object.values(STUDIO_TEXT[lang]).filter((v) => typeof v !== 'function')) +
+      Object.values(STUDIO_TEXT[lang]).filter((v) => typeof v === 'function').map((f) => String(f(80))).join(' ');
+    for (const re of banned) assert.ok(!re.test(all), `${lang}: ${re}`);
+  }
 });
 
 test('almacenamiento: activo, vencido pendiente de eliminación, reservado y disponible (ES/EN)', () => {

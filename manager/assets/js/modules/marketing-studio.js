@@ -6,7 +6,7 @@ import { errorNotice } from './marketing-ui.js';
 import { api } from '../api.js';
 import { s, sErr } from './marketing-studio-i18n.js';
 import { MIX_PRESETS, MIX_STEP, OBJECTIVES, AUDIENCES, STYLES, DURATIONS, TARGETS, QUALITY, WIZARD_STEPS,
-  normalizeMix, approxScenes, usableAsSource, reelStage, fmtCost, newIdempotencyKey } from './marketing-studio-state.js';
+  normalizeMix, approxScenes, usableAsSource, reelStage, fmtCost, newIdempotencyKey, budgetView } from './marketing-studio-state.js';
 import { privacyBadge } from './marketing-library.js';
 
 const M = api.marketing;
@@ -23,7 +23,7 @@ export async function studioView(ctx, goJobs) {
   const root = el('div', { class: 'mk-studio' });
   const notice = el('div', {},
     el('p', {}, s('studioIntro')),
-    ov.providers.omniroute_enabled ? null : el('p', { class: 'mk-note' }, s('providersOff')),
+    ov.demo_mode ? el('p', { class: 'mk-note' }, s('providersOff')) : null,
     ov.generation_enabled ? null : el('p', { class: 'error-box mk-notice mk-gen-off', role: 'status' }, el('strong', {}, s('genNotEnabled')), ' ', s('limitsClosed')));
   const stepper = el('ol', { class: 'mk-steps' });
   const pane = el('div', { class: 'card-body' });
@@ -81,8 +81,7 @@ export async function studioView(ctx, goJobs) {
       el('p', { class: 'hint full' }, s('scriptRules'))),
     cost: () => el('div', { class: 'form-grid' },
       field(s('quality'), select(opts(QUALITY, 'q_', w.quality), { onchange: e => { w.quality = e.target.value; } })),
-      field(s('maxCost'), input({ type: 'number', min: '0', max: '10000', step: '0.01', value: w.maxCost, oninput: e => { w.maxCost = e.target.value; } })),
-      el('p', { class: 'hint full' }, `${s('catalogV')}: ${ov.catalog.catalog_version}`)),
+      field(s('maxCost'), input({ type: 'number', min: '0', max: '10000', step: '0.01', value: w.maxCost, oninput: e => { w.maxCost = e.target.value; } }))),
     review: () => {
       const a = approxScenes(w.mixReal, w.scenes, w.duration, w.adapt_real);
       return el('dl', { class: 'mk-summary' },
@@ -149,7 +148,7 @@ function jobDetail(ctx, id, reload, genEnabled = true) {
         el('dt', {}, s('costReserved')), el('dd', {}, j.cost.reserved === null || j.cost.reserved === undefined ? '—' : fmtCost(j.cost.reserved, j.cost.currency)),
         el('dt', {}, s('costActual')), el('dd', {}, j.cost.actual === null || j.cost.actual === undefined ? '—' : fmtCost(j.cost.actual, j.cost.currency))) : null,
       (j.result_metadata || {}).mock ? el('p', { class: 'mk-note' }, `${s('mock')}: ${sErr({ code: 'mock_content_not_publishable' })}`) : null,
-      est ? el('div', {}, el('p', {}, `${s('estimated')}: ${fmtCost(est.estimated_cost, est.currency)} · ${s('catalogV')} ${est.catalog_version}`),
+      est ? el('div', {}, el('p', {}, `${s('estimated')}: ${fmtCost(est.estimated_cost, est.currency)}`),
         est.full_ai ? el('p', { class: 'mk-note' }, s('fullAiNote')) : null,
         // Sin proveedores ni costos unitarios: son datos internos. Solo el método y la privacidad.
         table([{ label: s('subtasks'), key: 'task_type' }, { label: s('method'), render: r => (r.external ? s('external') : s('local')) },
@@ -173,20 +172,20 @@ function jobDetail(ctx, id, reload, genEnabled = true) {
   draw();
 }
 
-// Presupuesto mensual de IA de Marketing (lo fija el operador): consumido, reservado, disponible y avisos 25/10/0 %.
+// Presupuesto de generación con IA del tenant: solo lo asignado y su consumo (avisos 25/10/0 %).
 function budgetCard(b) {
-  if (!b) return null;
-  const usd = (v) => (v === null || v === undefined ? s('noLimit') : fmtCost(v, 'USD'));
+  const v = budgetView(b);
+  if (!v.enabled) {
+    return card(s(v.title), el('div', { class: 'card-body' }, el('p', { class: 'hint mk-budget-off', role: 'status' }, s(v.message))));
+  }
   const fill = el('span');
-  fill.style.width = `${b.limit ? Math.min(100, 100 * (b.consumed + b.reserved) / b.limit) : 100}%`;
-  return card(s('budgetTitle'), el('div', { class: 'card-body' },
+  fill.style.width = `${b.assigned ? Math.min(100, 100 * (b.used + b.reserved) / b.assigned) : 100}%`;
+  return card(s(v.title), el('div', { class: 'card-body' },
     el('div', { class: 'mk-usage' },
-      el('div', { class: 'mk-usage-head' }, el('span', {}, s('budgetMarketing')), el('span', {}, `${usd(b.available)} ${s('available')}`)),
-      b.limit === null ? null : el('div', { class: `mk-meter${b.warning && b.warning !== 'low' ? ' full' : ''}`, role: 'progressbar',
-        'aria-valuemin': '0', 'aria-valuemax': String(b.limit), 'aria-valuenow': String(b.consumed + b.reserved) }, fill),
-      el('p', { class: 'hint' }, `${s('monthlyBudget')}: ${usd(b.limit)} · ${s('consumed')}: ${usd(b.consumed)} · ${s('reserved')}: ${usd(b.reserved)}`),
-      b.warning ? el('p', { class: `mk-budget-warn mk-bw-${b.warning}`, role: 'status', dataset: { warning: b.warning } }, s(`bw_${b.warning}`)) : null),
-    el('p', { class: 'hint', dataset: { scope: b.scope || 'marketing_ai_budget' } }, s('budgetScopeNote'))));
+      el('dl', { class: 'mk-summary mk-budget' }, ...v.rows.flatMap(([k, n]) => [el('dt', {}, s(k)), el('dd', {}, fmtCost(n, v.currency))])),
+      el('div', { class: `mk-meter${v.warning && v.warning !== 'low' ? ' full' : ''}`, role: 'progressbar',
+        'aria-valuemin': '0', 'aria-valuemax': String(b.assigned), 'aria-valuenow': String(b.used + b.reserved) }, fill),
+      v.warning ? el('p', { class: `mk-budget-warn mk-bw-${v.warning}`, role: 'status', dataset: { warning: v.warning } }, s(`bw_${v.warning}`)) : null)));
 }
 
 export async function jobsView(ctx, reload, openId) {

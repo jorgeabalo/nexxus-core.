@@ -85,7 +85,7 @@ def test_mock_jobs_cost_nothing_and_use_no_network(lib, studio, db, monkeypatch)
         j = approved_job(studio)
         studio.process_job(jwt(OWNER), T1, j["id"])
     b = studio.overview(jwt(OWNER), T1)["budget"]
-    assert b["consumed"] == 0 and b["reserved"] == 0 and b["available"] == 20 and b["warning"] is None
+    assert b["used"] == 0 and b["reserved"] == 0 and b["available"] == 20 and b["warning"] is None
 
 
 def test_cost_not_estimable_never_runs(lib, studio, db):
@@ -192,9 +192,8 @@ def test_http_never_exposes_internal_costs_or_providers(monkeypatch, db):
         for leak in ("mock-media-v1", "selected_provider", "provider_job_id", "price_source", "billing_unit", "model_id"):
             assert leak not in t, leak
     job = c.get(f"/api/manager/marketing/jobs/{jid}?tenant_id={T1}", headers=H).json()
-    assert job["cost"]["category"] == "marketing_ai_budget"
+    assert job["cost"]["category"] == "ai_generation"
     assert set(job["cost"]) == {"category", "currency", "estimated", "reserved", "actual"}
     assert job["cost"]["reserved"] == 0 and job["cost"]["actual"] == 0
     ov = c.get(f"/api/manager/marketing/studio?tenant_id={T1}", headers=H).json()
-    assert set(ov["budget"]) == {"scope", "limit", "consumed", "reserved", "available", "currency", "warning", "available_pct"}
-    assert ov["budget"]["scope"] == "marketing_ai_budget"                      # NO es el presupuesto global
+    assert set(ov["budget"]) == {"enabled", "currency", "assigned", "used", "reserved", "available", "warning", "available_pct"}
