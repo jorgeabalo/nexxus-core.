@@ -1,8 +1,12 @@
 """
 AITA Marketing (Fase 2) — ejecución de trabajos de generación (preparada para worker / cola).
 
-* Un trabajo solo se ejecuta si está 'queued' y aprobado. Se "reclama" con una actualización
-  condicional queued → processing: si dos workers lo intentan a la vez, solo uno gana.
+* Un trabajo solo se ejecuta si está 'queued' y aprobado. Se reclama con marketing_claim_job
+  (FOR UPDATE SKIP LOCKED + lease): dos workers nunca toman el mismo. Durante TODO el trabajo un
+  LeaseKeeper renueva el lease en segundo plano (como mucho cada lease/3; la base decide la hora), también
+  mientras una subtarea larga está en curso. Si se pierde (o llega SIGTERM), el worker se detiene: no
+  registra resultados ni costos, no toca reservas y solo borra los temporales de ESTE intento. Un lease
+  vencido se reintenta (máx. MAX_ATTEMPTS, misma idempotency_key: nada se cobra dos veces) o termina en timeout.
 * Antes de enviar nada se vuelven a comprobar las entradas: consentimiento retirado, menores,
   archivo excluido o eliminado → el trabajo falla con un código público y no se envía nada.
 * Cada subtarea lleva su idempotency_key: un reintento nunca crea un segundo cargo.
@@ -13,31 +17,40 @@ AITA Marketing (Fase 2) — ejecución de trabajos de generación (preparada par
   proceso aparte (run_pending, llamado por un worker programado). En esta fase NO hay worker
   desplegado: la petición HTTP solo puede ejecutar trabajos 100 % simulados (rápidos, sin red).
 """
+import threading
+import uuid
 from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from services import marketing_jobs_domain as jd
 from services import marketing_privacy as pv
+from services import marketing_retention as rt
 from services import marketing_storage as ms
+from services.marketing_lease import LeaseKeeper, validate as validate_lease
 from services.marketing_studio_base import BUCKET
 from services.marketing_ai_router import RouteRequest
 
 JOB_COLS = ("id,tenant_id,content_id,status,quality_tier,maximum_cost,estimated_cost,reserved_cost,currency,approved_at,approved_by,"
             "request_metadata,result_metadata,real_media_percent,ai_media_percent")
 MEDIA_CHECK = ("id,processing_status,validation_status,contains_people,contains_minors,people_policy,consent_status,"
-               "retention_status")
+               "retention_status,expires_at")
 
 
 OUTPUT_KINDS = ("image", "video", "subtitles", "cover", "render")
 
 
-def temp_file_ok(path: Any, tenant_id: str, job_id: str) -> bool:
+def temp_file_ok(path: Any, tenant_id: str, job_id: str, prefix: Optional[str] = None) -> bool:
     """Los temporales de un trabajo viven SOLO en {tenant}/derivatives/{job}/{archivo} (carpeta del propio
     trabajo; los ids de trabajo y de archivo nunca coinciden)."""
     parts = str(path or "").split("/")
     return (len(parts) == 4 and parts[0] == str(tenant_id) and parts[1] == "derivatives" and parts[2] == str(job_id)
-            and parts[3] not in ("", ".", "..") and "/" not in parts[3] and len(parts[3]) <= 120)
+            and parts[3] not in ("", ".", "..") and "/" not in parts[3] and len(parts[3]) <= 120
+            and (prefix is None or parts[3].startswith(prefix)))
+
+
+LEASE_SECONDS = 120
+MAX_ATTEMPTS = 3
 
 
 class WorkerError(Exception):
@@ -46,7 +59,7 @@ class WorkerError(Exception):
         self.code = code
 
 
-def recheck_inputs(db, tenant_id: str, job_id: str) -> Optional[str]:
+def recheck_inputs(db, tenant_id: str, job_id: str, now: Optional[datetime] = None) -> Optional[str]:
     """None si todas las entradas siguen permitidas; si no, el código público del motivo."""
     rows = db.select("marketing_generation_inputs", {"tenant_id": f"eq.{tenant_id}", "job_id": f"eq.{job_id}",
                                                      "select": "media_id,derivative_id", "limit": "100"}) or []
@@ -64,6 +77,8 @@ def recheck_inputs(db, tenant_id: str, job_id: str) -> Optional[str]:
             why = pv.usable_media(m)
             if why:
                 return why
+            if rt.is_expired(m, now or datetime.now(timezone.utc)):
+                return "media_expired"                    # vencido: nunca entra en un trabajo
     return None
 
 
@@ -73,8 +88,38 @@ def all_mock(est: Dict[str, Any]) -> bool:
 
 
 class JobRunner:
-    def __init__(self, db, router, adapters: Dict[str, Any], now: Optional[datetime] = None):
+    def __init__(self, db, router, adapters: Dict[str, Any], now: Optional[datetime] = None,
+                 worker_id: Optional[str] = None, lease_seconds: int = LEASE_SECONDS,
+                 heartbeat_seconds: Optional[float] = None):
         self.db, self.router, self.adapters, self._now = db, router, adapters, now
+        self.worker_id = worker_id or str(uuid.uuid4())
+        self.heartbeat_seconds = validate_lease(lease_seconds, heartbeat_seconds)   # rechaza valores inseguros
+        self.lease_seconds = int(lease_seconds)
+        self.stop_event = threading.Event()                    # SIGTERM: terminar sin escribir nada más
+
+    @property
+    def temp_prefix(self) -> str:
+        """Los temporales de ESTE intento llevan el worker_id: al perder el lease solo se borran los propios."""
+        return f"{self.worker_id}-"
+
+    def claim(self, job_id: Optional[str] = None) -> Dict[str, Any]:
+        """Reclamo atómico en la base: {status: claimed|empty|skipped, job?}."""
+        return self.db.rpc("marketing_claim_job", {"p_worker": self.worker_id, "p_lease_seconds": int(self.lease_seconds),
+                                                   "p_job": job_id, "p_max_attempts": MAX_ATTEMPTS}) or {"status": "empty"}
+
+    def _renew(self, j) -> bool:
+        return bool(self.db.rpc("marketing_job_heartbeat", {"p_job": j["id"], "p_worker": self.worker_id,
+                                                            "p_lease_seconds": int(self.lease_seconds)}))
+
+    def _heartbeat(self, j) -> None:
+        if not self._renew(j):
+            raise WorkerError("lease_lost")                      # timeout u otro worker: no se escribe nada más
+
+    def _check(self, keeper: Optional[LeaseKeeper]) -> None:
+        if self.stop_event.is_set():
+            raise WorkerError("interrupted")
+        if keeper is not None and keeper.lost:
+            raise WorkerError("lease_lost")
 
     def _c(self, tenant_id: str):
         return SimpleNamespace(tenant_id=tenant_id, now=self._now or datetime.now(timezone.utc))
@@ -86,9 +131,10 @@ class JobRunner:
 
     def _move(self, c, job, to, action, values=None, detail=None):
         jd.check_job_transition(job["status"], to, approved=bool(job.get("approved_at")))
-        rows = self.db.update("marketing_generation_jobs",
-                              {"id": f"eq.{job['id']}", "tenant_id": f"eq.{c.tenant_id}", "status": f"eq.{job['status']}"},
-                              {**(values or {}), "status": to})
+        filters = {"id": f"eq.{job['id']}", "tenant_id": f"eq.{c.tenant_id}", "status": f"eq.{job['status']}"}
+        if job["status"] == "processing":
+            filters["lease_owner"] = f"eq.{self.worker_id}"        # solo quien tiene el lease lo termina
+        rows = self.db.update("marketing_generation_jobs", filters, {**(values or {}), "status": to})
         if not rows:
             raise WorkerError("already_claimed")                 # otro worker se adelantó
         self._event(c, job["id"], action, job["status"], to, detail)
@@ -98,7 +144,8 @@ class JobRunner:
         """Tamaño real de los temporales frente a la reserva y la cuota. None = cabe."""
         if not files:
             return None
-        if not all(temp_file_ok(f.get("temp_path"), c.tenant_id, j["id"]) and f.get("kind", "render") in OUTPUT_KINDS
+        if not all(temp_file_ok(f.get("temp_path"), c.tenant_id, j["id"], self.temp_prefix)
+                   and f.get("kind", "render") in OUTPUT_KINDS
                    for f in files):
             return "internal_error"
         try:
@@ -107,37 +154,67 @@ class JobRunner:
             return "internal_error"
         if any(x <= 0 for x in sizes):
             return "internal_error"
-        why = ms.confirm_output(self.db, c.tenant_id, j["id"], sum(sizes))
+        why = ms.confirm_output(self.db, c.tenant_id, j["id"], sum(sizes), self.worker_id)
+        if why == "lease_lost":
+            raise WorkerError("lease_lost")                      # otro worker lo controla: no se toca nada
         return None if why is None else ("timeout" if why == "reservation_expired" else "storage_quota_exceeded")
 
     def _discard(self, c, j, files: List[Dict[str, Any]]) -> None:
-        """Borra los temporales (solo los del propio trabajo) y libera su reserva (idempotente)."""
+        """Borra SOLO los temporales de este intento. Las reservas no se tocan aquí: al terminar el trabajo
+        (failed/succeeded, con el lease propio) las cierra la base una sola vez; con el lease perdido, son
+        de quien lo tenga ahora."""
         for f in files:
-            if temp_file_ok(f.get("temp_path"), c.tenant_id, j["id"]):
+            if temp_file_ok(f.get("temp_path"), c.tenant_id, j["id"], self.temp_prefix):
                 try:
                     self.db.storage_remove(BUCKET, f["temp_path"])
                 except Exception:                                       # noqa: BLE001 — la purga lo reintenta
                     pass
-        ms.release(self.db, c.tenant_id, f"job:{j['id']}", consumed=False)
 
     def _fail(self, c, j, code: str, cost: float, files: Optional[List[Dict[str, Any]]] = None):
-        self._discard(c, j, files or [])
+        # Primero se cierra el trabajo (exige el lease propio): un worker obsoleto no libera nada ajeno.
         out = self._move(c, j, "failed", "fail", {"error_code": jd.public_error(code), "actual_cost": round(cost, 4),
                                                   "completed_at": c.now.isoformat()}, detail={"error_code": code})
+        self._discard(c, j, files or [])
         return out
 
     def run(self, tenant_id: str, job_id: str) -> Dict[str, Any]:
-        c = self._c(tenant_id)
+        """Un trabajo concreto de ESTE tenant (petición HTTP de un trabajo simulado)."""
         j = (self.db.select("marketing_generation_jobs", {"tenant_id": f"eq.{tenant_id}", "id": f"eq.{job_id}",
                                                           "select": JOB_COLS, "limit": "1"}) or [None])[0]
         if not j or j["status"] != "queued" or not j.get("approved_at") or not j.get("approved_by"):
             raise WorkerError("not_runnable")
+        why = recheck_inputs(self.db, tenant_id, j["id"], self._c(tenant_id).now)
+        if why:                                                    # motivo preciso (la base solo sabe "no permitido")
+            return self._fail(self._c(tenant_id), j, why, 0.0)
+        res = self.claim(j["id"])
+        if res.get("status") != "claimed" or res["job"]["tenant_id"] != tenant_id:
+            raise WorkerError("already_claimed" if res.get("status") == "empty" else "not_runnable")
+        return self._execute(res["job"])
+
+    def _execute(self, j: Dict[str, Any]) -> Dict[str, Any]:
+        """Todo el trabajo con el lease renovado en segundo plano; el hilo se une al salir (sin huérfanos)."""
+        files: List[Dict[str, Any]] = []
+        with LeaseKeeper(lambda: self._renew(j), self.heartbeat_seconds, name=str(j["id"])) as keeper:
+            try:
+                return self._work(j, keeper, files)
+            except WorkerError as e:
+                if e.code in ("lease_lost", "interrupted"):     # nada más que borrar lo propio
+                    self._discard(self._c(j["tenant_id"]), j, files)
+                raise
+
+    def _work(self, j: Dict[str, Any], keeper: LeaseKeeper, files: List[Dict[str, Any]]) -> Dict[str, Any]:
+        tenant_id = j["tenant_id"]
+        c = self._c(tenant_id)
+        self._check(keeper)
         est = (j["request_metadata"] or {}).get("estimate") or {}
-        j = self._move(c, j, "processing", "start")               # reclamar el trabajo
-        why = recheck_inputs(self.db, tenant_id, j["id"])
+        st = (self.db.select("marketing_settings", {"tenant_id": f"eq.{tenant_id}", "limit": "1",
+                                                    "select": "ai_generation_enabled,monthly_ai_cost_limit"}) or [{}])[0]
+        if j.get("reserved_cost") is None or st.get("ai_generation_enabled") is not True or jd.ai_budget(st) <= 0:
+            return self._fail(c, j, "budget_exceeded", 0.0)      # sin reserva, generación cerrada o presupuesto 0: nada
+        why = recheck_inputs(self.db, tenant_id, j["id"], c.now)
         if why:
             return self._fail(c, j, why, 0.0)
-        total, n, first, files = 0.0, 0, None, []
+        total, n, first = 0.0, 0, None
         for st in est.get("subtasks") or []:
             adapter = self.adapters.get(st["provider"])
             model = next((m for m in self.router.catalog.models if m.model_id == st["model_id"]), None)
@@ -147,15 +224,20 @@ class JobRunner:
                 return self._fail(c, j, "privacy_blocked", total)          # nunca restricted hacia fuera
             req = RouteRequest(tenant_id=tenant_id, task_type=st["task_type"], quality_tier=j["quality_tier"],
                                maximum_cost=float(j["maximum_cost"]), privacy_class=st["privacy_class"],
-                               idempotency_key=st["idempotency_key"], units=float(st["units"]))
+                               idempotency_key=st["idempotency_key"], units=float(st["units"]),
+                               output_requirements={"temp_prefix": self.temp_prefix})
+            self._check(keeper)
+            self._heartbeat(j)                                    # sigue siendo nuestro antes de cada envío
             done = self.db.select("marketing_model_usage", {"tenant_id": f"eq.{tenant_id}",
                                                             "idempotency_key": f"eq.{req.idempotency_key}",
                                                             "select": "actual_cost,provider_job_id", "limit": "1"})
             if done:                                     # reintento: ya facturado, no se vuelve a enviar
                 total += float(done[0].get("actual_cost") or 0)
                 continue
-            res = adapter.submit(req, model)
+            res = adapter.submit(req, model)                      # puede durar más que el lease: el keeper renueva
             files += list((res.output or {}).get("files") or [])         # temporales que dejó el proveedor
+            self._check(keeper)                                   # lease perdido o SIGTERM: no se registra nada
+            self._heartbeat(j)                                    # la base confirma que seguimos siendo dueños
             if res.status != "succeeded":
                 return self._fail(c, j, jd.public_error(res.error_code), total, files)
             cost = float(res.actual_cost or 0)
@@ -169,8 +251,11 @@ class JobRunner:
                 "task_type": st["task_type"], "catalog_version": est.get("catalog_version", "unknown"),
                 "billing_unit": st["billing_unit"], "units": st["units"], "estimated_cost": st["estimated_cost"],
                 "actual_cost": cost, "currency": j["currency"], "idempotency_key": req.idempotency_key,
-                "provider_job_id": res.provider_job_id, "status": "charged" if cost else "not_charged"})
+                "provider_job_id": res.provider_job_id, "status": "charged" if cost else "not_charged",
+                "worker_id": self.worker_id})
         mock = all_mock(est)
+        self._check(keeper)
+        self._heartbeat(j)                                        # antes de registrar resultados
         why = self._confirm_files(c, j, files)
         if why:
             return self._fail(c, j, why, total, files)
@@ -185,7 +270,7 @@ class JobRunner:
         brief = (j["request_metadata"] or {}).get("brief") or {}
         # Resultados temporales: simulados 7 días, reales 30 (después los purga el RetentionRunner).
         expires = (c.now + timedelta(days=7 if mock else 30)).isoformat()
-        base = {"tenant_id": c.tenant_id, "job_id": j["id"], "expires_at": expires}
+        base = {"tenant_id": c.tenant_id, "job_id": j["id"], "expires_at": expires, "worker_id": self.worker_id}
         self.db.insert("marketing_generation_outputs", {**base, "kind": "script",
                                                         "metadata": {"script": brief.get("script"), "mock": mock}})
         for p in (est.get("plan") or {}).get("plan") or []:
@@ -204,13 +289,20 @@ class JobRunner:
                 "metadata": {"mock": mock}})
 
     def run_pending(self, limit: int = 5) -> List[Dict[str, Any]]:
-        """Punto de entrada de un worker futuro (service role): procesa trabajos en cola, más antiguos
-        primero. No está programado en ningún sitio en esta fase."""
-        out = []
-        for row in self.db.select("marketing_generation_jobs", {"status": "eq.queued", "select": "id,tenant_id",
-                                                                "order": "approved_at.asc", "limit": str(int(limit))}) or []:
+        """Bucle del worker (service role): reclama y ejecuta hasta `limit` trabajos. Lo invoca
+        services/marketing_runtime.py; no está programado en producción."""
+        out: List[Dict[str, Any]] = []
+        for _ in range(max(int(limit), 0)):
+            if self.stop_event.is_set():
+                break                                             # SIGTERM: no se reclama nada más
+            res = self.claim()
+            if res.get("status") == "empty":
+                break
+            if res.get("status") != "claimed":
+                out.append({"id": res.get("job_id"), "error": "media_not_ready"})
+                continue
             try:
-                out.append(self.run(row["tenant_id"], row["id"]))
+                out.append(self._execute(res["job"]))
             except WorkerError as e:
-                out.append({"id": row["id"], "error": e.code})
+                out.append({"id": res["job"]["id"], "error": e.code})
         return out

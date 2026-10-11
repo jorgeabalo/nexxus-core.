@@ -239,9 +239,11 @@ class StudioService(StudioBase):
         j = self._job(c, job_id)
         if j["status"] != "awaiting_generation_approval":
             raise PortalError("invalid_transition", 409)
-        why = recheck_inputs(self.db, c.tenant_id, j["id"])
+        if jd.ai_budget(c.settings) <= 0:
+            raise PortalError("generation_disabled", 403)             # presupuesto 0 o desconocido: cerrado
+        why = recheck_inputs(self.db, c.tenant_id, j["id"], c.now)
         if why:
-            raise PortalError(why, 409)                      # p. ej. consentimiento retirado después de crear
+            raise PortalError(why, 410 if why == "media_expired" else 409)   # p. ej. consentimiento retirado
         est = (j["request_metadata"] or {}).get("estimate") or {}
         jd.check_generation_limits(c.settings, self._gen_usage(c), regeneration=bool(j.get("regeneration_of")),
                                    images=int(est.get("generated_images") or 0),
@@ -303,9 +305,9 @@ class StudioService(StudioBase):
             raise PortalError("job_not_succeeded", 409)
         if j.get("content_id"):
             raise PortalError("already_sent", 409)
-        why = recheck_inputs(self.db, c.tenant_id, j["id"])
+        why = recheck_inputs(self.db, c.tenant_id, j["id"], c.now)
         if why:
-            raise PortalError(why, 409)            # p. ej. consentimiento retirado: el resultado no se reutiliza
+            raise PortalError(why, 410 if why == "media_expired" else 409)   # el resultado no se reutiliza
         brief = (j["request_metadata"] or {}).get("brief") or {}
         script = brief.get("script") or {}
         item = self.create_content(jwt, c.tenant_id, {

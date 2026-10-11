@@ -70,22 +70,25 @@ class LibraryService(StudioBase):
         """Originales + derivados + resultados/temporales + reservas pendientes (subidas y trabajos)."""
         return ms.used_bytes(self.db, c.tenant_id)
 
-    def _media(self, c, media_id: Any) -> Dict[str, Any]:
+    def _media(self, c, media_id: Any, allow_expired: bool = False) -> Dict[str, Any]:
+        """Archivo de ESTE tenant. Vencido → 410 media_expired (solo borrar o retirar consentimiento lo admiten)."""
         m = self._one(c, "marketing_media", media_id, MEDIA_COLS)
         if m["processing_status"] == "deleted":
             raise PortalError("not_found", 404)
+        if not allow_expired and rt.is_expired(m, c.now):
+            raise PortalError("media_expired", 410)
         return m
 
     # ------------------------------------------------------------------ listar / ver
     def library(self, jwt: str, tenant_id: str, status: str = "") -> Dict[str, Any]:
         c = self.ctx(jwt, tenant_id)
         params = {"tenant_id": f"eq.{c.tenant_id}", "processing_status": "neq.deleted", "select": MEDIA_COLS,
-                  "order": "created_at.desc", "limit": "500"}
+                  "expires_at": f"gt.{c.now.isoformat()}", "order": "created_at.desc", "limit": "500"}
         if status:
             if status not in jd.MEDIA_STATUSES or status == "deleted":
                 raise PortalError("invalid_status", 400)
             params["processing_status"] = f"eq.{status}"
-        items = self.db.select("marketing_media", params) or []
+        items = [m for m in (self.db.select("marketing_media", params) or []) if not rt.is_expired(m, c.now)]
         ders = self.db.select("marketing_media_derivatives", {"tenant_id": f"eq.{c.tenant_id}", "status": "neq.deleted",
                                                               "select": DER_COLS, "limit": "2000"}) or []
         for m in items:
@@ -94,7 +97,7 @@ class LibraryService(StudioBase):
             m["usable"] = pv.usable_media(m) is None and m["privacy_class"] != "restricted"
             m["derivatives"] = [x for x in ders if x["media_id"] == m["id"]]
         st = c.settings
-        storage = ms.summary(self.db, c.tenant_id, st)
+        storage = ms.summary(self.db, c.tenant_id, st, c.now)
         state = storage["state"]
         return {"items": items, "storage": storage,
                 "warnings": list(pv.WARNINGS), "enabled": st["marketing_enabled"],
@@ -178,7 +181,9 @@ class LibraryService(StudioBase):
     def classify(self, jwt: str, tenant_id: str, media_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
         c = self.ctx(jwt, tenant_id)
         self._writable(c)
-        m = self._media(c, media_id)
+        return self._classify(c, self._media(c, media_id), body)
+
+    def _classify(self, c, m: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
         if m["processing_status"] in ("archived", "rejected") or m.get("retention_status") in rt.PURGE_STATES:
             raise PortalError("not_editable", 409)
         tri = lambda v: v if v in (True, False) else None   # noqa: E731
@@ -204,10 +209,9 @@ class LibraryService(StudioBase):
         pendientes, que se vuelven a comprobar al aprobar y al procesar)."""
         c = self.ctx(jwt, tenant_id)
         self._writable(c)
-        m = self._media(c, media_id)
-        out = self.classify(jwt, tenant_id, m["id"], {"contains_people": m.get("contains_people"),
-                                                      "contains_minors": m.get("contains_minors"),
-                                                      "people_policy": "exclude", "consent_status": "revoked"})
+        m = self._media(c, media_id, allow_expired=True)
+        out = self._classify(c, m, {"contains_people": m.get("contains_people"), "contains_minors": m.get("contains_minors"),
+                                    "people_policy": "exclude", "consent_status": "revoked"})   # también si ya venció
         # Cancelar trabajos pendientes, bloquear resultados que lo usen y pedir la purga prioritaria.
         # (Si algún día hay trabajos externos, aquí se pediría también su cancelación al proveedor.)
         jobs = rt.cancel_jobs_for_media(self.db, c.tenant_id, m["id"], "consent_revoked", c.now, (c.user["id"], c.role))
@@ -242,7 +246,7 @@ class LibraryService(StudioBase):
         self._writable(c)
         if confirm is not True:
             raise PortalError("confirmation_required", 400)
-        m = self._media(c, media_id)
+        m = self._media(c, media_id, allow_expired=True)
         jd.check_media_transition(m["processing_status"], "deleted")
         uses = self.db.select("marketing_generation_inputs", {"tenant_id": f"eq.{c.tenant_id}", "media_id": f"eq.{m['id']}",
                                                               "select": "job_id", "limit": "1000"}) or []
@@ -350,8 +354,8 @@ def media_for_job(svc: StudioBase, c, media_ids, derivative_ids=None) -> Dict[st
         why = pv.usable_media(m)
         if why:
             raise PortalError(why, 409)
-        if rt._dt(m["expires_at"]) <= c.now:
-            raise PortalError("media_expired", 409)
+        if rt.is_expired(m, c.now):
+            raise PortalError("media_expired", 410)
         der = None
         if m.get("people_policy") == "anonymize":
             cands = [x for x in (svc.db.select("marketing_media_derivatives", {

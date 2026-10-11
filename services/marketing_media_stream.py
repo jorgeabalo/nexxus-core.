@@ -58,7 +58,8 @@ _TOKEN = re.compile(r"^[A-Za-z0-9_-]{32,64}$")
 def stream_path(media_id: str) -> str:
     """Ruta limpia del archivo; también es el Path exacto de la cookie."""
     return f"/api/manager/marketing/library/{media_id}/stream"
-MEDIA_COLS = ("id,tenant_id,storage_path,mime_type,byte_size,validation_status,processing_status,retention_status")
+MEDIA_COLS = ("id,tenant_id,storage_path,mime_type,byte_size,validation_status,processing_status,retention_status,"
+              "expires_at")
 DER_COLS = "id,tenant_id,media_id,storage_path,mime_type,byte_size,status"
 
 
@@ -103,6 +104,8 @@ def resolve(svc: StudioBase, c, media_id: Any, derivative_id: Any = None):
     if (m.get("validation_status") != "passed" or m["processing_status"] in ("rejected", "deleted")
             or m.get("retention_status") in rt.PURGE_STATES):
         raise PortalError("not_found", 404)                      # pendiente de purga o purgado: sin acceso
+    if rt.is_expired(m, c.now):
+        raise PortalError("media_expired", 410)                  # vencido: inaccesible aunque no se haya purgado
     path, mime, size = m["storage_path"], m["mime_type"], m.get("byte_size")
     if derivative_id:
         d = svc._one(c, "marketing_media_derivatives", derivative_id, DER_COLS)
@@ -126,6 +129,7 @@ class MediaStreamService(StudioBase):
         c = self.ctx(jwt, tenant_id)
         m, _path, mime, _size = resolve(self, c, media_id)
         token, ttl = secrets.token_urlsafe(32), stream_ttl()
+        ttl = max(1, min(ttl, int((rt._dt(m["expires_at"]) - self._clock()).total_seconds())))  # nunca más que el archivo
         self.db.insert("marketing_stream_tokens", {
             "tenant_id": c.tenant_id, "user_id": c.user["id"], "media_id": m["id"], "derivative_id": None,
             "token_hash": token_hash(token), "created_at": self._clock().isoformat(),

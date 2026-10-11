@@ -134,3 +134,11 @@ def test_marketing_generation_budget_sql():
     r = subprocess.run(["node", str(ROOT / "tests/sql/marketing_generation_budget.mjs")], capture_output=True, text=True,
                        timeout=180, env={**os.environ, "NODE_PATH": os.environ["PGLITE_NODE_PATH"]})
     assert r.returncode == 0 and "ALL MARKETING GENERATION BUDGET SQL TESTS PASSED" in r.stdout, r.stdout[-2000:] + r.stderr[-2000:]
+
+
+@pytest.mark.skipif(not (shutil.which("node") and os.getenv("PGLITE_NODE_PATH")),
+                    reason="PGlite no disponible (PGLITE_NODE_PATH=/ruta/node_modules)")
+def test_marketing_runtime_safety_sql():
+    r = subprocess.run(["node", str(ROOT / "tests/sql/marketing_runtime_safety.mjs")], capture_output=True, text=True,
+                       timeout=180, env={**os.environ, "NODE_PATH": os.environ["PGLITE_NODE_PATH"]})
+    assert r.returncode == 0 and "ALL MARKETING RUNTIME SAFETY SQL TESTS PASSED" in r.stdout, r.stdout[-2000:] + r.stderr[-2000:]

@@ -181,8 +181,87 @@ trabajo activo añade como máximo 14 días. Nunca hay retención permanente.
   auditada (`purged`, `purge_failed`) e incapaz de borrar una ruta que no sea `{tenant}/…/{asset}/…` de ese archivo.
   Al empezar bloquea el acceso (`purge_pending`); al terminar borra original, derivados y resultados temporales y
   deja solo: id, tenant, hash, tipo, tamaño, quién subió, fechas y motivo (sin nombre, metadatos ni ruta real).
-* **No hay tarea programada en este PR**: `RetentionRunner.run()` está listo para un worker, pero nada lo invoca
-  en producción (lo comprueba una prueba). La única eliminación real posible es la que pide un owner/manager.
+* **Archivo vencido = inaccesible aunque el purgador no haya corrido** (migración `20261012120000`): con
+  `expires_at <= ahora` desaparece del listado (filtro en la consulta y en RLS), y abrir, descargar,
+  previsualizar, abrir una sesión de reproducción, clasificar, archivar, cambiar retención, anonimizar o usarlo
+  en un trabajo responde **410 `media_expired`**. Solo se admiten eliminarlo y retirar el consentimiento. Otro
+  tenant sigue viendo 404 (sin oráculo). En la base: RLS lo oculta a `authenticated`, ningún trabajo lo acepta
+  como entrada ni entra en cola con él, ninguna sesión de reproducción se crea para él (y ninguna dura más que
+  el archivo) y su vencimiento ya no puede ampliarse. Sigue ocupando cuota hasta que se purga: el resumen de
+  almacenamiento lo muestra por separado (activo · vencido pendiente de eliminación · reservado · disponible) y
+  explica por qué un archivo invisible todavía consume espacio. Los errores de Marketing se muestran solo en el
+  idioma activo ("El archivo ya venció." / "The file has expired."), sin prefijos genéricos.
+* **No hay tarea programada en producción**: `RetentionRunner` se ejecuta con el comando de §4g, pero nada lo
+  programa todavía (lo comprueba una prueba). La única eliminación real posible es la que pide un owner/manager.
+
+## 4g. Procesos de fondo: purgador y worker (preparados, sin programar)
+
+Comando independiente del proceso web: `python -m services.marketing_runtime` (usa la clave de servicio de
+`SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`; imprime una línea JSON por lote, sin secretos). Comandos exactos:
+
+| Uso | Comando |
+|---|---|
+| Purgador, dry-run (predeterminado; no escribe nada) | `python -m services.marketing_runtime retention --dry-run --batch-size 200 --max-batches 10` |
+| Purgador, aplicar | `python -m services.marketing_runtime retention --apply --batch-size 200 --max-batches 10` |
+| Worker, una ejecución (predeterminado) | `MARKETING_WORKER_ENABLED=true python -m services.marketing_runtime worker --once --max-jobs 20 --lease-seconds 120 --heartbeat-seconds 40` |
+| Worker continuo (NO predeterminado; no crear todavía) | `MARKETING_WORKER_ENABLED=true python -m services.marketing_runtime worker --loop --max-jobs 20 --lease-seconds 120 --heartbeat-seconds 40 --poll-seconds 30 --max-runtime-seconds 3300` |
+
+`--dry-run` y `--apply` son excluyentes; sin ninguno, es dry-run. `--once` y `--loop` son excluyentes; sin
+ninguno, es una sola ejecución. **Un worker permanente (`--loop` como servicio siempre encendido) aumenta los
+costos de infraestructura y no debe crearse todavía**: mientras la generación esté cerrada no hay trabajos que
+procesar. Cuando haga falta, se preferirá un Cron con `--once`.
+
+**Purgador (`retention`)**
+* **Dry-run por defecto**: lee de verdad y solo *registra* lo que escribiría (`would_write`). Escribe únicamente
+  con `--apply`. La salida indica `"mode": "dry_run"` o `"mode": "apply"`.
+* Por lotes (`--batch-size`, `--max-batches`) y repetible: cada lote vuelve a leer el estado.
+* Un solo purgador a la vez: lease `retention_runner` en `marketing_runtime_leases`
+  (`marketing_acquire_runtime_lease`, TTL 15 min). Se renueva antes de cada lote y, en segundo plano, durante
+  el lote (cada ≤ 5 min, también en borrados lentos). Si otro lo tiene, devuelve `{"locked": true}` y no hace
+  nada; si lo pierde a mitad, se detiene antes del siguiente archivo o borrado (`"lease_lost": true`) y no libera
+  el lease ajeno; si un purgador muere, su lease vence y otro lo retoma. Cada archivo se cierra con una
+  actualización condicional: dos purgadores nunca lo cierran ni lo borran dos veces. No se usa `pg_advisory_lock` porque PostgREST reparte
+  las llamadas entre conexiones del pool y un bloqueo de sesión no sería fiable.
+* Orden de la purga: primero el acceso lógico (`purge_pending` + sesiones revocadas) y después el objeto de
+  Storage; nunca una ruta que no sea `{tenant}/…/{archivo}` de ese archivo; si el objeto ya no existe (404) la
+  purga se cierra; reintentos limitados (5) con `last_purge_error`. Al purgar, el espacio "vencido pendiente de
+  eliminación" baja.
+* Trabajos atascados (`marketing_timeout_jobs`): lease vencido sin reintentos, o aprobado hace más de 24 h sin
+  terminar → `failed`/`timeout`; sus resultados quedan bloqueados (`review_status = rejected`) y sus reservas se
+  cierran una sola vez (costo: deja de contar lo reservado; espacio: disparador). Reservas abandonadas
+  (`marketing_expire_storage_reservations`): subidas 15 min, trabajos 24 h.
+
+Railway Cron futuro (NO creado ni activado; servicio aparte con el mismo repositorio y variables): el comando
+"Purgador, aplicar" de la tabla, cada 15 minutos (`*/15 * * * *`). Antes de activarlo: ejecutar a mano el dry-run
+y revisar la salida.
+
+**Worker (`worker`)**
+* Solo arranca con `MARKETING_WORKER_ENABLED=true`; se niega si `OMNIROUTE_ENABLED` o
+  `MARKETING_LOCAL_TOOLS_ENABLED` están activos (este PR no conecta proveedores ni ejecuta FFmpeg, MoviePy,
+  Playwright, ComfyUI, Wan ni OmniRoute).
+* Reclamo atómico: `marketing_claim_job` (`FOR UPDATE SKIP LOCKED` + lease de 30–900 s): dos workers nunca toman el
+  mismo trabajo. **Heartbeat continuo**: mientras dura el trabajo (también durante una subtarea larga de FFmpeg,
+  vídeo o un proveedor) un hilo renueva el lease (`marketing_job_heartbeat`) como mucho cada lease/3
+  (`--heartbeat-seconds`, por defecto lease/3; se rechaza un lease < 30 s o un intervalo > lease/3). La hora y la
+  validez del lease las decide PostgreSQL, nunca el reloj del proceso. Además se comprueba antes y después de
+  cada subtarea y antes de registrar resultados. El hilo se detiene y se une al terminar, fallar, cancelar o con
+  SIGTERM (sin hilos ni conexiones huérfanas).
+* **Lease perdido** (renovación fallida, también por error de red, u otro dueño): el worker marca `lease_lost`, no
+  registra resultados ni costos, no confirma almacenamiento, no toca reservas y solo borra los temporales de ESTE
+  intento (llevan su `worker_id` como prefijo). La base lo garantiza aunque el código fallara: resultados
+  (`marketing_generation_outputs.worker_id`), costos (`marketing_model_usage.worker_id`) y la confirmación de
+  almacenamiento (`marketing_confirm_output_storage(…, p_worker)`) exigen ser el dueño del lease vigente; la
+  transición final exige lease vigente y el mismo `worker_id`; y las reservas de trabajos (`job:…`) ya no se
+  pueden liberar a mano: solo las cierra la base cuando el trabajo termina.
+* **SIGTERM**: el trabajo en curso se detiene sin escribir nada (`interrupted`), no se reclaman más trabajos y el
+  lease vence para que otro worker lo retome o termine en timeout.
+* Lease vencido → reintento por otro worker (máx. 3 intentos) con la **misma** `idempotency_key`: las subtareas ya
+  cobradas no se repiten. Sin reintentos → timeout (arriba).
+* Antes de gastar vuelve a comprobar: entradas (vencidas, consentimiento, menores…), generación habilitada y
+  "Marketing AI budget" > 0. Si la entrada ya no vale al reclamar, el trabajo falla con `media_not_ready` sin
+  bloquear la cola.
+
+Comando futuro: el de "Worker, una ejecución" de la tabla, desde un Cron (NO creado ni activado).
 
 ## 4f. "Marketing AI budget" (costo de los trabajos de Marketing)
 
@@ -222,7 +301,15 @@ de 80 USD por tenant (voz, IA de Claudia, infraestructura…), que irá en otro 
   detiene y borra el directorio al terminar. Resultado esperado: `17 passed`.
 
 * `marketing_settings.monthly_ai_cost_limit` (USD/mes) lo fija **solo el operador**; `0` por defecto = ninguna
-  generación, ni siquiera simulada; `null` = sin límite. El tenant no puede cambiarlo (sin endpoint; SELECT only).
+  generación, ni siquiera simulada. **Desconocido (`null`) o 0 = cerrado**. Es el presupuesto **exclusivo de la IA
+  de Marketing**, con un **máximo temporal de 20 USD/mes** mientras no exista un ledger global que reúna voz,
+  infraestructura, almacenamiento e IA: la base lo exige (`not null`, 0–20) y el código también falla cerrado
+  (null, 0 o más de 20 = cerrado). El tenant no puede cambiarlo (sin endpoint; SELECT only).
+* **No es** el objetivo de costo total de AITA (80 USD por tenant y mes, que incluye voz, infraestructura,
+  almacenamiento y Marketing) y **este cambio no garantiza por sí solo ese límite global**; eso requiere el
+  ledger global (otro PR). La interfaz lo dice: "Presupuesto de IA de Marketing; no representa el costo total
+  de AITA".
+* Propuesta para Golden Age cuando se habilite la generación: **10 USD/mes** de Marketing AI (no activado).
 * Cada trabajo conserva: costo máximo estimado (`estimated_cost`), costo reservado (`reserved_cost`, inmutable
   tras aprobar), costo real (`actual_cost`), proveedor/modelo (`selected_provider`, `selected_model` y, por
   subtarea, `marketing_model_usage`) e idempotencia (`idempotency_key` del trabajo y de cada subtarea).
@@ -323,6 +410,7 @@ transporte inyectado explícitamente, `submit()` devuelve `provider_disabled`.
 | `MARKETING_AI_CATALOG_PATH` | catálogo del repo | Otro catálogo en el servidor |
 | `MARKETING_STREAM_TTL` | 600 | Vida de la sesión de reproducción (cookie) en segundos (se limita a 60–600) |
 | `APP_ENV` | `production` | `test`, `local` o `development` permiten (solo junto con la siguiente) una cookie sin Secure |
+| `MARKETING_WORKER_ENABLED` | — | `true` = el comando `worker` puede ejecutar trabajos (sin esto, no arranca) |
 | `MARKETING_STREAM_COOKIE_INSECURE` | — | `1` = cookie sin Secure, **solo** con `APP_ENV` de test/local; en producción impide arrancar |
 | `MARKETING_MAX_VIDEO_DURATION_MS` | 900000 | Duración máxima creíble de un vídeo subido (15 min) |
 | `MARKETING_HARD_MAX_UPLOAD_BYTES` | 100 MB | Tope absoluto por archivo (memoria del servidor) |
@@ -359,15 +447,11 @@ solo tiene SELECT (probado en SQL).
 
 ## 9b. Ejecución asíncrona
 
-* `marketing_worker.JobRunner` reclama un trabajo con una actualización condicional `queued → processing` (solo un
-  worker gana), vuelve a comprobar las entradas, ejecuta subtareas con idempotencia y cierra el trabajo.
-  `run_pending()` es el punto de entrada para un worker programado; **en esta fase no hay worker desplegado**.
-* Desde una petición HTTP solo se ejecutan trabajos **100 % simulados** (rápidos, sin red). Cualquier trabajo con
-  vídeo real, render, anonimización real o proveedores reales responde `requires_worker` y queda en cola.
-* Vídeo, render, anonimización y proveedores reales **requieren** ese worker asíncrono (con timeouts, reintentos
-  limitados y métricas) antes de activarse.
-* Los resultados simulados quedan marcados (`result_metadata.mock`, `mock_generation_job:` en las notas) y
-  `MarketingService` bloquea programarlos (`mock_content_not_publishable`).
+* `JobRunner` (worker con lease y heartbeat continuo, §4g) es el único que ejecuta trabajos; **no hay worker
+  desplegado**. Por HTTP solo se ejecutan trabajos **100 % simulados**; el resto responde `requires_worker`.
+* Vídeo, render, anonimización y proveedores reales **requieren** ese worker antes de activarse.
+* Los resultados simulados quedan marcados (`result_metadata.mock`) y no se pueden programar
+  (`mock_content_not_publishable`).
 
 ## 10. Proveedores desactivados y cómo activarlos en el futuro
 
@@ -395,15 +479,10 @@ Para activar un proveedor real (cada paso con autorización explícita):
 
 ## 12. Pruebas
 
-* Python: `tests/test_marketing_studio.py` (permisos, archivos, truncados/polyglot/metadatos, antivirus, borrado,
-  menores, consentimiento, anonimización simulada), `tests/test_marketing_studio_jobs.py` (flujo mock, worker,
-  idempotencia, límites en 0), `tests/test_marketing_studio_http.py` (subida con límite previo, vista previa y CSP)
-  y `tests/test_marketing_ai_router.py` (catálogo, router, mezcla, sincronía Python↔SQL, endpoints, puerta).
-* JS: `tests/js/marketing-studio.test.mjs` (mezcla, privacidad, etapas, textos ES/EN, sin claves).
-* SQL (PGlite): `tests/sql/marketing_studio.mjs` (RLS, mínimo privilegio, inmutabilidad, trabajos, aislamiento,
-  límites por defecto, bucket, atomicidad), `tests/sql/marketing_retention.mjs` y
-  `tests/sql/marketing_generation_budget.mjs`.
-* Retención y costos: `tests/test_marketing_retention.py` (reloj controlado) y `tests/test_marketing_generation_cost.py`.
+* Python: `tests/test_marketing_*.py` (permisos, archivos, privacidad, retención, vencidos, costos, reservas,
+  streaming, worker con lease y heartbeat, purgador y comandos). JS: `tests/js/marketing-studio.test.mjs`.
+* SQL (PGlite): `tests/sql/marketing_*.mjs` (RLS, mínimo privilegio, inmutabilidad, retención, presupuesto,
+  seguridad de ejecución). PostgreSQL 17 real: `tests/test_marketing_pg_concurrency.py` (comando en §4f).
 * Ejecutar: `PGLITE_NODE_PATH=/ruta/node_modules python3 -m pytest -q tests/test_marketing*.py`.
 
 ## 13. Riesgos y pendientes
@@ -412,12 +491,10 @@ Para activar un proveedor real (cada paso con autorización explícita):
 * GIF/WebM/MOV no se decodifican: se valida firma, estructura y cabecera, no el contenido completo.
 * La subida se acumula en memoria hasta el límite del tenant (50 MB por defecto, tope 100 MB); para vídeos grandes
   hará falta subida reanudable directa a Storage.
-* La anonimización real (FFmpeg/detector local) y el render final están simulados y nunca se presentan como reales.
-* No hay worker desplegado: con proveedores reales hará falta desplegarlo (ver 9b).
-* Costes: hoy 0 (mock). Con proveedores reales, el coste depende del catálogo verificado y de los límites.
+* Anonimización real y render final: simulados, nunca presentados como reales. Sin worker desplegado (9b).
+* Costes: hoy 0 (mock); con proveedores reales dependerán del catálogo verificado y de los límites.
 
 ## 14. Qué falta para publicar de verdad
 
-Conectar redes (Postiz u otro) con su propio PR y autorización, OAuth por tenant, revisión legal de
-consentimientos, worker de publicación con idempotencia, métricas, y pruebas en entorno de staging.
-Nada de eso está en esta fase.
+Conectar redes (Postiz u otro) con su propio PR y autorización, OAuth por tenant, revisión legal de consentimientos,
+worker de publicación con idempotencia, métricas y pruebas en staging. Nada de eso está en esta fase.

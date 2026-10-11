@@ -4,7 +4,7 @@ import { getLang } from '../i18n.js';
 const T = {
   es: {
     budgetTitle: 'Marketing AI budget (este mes)', budgetMarketing: 'IA de Marketing',
-    budgetScopeNote: 'Solo limita el gasto de IA de Marketing. No es el presupuesto global de AITA (80 USD por empresa), que se gestiona aparte.',
+    budgetScopeNote: 'Presupuesto de IA de Marketing; no representa el costo total de AITA.',
     costCategory: 'Categoría del costo', cat_marketing_ai_budget: 'Marketing AI budget', costEstimated: 'Estimado', costReserved: 'Reservado', costActual: 'Real',
     monthlyBudget: 'Presupuesto mensual', consumed: 'Consumido', reserved: 'Reservado', available: 'disponible', method: 'Método',
     bw_low: 'Queda menos del 25 % del presupuesto.', bw_critical: 'Queda menos del 10 % del presupuesto.',
@@ -30,6 +30,8 @@ const T = {
     libIntro: 'Tus fotos y vídeos privados. Solo tú y tus gerentes los ven; nunca se publican desde aquí.',
     upload: 'Subir archivo', uploading: 'Subiendo…', uploaded: 'Archivo subido', duplicate: 'Ese archivo ya estaba en la Biblioteca.',
     formats: 'PNG, JPEG, WebP, GIF, MP4, MOV o WebM. Máximo', storage: 'Almacenamiento', noMedia: 'Todavía no hay archivos',
+    stActive: 'Activo', stExpired: 'Vencido pendiente de eliminación', stReserved: 'Reservado', stAvailable: 'Disponible',
+    stExpiredHint: 'Los archivos vencidos ya no se ven ni se pueden abrir, recuperar ni ampliar. Siguen ocupando espacio hasta que se eliminan automáticamente.',
     preview: 'Vista previa', archive: 'Archivar', unarchive: 'Restaurar', file: 'Archivo', type: 'Tipo', size: 'Tamaño',
     people: 'Personas', privacy: 'Privacidad', status: 'Estado', actions: 'Acciones', classify: 'Clasificar personas',
     containsPeople: '¿Aparecen personas reales?', yes: 'Sí', no: 'No', unknown: 'No lo sé',
@@ -129,7 +131,7 @@ const T = {
   },
   en: {
     budgetTitle: 'Marketing AI budget (this month)', budgetMarketing: 'Marketing AI',
-    budgetScopeNote: 'Only limits Marketing AI spending. It is not the global AITA budget (USD 80 per business), which is managed separately.',
+    budgetScopeNote: 'Marketing AI budget; it does not represent the total cost of AITA.',
     costCategory: 'Cost category', cat_marketing_ai_budget: 'Marketing AI budget', costEstimated: 'Estimated', costReserved: 'Reserved', costActual: 'Actual',
     monthlyBudget: 'Monthly budget', consumed: 'Consumed', reserved: 'Reserved', available: 'available', method: 'Method',
     bw_low: 'Less than 25% of the budget remains.', bw_critical: 'Less than 10% of the budget remains.',
@@ -155,6 +157,8 @@ const T = {
     libIntro: 'Your private photos and videos. Only you and your managers see them; nothing is published from here.',
     upload: 'Upload file', uploading: 'Uploading…', uploaded: 'File uploaded', duplicate: 'That file was already in the Library.',
     formats: 'PNG, JPEG, WebP, GIF, MP4, MOV or WebM. Max', storage: 'Storage', noMedia: 'No files yet',
+    stActive: 'Active', stExpired: 'Expired, pending deletion', stReserved: 'Reserved', stAvailable: 'Available',
+    stExpiredHint: 'Expired files are no longer shown and cannot be opened, recovered or extended. They still use space until they are deleted automatically.',
     preview: 'Preview', archive: 'Archive', unarchive: 'Restore', file: 'File', type: 'Type', size: 'Size',
     people: 'People', privacy: 'Privacy', status: 'Status', actions: 'Actions', classify: 'Classify people',
     containsPeople: 'Are real people visible?', yes: 'Yes', no: 'No', unknown: 'Not sure',
