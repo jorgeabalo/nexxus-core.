@@ -23,7 +23,6 @@ export async function studioView(ctx, goJobs) {
   const root = el('div', { class: 'mk-studio' });
   const notice = el('div', {},
     el('p', {}, s('studioIntro')),
-    ov.demo_mode ? el('p', { class: 'mk-note' }, s('providersOff')) : null,
     ov.generation_enabled ? null : el('p', { class: 'error-box mk-notice mk-gen-off', role: 'status' }, el('strong', {}, s('genNotEnabled')), ' ', s('limitsClosed')));
   const stepper = el('ol', { class: 'mk-steps' });
   const pane = el('div', { class: 'card-body' });
@@ -143,16 +142,12 @@ function jobDetail(ctx, id, reload, genEnabled = true) {
         ` · ${s(`q_${j.quality_tier}`)} · ${s('maxCost')}: ${fmtCost(j.maximum_cost, j.currency)}`),
       j.error_code ? el('p', { class: 'error-box' }, sErr({ code: j.error_code })) : null,
       j.cost ? el('dl', { class: 'mk-summary mk-job-cost' },
-        el('dt', {}, s('costCategory')), el('dd', {}, s(`cat_${j.cost.category}`)),
         el('dt', {}, s('costEstimated')), el('dd', {}, j.cost.estimated === null || j.cost.estimated === undefined ? '—' : fmtCost(j.cost.estimated, j.cost.currency)),
         el('dt', {}, s('costReserved')), el('dd', {}, j.cost.reserved === null || j.cost.reserved === undefined ? '—' : fmtCost(j.cost.reserved, j.cost.currency)),
         el('dt', {}, s('costActual')), el('dd', {}, j.cost.actual === null || j.cost.actual === undefined ? '—' : fmtCost(j.cost.actual, j.cost.currency))) : null,
       (j.result_metadata || {}).mock ? el('p', { class: 'mk-note' }, `${s('mock')}: ${sErr({ code: 'mock_content_not_publishable' })}`) : null,
       est ? el('div', {}, el('p', {}, `${s('estimated')}: ${fmtCost(est.estimated_cost, est.currency)}`),
-        est.full_ai ? el('p', { class: 'mk-note' }, s('fullAiNote')) : null,
-        // Sin proveedores ni costos unitarios: son datos internos. Solo el método y la privacidad.
-        table([{ label: s('subtasks'), key: 'task_type' }, { label: s('method'), render: r => (r.external ? s('external') : s('local')) },
-          { label: s('privacy'), render: r => privacyBadge(r.privacy_class) }], est.subtasks)) : null,
+        est.full_ai ? el('p', { class: 'mk-note' }, s('fullAiNote')) : null) : null,
       scenes.length ? el('div', {}, el('h3', {}, s('byOrigin')), el('ul', {}, Object.entries(by).map(([k, v]) =>
         el('li', {}, `${s(`or_${k}`)}: ${v.n} · ${Math.round(v.ms / 1000)}${s('seconds')}`)))) : null,
       el('div', { class: 'btn-row mk-job-actions' },

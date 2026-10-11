@@ -24,7 +24,7 @@ BANNED_TEXT = [r"\b80\s*USD\b", r"\bUSD\s*80\b", r"US?\$\s*80\b", r"\b20\s*USD\b
                r"price_source", r"unit_price", r"precio unitario", r"unit price", r"billing_unit"]
 BANNED_KEYS = {"selected_provider", "selected_model", "provider", "providers", "model", "model_id", "provider_job_id",
                "router_strategy", "catalog", "catalog_version", "unit_price", "price_source", "billing_unit", "margin",
-               "global_budget", "aita_budget", "cap", "limit", "scope", "usage_by_model"}
+               "global_budget", "aita_budget", "cap", "limit", "scope", "usage_by_model", "demo_mode", "cost_category"}
 H = {"Authorization": f"Bearer jwt-{OWNER}"}
 
 
