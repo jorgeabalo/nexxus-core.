@@ -97,7 +97,7 @@ class LibraryService(StudioBase):
             m["usable"] = pv.usable_media(m) is None and m["privacy_class"] != "restricted"
             m["derivatives"] = [x for x in ders if x["media_id"] == m["id"]]
         st = c.settings
-        storage = ms.summary(self.db, c.tenant_id, st)
+        storage = ms.summary(self.db, c.tenant_id, st, c.now)
         state = storage["state"]
         return {"items": items, "storage": storage,
                 "warnings": list(pv.WARNINGS), "enabled": st["marketing_enabled"],

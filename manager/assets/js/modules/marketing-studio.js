@@ -1,7 +1,8 @@
 // AITA Marketing (Fase 2) — Estudio de Reels (asistente de 7 pasos) y Trabajos de generación.
 // La mezcla real/IA la elige y confirma owner/manager; la IA solo sugiere. Nada se genera sin
 // aprobación explícita y nada se publica desde aquí (se envía a la aprobación de contenido).
-import { el, clear, card, table, openModal, field, input, select, toast, badge, fmtDateTime, errorBox, kpi } from '../ui.js';
+import { el, clear, card, table, openModal, field, input, select, toast, badge, fmtDateTime, kpi } from '../ui.js';
+import { errorNotice } from './marketing-ui.js';
 import { api } from '../api.js';
 import { s, sErr } from './marketing-studio-i18n.js';
 import { MIX_PRESETS, MIX_STEP, OBJECTIVES, AUDIENCES, STYLES, DURATIONS, TARGETS, QUALITY, WIZARD_STEPS,
@@ -131,7 +132,7 @@ function jobDetail(ctx, id, reload, genEnabled = true) {
   };
   async function draw() {
     let j;
-    try { j = await M.job(ctx.tenantId, id); } catch (e) { clear(holder).appendChild(errorBox({ message: sErr(e) })); return; }
+    try { j = await M.job(ctx.tenantId, id); } catch (e) { clear(holder).appendChild(errorNotice(sErr(e))); return; }
     const est = (j.request_metadata || {}).estimate;
     const confirm = el('input', { type: 'checkbox', id: `mk-ok-${id}` });
     const title = input({ maxlength: '160', placeholder: s('reelTitle') });

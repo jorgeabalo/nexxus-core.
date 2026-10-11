@@ -187,18 +187,33 @@ trabajo activo añade como máximo 14 días. Nunca hay retención permanente.
   en un trabajo responde **410 `media_expired`**. Solo se admiten eliminarlo y retirar el consentimiento. Otro
   tenant sigue viendo 404 (sin oráculo). En la base: RLS lo oculta a `authenticated`, ningún trabajo lo acepta
   como entrada ni entra en cola con él, ninguna sesión de reproducción se crea para él (y ninguna dura más que
-  el archivo) y su vencimiento ya no puede ampliarse. Sigue ocupando cuota hasta que se purga.
+  el archivo) y su vencimiento ya no puede ampliarse. Sigue ocupando cuota hasta que se purga: el resumen de
+  almacenamiento lo muestra por separado (activo · vencido pendiente de eliminación · reservado · disponible) y
+  explica por qué un archivo invisible todavía consume espacio. Los errores de Marketing se muestran solo en el
+  idioma activo ("El archivo ya venció." / "The file has expired."), sin prefijos genéricos.
 * **No hay tarea programada en producción**: `RetentionRunner` se ejecuta con el comando de §4g, pero nada lo
   programa todavía (lo comprueba una prueba). La única eliminación real posible es la que pide un owner/manager.
 
 ## 4g. Procesos de fondo: purgador y worker (preparados, sin programar)
 
 Comando independiente del proceso web: `python -m services.marketing_runtime` (usa la clave de servicio de
-`SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`; imprime una línea JSON por lote, sin secretos).
+`SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`; imprime una línea JSON por lote, sin secretos). Comandos exactos:
+
+| Uso | Comando |
+|---|---|
+| Purgador, dry-run (predeterminado; no escribe nada) | `python -m services.marketing_runtime retention --dry-run --batch-size 200 --max-batches 10` |
+| Purgador, aplicar | `python -m services.marketing_runtime retention --apply --batch-size 200 --max-batches 10` |
+| Worker, una ejecución (predeterminado) | `MARKETING_WORKER_ENABLED=true python -m services.marketing_runtime worker --once --max-jobs 20 --lease-seconds 120` |
+| Worker continuo (NO predeterminado; no crear todavía) | `MARKETING_WORKER_ENABLED=true python -m services.marketing_runtime worker --loop --max-jobs 20 --lease-seconds 120 --poll-seconds 30 --max-runtime-seconds 3300` |
+
+`--dry-run` y `--apply` son excluyentes; sin ninguno, es dry-run. `--once` y `--loop` son excluyentes; sin
+ninguno, es una sola ejecución. **Un worker permanente (`--loop` como servicio siempre encendido) aumenta los
+costos de infraestructura y no debe crearse todavía**: mientras la generación esté cerrada no hay trabajos que
+procesar. Cuando haga falta, se preferirá un Cron con `--once`.
 
 **Purgador (`retention`)**
 * **Dry-run por defecto**: lee de verdad y solo *registra* lo que escribiría (`would_write`). Escribe únicamente
-  con `--apply`.
+  con `--apply`. La salida indica `"mode": "dry_run"` o `"mode": "apply"`.
 * Por lotes (`--batch-size`, `--max-batches`) y repetible: cada lote vuelve a leer el estado.
 * Un solo purgador a la vez: lease `retention_runner` en `marketing_runtime_leases`
   (`marketing_acquire_runtime_lease`, TTL 15 min). Si otro lo tiene, devuelve `{"locked": true}` y no hace nada;
@@ -206,20 +221,16 @@ Comando independiente del proceso web: `python -m services.marketing_runtime` (u
   las llamadas entre conexiones del pool y un bloqueo de sesión no sería fiable.
 * Orden de la purga: primero el acceso lógico (`purge_pending` + sesiones revocadas) y después el objeto de
   Storage; nunca una ruta que no sea `{tenant}/…/{archivo}` de ese archivo; si el objeto ya no existe (404) la
-  purga se cierra; reintentos limitados (5) con `last_purge_error`.
+  purga se cierra; reintentos limitados (5) con `last_purge_error`. Al purgar, el espacio "vencido pendiente de
+  eliminación" baja.
 * Trabajos atascados (`marketing_timeout_jobs`): lease vencido sin reintentos, o aprobado hace más de 24 h sin
   terminar → `failed`/`timeout`; sus resultados quedan bloqueados (`review_status = rejected`) y sus reservas se
   cierran una sola vez (costo: deja de contar lo reservado; espacio: disparador). Reservas abandonadas
   (`marketing_expire_storage_reservations`): subidas 15 min, trabajos 24 h.
 
-Comando futuro de **Railway Cron** (NO creado ni activado; servicio aparte con el mismo repositorio y variables):
-
-```bash
-python -m services.marketing_runtime retention --apply --batch-size 200 --max-batches 10
-```
-
-Frecuencia sugerida: cada 15 minutos (`*/15 * * * *`). Antes de activarlo: ejecutar a mano sin `--apply` y revisar
-la salida.
+Railway Cron futuro (NO creado ni activado; servicio aparte con el mismo repositorio y variables): el comando
+"Purgador, aplicar" de la tabla, cada 15 minutos (`*/15 * * * *`). Antes de activarlo: ejecutar a mano el dry-run
+y revisar la salida.
 
 **Worker (`worker`)**
 * Solo arranca con `MARKETING_WORKER_ENABLED=true`; se niega si `OMNIROUTE_ENABLED` o
@@ -235,11 +246,7 @@ la salida.
   "Marketing AI budget" > 0. Si la entrada ya no vale al reclamar, el trabajo falla con `media_not_ready` sin
   bloquear la cola.
 
-Comando futuro (servicio worker de Railway o Cron; NO creado ni activado):
-
-```bash
-MARKETING_WORKER_ENABLED=true python -m services.marketing_runtime worker --max-jobs 20 --lease-seconds 120
-```
+Comando futuro: el de "Worker, una ejecución" de la tabla, desde un Cron (NO creado ni activado).
 
 ## 4f. "Marketing AI budget" (costo de los trabajos de Marketing)
 
@@ -279,9 +286,15 @@ de 80 USD por tenant (voz, IA de Claudia, infraestructura…), que irá en otro 
   detiene y borra el directorio al terminar. Resultado esperado: `17 passed`.
 
 * `marketing_settings.monthly_ai_cost_limit` (USD/mes) lo fija **solo el operador**; `0` por defecto = ninguna
-  generación, ni siquiera simulada. **Desconocido (`null`) o 0 = cerrado** y nunca más de **80 USD/mes** (objetivo
-  de costo total de AITA por tenant): la base lo exige (`not null`, 0–80) y el código también falla cerrado. El
-  tenant no puede cambiarlo (sin endpoint; SELECT only).
+  generación, ni siquiera simulada. **Desconocido (`null`) o 0 = cerrado**. Es el presupuesto **exclusivo de la IA
+  de Marketing**, con un **máximo temporal de 20 USD/mes** mientras no exista un ledger global que reúna voz,
+  infraestructura, almacenamiento e IA: la base lo exige (`not null`, 0–20) y el código también falla cerrado
+  (null, 0 o más de 20 = cerrado). El tenant no puede cambiarlo (sin endpoint; SELECT only).
+* **No es** el objetivo de costo total de AITA (80 USD por tenant y mes, que incluye voz, infraestructura,
+  almacenamiento y Marketing) y **este cambio no garantiza por sí solo ese límite global**; eso requiere el
+  ledger global (otro PR). La interfaz lo dice: "Presupuesto de IA de Marketing; no representa el costo total
+  de AITA".
+* Propuesta para Golden Age cuando se habilite la generación: **10 USD/mes** de Marketing AI (no activado).
 * Cada trabajo conserva: costo máximo estimado (`estimated_cost`), costo reservado (`reserved_cost`, inmutable
   tras aprobar), costo real (`actual_cost`), proveedor/modelo (`selected_provider`, `selected_model` y, por
   subtarea, `marketing_model_usage`) e idempotencia (`idempotency_key` del trabajo y de cada subtarea).

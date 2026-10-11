@@ -9,7 +9,9 @@
 --    conservan la idempotency_key y timeout que libera reservas una sola vez y bloquea los resultados.
 -- 3. Purgador: un solo RetentionRunner a la vez (lease en marketing_runtime_leases). No se usa
 --    pg_advisory_lock porque PostgREST reparte las llamadas entre conexiones del pool.
--- 4. "Marketing AI budget": desconocido o 0 = cerrado; nunca más de 80 USD/mes por tenant.
+-- 4. "Marketing AI budget" (SOLO IA de Marketing): desconocido o 0 = cerrado; máximo TEMPORAL de 20 USD/mes
+--    mientras no exista un ledger global (voz, infraestructura, almacenamiento e IA). Esto NO garantiza por sí
+--    solo el objetivo de costo total de AITA (80 USD por tenant).
 -- Idempotente. No borra datos.
 -- =====================================================================
 
@@ -356,12 +358,12 @@ alter table public.marketing_runtime_leases enable row level security;
 revoke all privileges on public.marketing_runtime_leases from public, anon, authenticated, service_role;
 grant select, insert, update, delete on public.marketing_runtime_leases to service_role;
 
--- ---------- 4. "Marketing AI budget": desconocido o 0 = cerrado; tope 80 USD ----------
+-- ---------- 4. "Marketing AI budget": desconocido o 0 = cerrado; máximo temporal 20 USD ----------
 update public.marketing_settings set monthly_ai_cost_limit = 0 where monthly_ai_cost_limit is null;
 alter table public.marketing_settings alter column monthly_ai_cost_limit set not null;
 alter table public.marketing_settings drop constraint if exists marketing_settings_ai_budget_cap;
 alter table public.marketing_settings add constraint marketing_settings_ai_budget_cap
-  check (monthly_ai_cost_limit between 0 and 80);
+  check (monthly_ai_cost_limit between 0 and 20);
 create or replace function public.marketing_approve_generation(p_tenant uuid, p_job uuid, p_user uuid, p_reserved numeric,
   p_storage_bytes bigint)
 returns jsonb language plpgsql security definer set search_path = '' as $$

@@ -1,6 +1,6 @@
 // AITA Marketing — seguridad de ejecución (20261012120000_marketing_runtime_safety.sql). PGlite, datos de prueba.
 // Vencidos inaccesibles (RLS, entradas, cola, sesiones), lease/heartbeat/timeout del worker, un solo
-// purgador, presupuesto cerrado y tope de 80 USD, permisos. Ejecutar: NODE_PATH=/ruta/node_modules node tests/sql/marketing_runtime_safety.mjs
+// purgador, presupuesto cerrado y máximo temporal de 20 USD (solo IA de Marketing), permisos. Ejecutar: NODE_PATH=/ruta/node_modules node tests/sql/marketing_runtime_safety.mjs
 import { createRequire } from 'node:module';
 import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
@@ -149,9 +149,12 @@ ok((await L(W2)).r === true, 'vencido: W2 lo toma');
 await q(`select public.marketing_acquire_runtime_lease('otra_cosa','${W1}', 60)`, '23514');
 
 // 4. presupuesto cerrado y tope
-await q(`update marketing_settings set monthly_ai_cost_limit = 81 where tenant_id = '${TA}'`, '23514');
+await q(`update marketing_settings set monthly_ai_cost_limit = 80 where tenant_id = '${TA}'`, '23514');   // nunca el techo global
+await q(`update marketing_settings set monthly_ai_cost_limit = 20.01 where tenant_id = '${TA}'`, '23514');
+await q(`update marketing_settings set monthly_ai_cost_limit = -1 where tenant_id = '${TA}'`, '23514');
 await q(`update marketing_settings set monthly_ai_cost_limit = null where tenant_id = '${TA}'`, '23502');
-await q(`update marketing_settings set monthly_ai_cost_limit = 80 where tenant_id = '${TA}'`);
+await q(`update marketing_settings set monthly_ai_cost_limit = 20 where tenant_id = '${TA}'`);
+await q(`update marketing_settings set monthly_ai_cost_limit = 10 where tenant_id = '${TA}'`);
 await q(`update marketing_settings set monthly_ai_cost_limit = 0 where tenant_id = '${TA}'`);
 const M6 = await media();
 ok((await approve(await job(M6))).reason === 'generation_disabled', 'presupuesto 0: cerrado');

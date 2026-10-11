@@ -113,9 +113,11 @@ def check_generation_limits(settings: Dict[str, Any], usage: Dict[str, float], *
             raise DomainError(f"limit_{key}", 409)
 
 
-# Tope del "Marketing AI budget" por tenant y mes: nunca por encima del objetivo de costo total de AITA
-# (USD 80 por tenant). Presupuesto desconocido (None), 0 o fuera de rango → cerrado.
-AI_BUDGET_CAP_USD = 80.0
+# "Marketing AI budget": presupuesto EXCLUSIVO de la IA de Marketing (lo fija solo el operador; 0 por defecto).
+# Máximo TEMPORAL de USD 20/mes mientras no exista un ledger global que reúna voz, infraestructura,
+# almacenamiento e IA. NO es el objetivo de costo total de AITA (USD 80 por tenant) ni lo garantiza por sí solo.
+# Presupuesto desconocido (None), 0 o por encima del máximo → cerrado.
+AI_BUDGET_CAP_USD = 20.0
 
 
 def ai_budget(settings: Dict[str, Any]) -> float:
@@ -177,7 +179,8 @@ def warning_level(available: float, limit: Optional[float]) -> Optional[str]:
 
 def budget_summary(limit: Optional[float], usage: Dict[str, float]) -> Dict[str, Any]:
     """"Marketing AI budget": SOLO el gasto de IA de Marketing del propio tenant (presupuesto, consumido,
-    reservado y disponible). No es el presupuesto global de 80 USD del tenant (voz, IA, infraestructura…)."""
+    reservado y disponible). No representa el costo total de AITA del tenant (voz, infraestructura,
+    almacenamiento e IA)."""
     used, held = round(float(usage.get("consumed") or 0), 4), round(float(usage.get("reserved") or 0), 4)
     lim = ai_budget({"monthly_ai_cost_limit": limit})              # desconocido/0/fuera de tope → 0 (cerrado)
     avail = max(round(lim - used - held, 4), 0.0)

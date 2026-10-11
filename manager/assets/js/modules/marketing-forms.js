@@ -1,7 +1,8 @@
 // Formularios del módulo AITA Marketing: contenido, detalle con aprobación,
 // campañas y Brand Kit. Todo se guarda a través del backend, que valida rol,
 // tenant y reglas de estado.
-import { el, clear, openModal, field, input, select, toast, badge, fmtDateTime, loading, errorBox, tz } from '../ui.js';
+import { el, clear, openModal, field, input, select, toast, badge, fmtDateTime, loading, tz } from '../ui.js';
+import { errorNotice } from './marketing-ui.js';
 import { api } from '../api.js';
 import { tr } from '../i18n.js';
 import { t, errText } from './marketing-i18n.js';
@@ -83,7 +84,7 @@ export async function contentDetail(ctx, id, { campaigns = [], reload }) {
   const body = el('div', { class: 'mk-detail' }, loading());
   const close = openModal({ closeLabel: t('close'), title: t('content'), body });
   let data;
-  try { data = await M.content(ctx.tenantId, id); } catch (e) { clear(body).appendChild(errorBox({ message: errText(e) })); return; }
+  try { data = await M.content(ctx.tenantId, id); } catch (e) { clear(body).appendChild(errorNotice(errText(e))); return; }
   const c = data.content;
   const camp = campaigns.find(x => x.id === c.campaign_id);
   const row = (label, value) => value ? el('div', { class: 'mk-row' }, el('span', { class: 'mk-k' }, label), el('span', {}, value)) : null;

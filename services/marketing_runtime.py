@@ -1,13 +1,16 @@
 """
 AITA Marketing (Fase 2) — procesos de fondo, fuera del proceso web.
 
-    python -m services.marketing_runtime retention [--apply] [--batch-size N] [--max-batches N]
-    python -m services.marketing_runtime worker [--max-jobs N] [--lease-seconds S]
+    python -m services.marketing_runtime retention [--dry-run | --apply] [--batch-size N] [--max-batches N]
+    python -m services.marketing_runtime worker [--once | --loop] [--max-jobs N] [--lease-seconds S]
+                                                [--poll-seconds S] [--max-runtime-seconds S]
 
 * retention: RetentionRunner por lotes. Por defecto es DRY-RUN (no escribe nada: lecturas reales,
   escrituras solo registradas). Con --apply purga. Un solo purgador a la vez (lease en la base); si otro
   ya corre, termina sin hacer nada. Repetible: cada lote vuelve a leer el estado.
-* worker: reclama trabajos con lease (marketing_claim_job), los ejecuta y termina. Solo arranca con
+* worker: por defecto UNA ejecución (--once): reclama hasta --max-jobs trabajos con lease, los ejecuta y
+  termina. --loop (continuo) NUNCA es el predeterminado: repite rondas con --poll-seconds de espera hasta
+  --max-runtime-seconds o SIGTERM; un worker permanente aumenta costos y no debe crearse todavía. Solo arranca con
   MARKETING_WORKER_ENABLED=true y se niega a correr si hay proveedores reales o herramientas locales
   activados (este PR no conecta ninguno). Sin red salvo la propia base (Supabase).
 
@@ -17,7 +20,9 @@ Salida: una línea JSON por lote, sin secretos. Códigos: 0 ok · 2 deshabilitad
 import argparse
 import json
 import os
+import signal
 import sys
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -109,16 +114,43 @@ def run_worker(db, max_jobs: int, lease_seconds: int, env: Optional[Dict[str, st
             "failed": sum(1 for r in results if r.get("status") == "failed" or r.get("error"))}
 
 
+def run_worker_loop(db, max_jobs: int, lease_seconds: int, poll_seconds: int, max_runtime_seconds: int,
+                    env: Optional[Dict[str, str]] = None, sleep=time.sleep, clock=time.monotonic,
+                    stop=lambda: False) -> Dict[str, Any]:
+    """Modo continuo (solo con --loop). Rondas de run_worker con espera; se detiene al agotar el tiempo
+    máximo, con SIGTERM (stop) o si el worker está deshabilitado."""
+    poll, limit = max(int(poll_seconds), 5), max(int(max_runtime_seconds), 1)
+    start, rounds, processed = clock(), 0, 0
+    while not stop() and clock() - start < limit:
+        res = run_worker(db, max_jobs, lease_seconds, env)
+        if res["status"] == "disabled":
+            return res
+        rounds, processed = rounds + 1, processed + res["processed"]
+        if stop() or clock() - start + poll >= limit:
+            break
+        sleep(poll)
+    return {"status": "ok", "mode": "loop", "rounds": rounds, "processed": processed}
+
+
 def main(argv: Optional[List[str]] = None, db=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m services.marketing_runtime")
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("retention", help="purga y retención (dry-run por defecto)")
-    r.add_argument("--apply", action="store_true", help="escribe de verdad (sin esto: dry-run)")
+    rm = r.add_mutually_exclusive_group()
+    rm.add_argument("--dry-run", dest="apply", action="store_false", help="no escribe nada (predeterminado)")
+    rm.add_argument("--apply", dest="apply", action="store_true", help="escribe de verdad")
+    r.set_defaults(apply=False)
     r.add_argument("--batch-size", type=int, default=200)
     r.add_argument("--max-batches", type=int, default=10)
-    w = sub.add_parser("worker", help="ejecuta trabajos en cola con lease")
+    w = sub.add_parser("worker", help="ejecuta trabajos en cola con lease (una ejecución por defecto)")
+    wm = w.add_mutually_exclusive_group()
+    wm.add_argument("--once", dest="loop", action="store_false", help="una ejecución y termina (predeterminado)")
+    wm.add_argument("--loop", dest="loop", action="store_true", help="continuo (NO predeterminado; aumenta costos)")
+    w.set_defaults(loop=False)
     w.add_argument("--max-jobs", type=int, default=20)
     w.add_argument("--lease-seconds", type=int, default=120)
+    w.add_argument("--poll-seconds", type=int, default=30)
+    w.add_argument("--max-runtime-seconds", type=int, default=3300)
     a = ap.parse_args(argv)
     db = db or _db()
     if db is None:
@@ -128,7 +160,13 @@ def main(argv: Optional[List[str]] = None, db=None) -> int:
         for line in run_retention(db, a.apply, a.batch_size, a.max_batches):
             print(json.dumps(line, default=str))
         return 0
-    res = run_worker(db, a.max_jobs, a.lease_seconds)
+    if a.loop:
+        stopping = []
+        signal.signal(signal.SIGTERM, lambda *_: stopping.append(1))
+        res = run_worker_loop(db, a.max_jobs, a.lease_seconds, a.poll_seconds, a.max_runtime_seconds,
+                              stop=lambda: bool(stopping))
+    else:
+        res = {**run_worker(db, a.max_jobs, a.lease_seconds), "mode": "once"}
     print(json.dumps(res))
     return 2 if res["status"] == "disabled" else 0
 

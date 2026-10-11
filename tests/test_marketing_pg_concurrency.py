@@ -67,7 +67,7 @@ def pg(tmp_path_factory):
                 insert into tenant_users (tenant_id, user_id, role) values ('{TA}','{OWNER}','owner');""")
             for m in MIGS:
                 c.execute((ROOT / "supabase/migrations" / m).read_text())
-            c.execute(f"""update marketing_settings set ai_generation_enabled = true, monthly_ai_cost_limit = 80,
+            c.execute(f"""update marketing_settings set ai_generation_enabled = true, monthly_ai_cost_limit = 20,
                 library_storage_limit_bytes = 100 where tenant_id = '{TA}'""")
             assert c.execute("select version()").fetchone()[0].startswith("PostgreSQL")
         yield dsn
@@ -76,7 +76,7 @@ def pg(tmp_path_factory):
         shutil.rmtree(base, ignore_errors=True)
 
 
-def reset(dsn, storage_limit=100, cost_limit=80):
+def reset(dsn, storage_limit=100, cost_limit=20):
     with psycopg.connect(dsn, autocommit=True) as c:
         c.execute("update marketing_storage_reservations set status = 'released' where status = 'reserved'")
         c.execute("update marketing_generation_jobs set status = 'cancelled' where status in ('queued','processing')")
@@ -152,7 +152,7 @@ def test_two_simultaneous_approvals_near_storage_limit(pg, rnd):
 
 @pytest.mark.parametrize("rnd", range(ROUNDS))
 def test_two_simultaneous_approvals_near_cost_limit(pg, rnd):
-    reset(pg, storage_limit=None, cost_limit=80)
+    reset(pg, storage_limit=None, cost_limit=20)
     with psycopg.connect(pg, autocommit=True) as c:                      # el mes ya tiene gasto: quedan 20
         spent = c.execute(f"""select coalesce(sum(case when status in ('queued','processing') then reserved_cost
             else coalesce(actual_cost, 0) end), 0) from marketing_generation_jobs where tenant_id = '{TA}'""").fetchone()[0]

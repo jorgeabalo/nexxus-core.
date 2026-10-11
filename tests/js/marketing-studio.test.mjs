@@ -113,9 +113,31 @@ test('el frontend de Fase 2 no contiene claves, URLs de proveedores ni nombres d
   }
 });
 
-test('archivo vencido (410 media_expired): mensaje claro en ES y EN, nunca el código crudo', () => {
-  for (const lang of ['es', 'en']) {
-    const msg = STUDIO_TEXT[lang].err.media_expired;
-    assert.ok(msg && !/media_expired/.test(msg), lang);
+test('archivo vencido (410 media_expired): mensaje completo en el idioma activo, sin prefijos', async () => {
+  const { useTenantDefault } = await import('../../manager/assets/js/i18n.js');
+  const { sErr } = await import('../../manager/assets/js/modules/marketing-studio-i18n.js');
+  useTenantDefault('es');
+  assert.equal(sErr({ code: 'media_expired', status: 410 }), 'El archivo ya venció.');
+  useTenantDefault('en');
+  assert.equal(sErr({ code: 'media_expired', status: 410 }), 'The file has expired.');
+  const ui = await readFile(new URL('../../manager/assets/js/modules/marketing-ui.js', import.meta.url), 'utf8');
+  assert.ok(!/Could not load|No se pudo/.test(ui.replace(/^\/\/.*$/gm, '')), 'errorNotice sin prefijo');
+  for (const f of ['marketing.js', 'marketing-forms.js', 'marketing-library.js', 'marketing-studio.js']) {
+    const src = await readFile(new URL(`../../manager/assets/js/modules/${f}`, import.meta.url), 'utf8');
+    assert.ok(!/errorBox/.test(src) && /errorNotice/.test(src), `${f}: usa errorNotice, no errorBox`);
   }
+});
+
+test('presupuesto: solo IA de Marketing, nunca el costo total de AITA', () => {
+  assert.equal(STUDIO_TEXT.es.budgetScopeNote, 'Presupuesto de IA de Marketing; no representa el costo total de AITA.');
+  assert.equal(STUDIO_TEXT.en.budgetScopeNote, 'Marketing AI budget; it does not represent the total cost of AITA.');
+  for (const lang of ['es', 'en']) assert.ok(!/80/.test(STUDIO_TEXT[lang].budgetScopeNote), lang);
+});
+
+test('almacenamiento: activo, vencido pendiente de eliminación, reservado y disponible (ES/EN)', () => {
+  for (const lang of ['es', 'en']) {
+    for (const k of ['stActive', 'stExpired', 'stReserved', 'stAvailable', 'stExpiredHint']) assert.ok(STUDIO_TEXT[lang][k], `${lang}.${k}`);
+  }
+  assert.match(STUDIO_TEXT.es.stExpiredHint, /ocupando espacio/);
+  assert.match(STUDIO_TEXT.en.stExpiredHint, /still use space/);
 });
