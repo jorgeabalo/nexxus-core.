@@ -8,7 +8,8 @@ import { addonQuote, addonSpec, addonBody, fmtPrice, confirmSignature, blocksTex
   from '../../manager/assets/js/modules/marketing-addons-state.js';
 import { PLAN_TEXT } from '../../manager/assets/js/modules/marketing-plan-i18n.js';
 import { STUDIO_TEXT } from '../../manager/assets/js/modules/marketing-studio-i18n.js';
-import { OBJECTIVES } from '../../manager/assets/js/modules/marketing-studio-state.js';
+import { PLAN_OBJECTIVES as OBJECTIVES } from '../../manager/assets/js/modules/marketing-state.js';
+import { PLANNER_TEXT } from '../../manager/assets/js/modules/marketing-planner-i18n.js';
 
 test('+1, +4, +8 y personalizadas: combinación exacta más económica', () => {
   const cases = { 1: [6, '1'], 4: [20, '4'], 8: [35, '8'], 12: [55, '8 + 4'], 22: [102, '8 + 8 + 4 + 1 + 1'],
@@ -78,13 +79,15 @@ test('ES y EN tienen las mismas claves', () => {
 });
 
 test('dos modos de creación, seis objetivos y Biblioteca incluida', () => {
-  assert.equal(STUDIO_TEXT.es.mode_library_ai, 'Usar mi Biblioteca y mejorar con IA');
-  assert.equal(STUDIO_TEXT.es.mode_fully_ai, 'Crear completamente con IA');
+  assert.equal(PLANNER_TEXT.es.mode_library_ai, 'Usar mi Biblioteca y mejorar con IA');
+  assert.equal(PLANNER_TEXT.es.mode_fully_ai, 'Crear completamente con IA');
+  assert.equal(PLANNER_TEXT.en.mode_library_ai, 'Use my Library and enhance with AI');
+  assert.equal(PLANNER_TEXT.en.mode_fully_ai, 'Create entirely with AI');
   assert.deepEqual(OBJECTIVES, ['calls', 'messages', 'trial_visit', 'memberships', 'reactivation', 'reviews']);
-  const es = OBJECTIVES.map(o => STUDIO_TEXT.es[`ob_${o}`]);
-  assert.deepEqual(es, ['Conseguir llamadas', 'Conseguir mensajes', 'Reservar una visita o clase de prueba',
-    'Conseguir membresías', 'Reactivar clientes', 'Obtener reseñas']);
-  for (const o of OBJECTIVES) assert.ok(STUDIO_TEXT.en[`ob_${o}`], o);
+  assert.deepEqual(OBJECTIVES.map(o => PLANNER_TEXT.es[`ob_${o}`]), ['Conseguir llamadas', 'Conseguir mensajes',
+    'Reservar una prueba', 'Conseguir nuevas membresías', 'Reactivar clientes', 'Conseguir reseñas']);
+  assert.deepEqual(OBJECTIVES.map(o => PLANNER_TEXT.en[`ob_${o}`]), ['Get calls', 'Get messages', 'Book a trial',
+    'Get new memberships', 'Reactivate customers', 'Get reviews']);
   assert.equal(STUDIO_TEXT.es.libDisabled, 'Biblioteca incluida — pendiente de activación');
   assert.equal(STUDIO_TEXT.en.libDisabled, 'Library included — pending activation');
   assert.equal(STUDIO_TEXT.es.libUsage('120 MB', '1 GB'), 'Biblioteca incluida — 120 MB utilizados de 1 GB');

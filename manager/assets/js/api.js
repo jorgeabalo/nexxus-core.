@@ -269,8 +269,10 @@ export const api = {
       return backend('POST', `/api/manager/marketing/content/${encodeURIComponent(id)}/transition`,
         { tenant_id: tenantId, to, comment: comment || null, scheduled_at: scheduledAt || null });
     },
+    planContent(tenantId, values) { return backend('POST', '/api/manager/marketing/content/plan', { ...values, tenant_id: tenantId }); },
+    retryContent(tenantId, id) { return backend('POST', `/api/manager/marketing/content/${encodeURIComponent(id)}/retry`, { tenant_id: tenantId }); },
     calendar(tenantId, start, end) { return backend('GET', `/api/manager/marketing/calendar?${qs({ tenant_id: tenantId, start, end })}`); },
-    // Fase 2: Biblioteca privada, Estudio de Reels y trabajos de generación (todo por el backend).
+    // Biblioteca privada (archivos temporales, privacidad y reproducción; todo por el backend).
     library(tenantId) { return backend('GET', `/api/manager/marketing/library?${qs({ tenant_id: tenantId })}`); },
     // El archivo va como cuerpo (no multipart): el backend aplica el límite antes de leerlo.
     async upload(tenantId, file) {
@@ -300,14 +302,6 @@ export const api = {
     anonymize(tenantId, id, method) { return backend('POST', `/api/manager/marketing/library/${encodeURIComponent(id)}/anonymize`, { tenant_id: tenantId, method }); },
     reviewDerivative(tenantId, id, approve) {
       return backend('POST', `/api/manager/marketing/library/derivatives/${encodeURIComponent(id)}/review`, { tenant_id: tenantId, approve, confirm_reviewed: approve });
-    },
-    studio(tenantId) { return backend('GET', `/api/manager/marketing/studio?${qs({ tenant_id: tenantId })}`); },
-    mixPreview(tenantId, values) { return backend('POST', '/api/manager/marketing/studio/mix-preview', { ...values, tenant_id: tenantId }); },
-    jobs(tenantId) { return backend('GET', `/api/manager/marketing/jobs?${qs({ tenant_id: tenantId })}`); },
-    job(tenantId, id) { return backend('GET', `/api/manager/marketing/jobs/${encodeURIComponent(id)}?${qs({ tenant_id: tenantId })}`); },
-    createJob(tenantId, values) { return backend('POST', '/api/manager/marketing/jobs', { ...values, tenant_id: tenantId }); },
-    jobAction(tenantId, id, action, values = {}) {
-      return backend('POST', `/api/manager/marketing/jobs/${encodeURIComponent(id)}/${encodeURIComponent(action)}`, { ...values, tenant_id: tenantId });
     },
   },
 

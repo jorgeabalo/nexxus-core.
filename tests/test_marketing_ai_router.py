@@ -235,13 +235,11 @@ ENDPOINTS = [
     ("POST", f"/api/manager/marketing/library/{JOB}/archive", {"tenant_id": T1}),
     ("POST", f"/api/manager/marketing/library/{JOB}/anonymize", {"tenant_id": T1, "method": "blur_faces"}),
     ("POST", f"/api/manager/marketing/library/derivatives/{JOB}/review", {"tenant_id": T1}),
-    ("GET", f"/api/manager/marketing/studio?tenant_id={T1}", None),
-    ("POST", "/api/manager/marketing/studio/mix-preview", {"tenant_id": T1, "real_media_percent": 50, "ai_media_percent": 50}),
-    ("GET", f"/api/manager/marketing/jobs?tenant_id={T1}", None),
-    ("POST", "/api/manager/marketing/jobs", {"tenant_id": T1}),
-    ("GET", f"/api/manager/marketing/jobs/{JOB}?tenant_id={T1}", None),
-] + [("POST", f"/api/manager/marketing/jobs/{JOB}/{a}", {"tenant_id": T1})
-     for a in ("estimate", "approve", "reopen", "cancel", "process", "send-to-approval")]
+    ("POST", "/api/manager/marketing/content/plan", {"tenant_id": T1, "objective": "calls", "mode": "fully_ai",
+                                                      "format": "reel", "instructions": {"platforms": ["instagram"]}}),
+    ("POST", f"/api/manager/marketing/content/{JOB}/retry", {"tenant_id": T1}),
+    ("GET", f"/api/manager/marketing/content/{JOB}?tenant_id={T1}", None),
+]
 
 
 def client_for(monkeypatch, db):
@@ -273,22 +271,31 @@ def test_staff_and_member_blocked_everywhere(monkeypatch, user):
     assert db.marketing_calls == []
 
 
-def test_enabled_without_new_tables_is_controlled_503(monkeypatch):
+def test_enabled_without_new_tables_plans_a_draft_without_preparing(monkeypatch):
+    """Sin las tablas de preparación (producción hoy): el contenido se guarda como borrador; nada se prepara."""
     db = ProdLikeDB(modules={"marketing": True}, missing_only="marketing_generation_jobs")
-    r = call(client_for(monkeypatch, db), "GET", f"/api/manager/marketing/jobs?tenant_id={T1}", None)
-    assert r.status_code == 503 and r.json() == {"error": "marketing_unavailable"}
+    r = call(client_for(monkeypatch, db), "POST", "/api/manager/marketing/content/plan",
+             {"tenant_id": T1, "objective": "calls", "mode": "fully_ai", "format": "reel",
+              "instructions": {"platforms": ["instagram"]}})
+    assert r.status_code == 200, r.text
+    assert r.json()["preparation"] == "unavailable" and r.json()["content"]["display_status"] == "draft"
+    assert "generation" not in r.text and "jobs" not in r.text
 
 
-def test_unknown_job_action_is_404(monkeypatch):
-    r = call(client_for(monkeypatch, ProdLikeDB(modules={"marketing": True})), "POST",
-             f"/api/manager/marketing/jobs/{JOB}/publish", {"tenant_id": T1})
-    assert r.status_code == 404
+def test_technical_job_routes_are_not_served(monkeypatch):
+    client = client_for(monkeypatch, ProdLikeDB(modules={"marketing": True}))
+    for method, path in (("GET", f"/api/manager/marketing/jobs?tenant_id={T1}"), ("GET", f"/api/manager/marketing/studio?tenant_id={T1}"),
+                         ("POST", f"/api/manager/marketing/jobs/{JOB}/publish")):
+        assert call(client, method, path, {"tenant_id": T1}).status_code in (404, 405)
 
 
 def test_every_studio_method_goes_through_the_gate():
     import inspect
     from services.marketing_library import LibraryService
+    from services.marketing_content_plan import ContentPlanner
     from services.marketing_studio import StudioService
+    for name in ("plan", "retry"):
+        assert "self.svc.ctx(jwt, tenant_id)" in inspect.getsource(getattr(ContentPlanner, name)), name
     for cls in (LibraryService, StudioService):
         own = [n for n, f in vars(cls).items() if inspect.isfunction(f) and not n.startswith("_")]
         assert own

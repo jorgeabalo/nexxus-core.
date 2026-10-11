@@ -2,12 +2,9 @@
 Plan simple de Marketing (PR #21): las dos modalidades de creación, la cuota única y lo que la API del tenant
 NO debe devolver. Las ampliaciones se prueban en tests/test_marketing_publication_plan.py.
 """
-from types import SimpleNamespace
 
 import pytest
-from fastapi.testclient import TestClient
 
-import main
 from services.marketing_ai_router import MarketingAIRouter, MockProvider, OmniRouteAdapter, DisabledLocalTools
 from services.marketing_library import LibraryService
 from marketing_addon_fake import install
@@ -85,17 +82,15 @@ def test_both_modes_count_the_same_against_the_monthly_quota(studio, plan, db):
 
 # ------------------------------------------------------------------ lo que el tenant no ve
 def test_tenant_api_has_no_percentages_ai_budget_costs_or_per_format_limits(monkeypatch, db):
-    monkeypatch.setattr(main, "member_portal", SimpleNamespace(db=db))
-    c = TestClient(main.app)
-    ov = c.get(f"/api/manager/marketing/studio?tenant_id={T1}", headers=H).json()
-    assert set(ov) == {"generation_enabled", "publication_plan"}
+    from marketing_planner_client import plan_body, planner_client
+    db.tables["marketing_settings"][0].update(ai_generation_enabled=True, monthly_ai_cost_limit=20)
+    c = planner_client(monkeypatch, db)
     d = c.get(f"/api/manager/marketing/dashboard?tenant_id={T1}", headers=H).json()
     assert d["usage"] == {"posts": 0} and d["limits"] == {"monthly_post_limit": 8}
     assert not {"monthly_image_limit", "monthly_reel_limit", "monthly_ai_cost_limit"} & set(d["settings"])
-    j = c.post("/api/manager/marketing/jobs", headers=H, json={"tenant_id": T1, "brief": BRIEF, "creation_mode": "fully_ai",
-                                                                "quality_tier": "draft"}).json()
-    c.post(f"/api/manager/marketing/jobs/{j['id']}/estimate", headers=H, json={"tenant_id": T1})
-    for r in (c.get(f"/api/manager/marketing/jobs/{j['id']}?tenant_id={T1}", headers=H),
-              c.get(f"/api/manager/marketing/jobs?tenant_id={T1}", headers=H)):
+    item = c.post("/api/manager/marketing/content/plan", headers=H, json=plan_body()).json()["content"]
+    assert db.tables["marketing_generation_jobs"][0]["request_metadata"]["creation_mode"] == "fully_ai"
+    for r in (c.get(f"/api/manager/marketing/content/{item['id']}?tenant_id={T1}", headers=H),
+              c.get(f"/api/manager/marketing/content?tenant_id={T1}", headers=H)):
         assert "percent" not in r.text and "mix_confirmed" not in r.text and "cost" not in r.text, r.text[:300]
-    assert c.get(f"/api/manager/marketing/jobs/{j['id']}?tenant_id={T1}", headers=H).json()["creation_mode"] == "fully_ai"
+        assert "creation_mode" not in r.text

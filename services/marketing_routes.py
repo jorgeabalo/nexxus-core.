@@ -121,6 +121,16 @@ def build_router(get_db: Callable) -> APIRouter:
         b = await body(request)
         return await call(lambda: svc().create_content(bearer(request), tid(b), b))
 
+    @r.post(f"{P}/content/plan")
+    async def plan_content(request: Request):
+        b = await body(request)
+        return await call(lambda: svc().plan_content(bearer(request), tid(b), b))
+
+    @r.post(f"{P}/content/{{content_id}}/retry")
+    async def retry_content(request: Request, content_id: str):
+        b = await body(request)
+        return await call(lambda: svc().retry_content(bearer(request), tid(b), content_id))
+
     @r.get(f"{P}/content/{{content_id}}")
     async def content(request: Request, content_id: str, tenant_id: str = ""):
         return await call(lambda: svc().content(bearer(request), tenant_id, content_id))

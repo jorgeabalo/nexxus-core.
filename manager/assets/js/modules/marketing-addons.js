@@ -5,8 +5,9 @@ import { el, clear, card, toast } from '../ui.js';
 import { api } from '../api.js';
 import { getLang } from '../i18n.js';
 import { p, pErr } from './marketing-plan-i18n.js';
-import { s as sText } from './marketing-studio-i18n.js';
-import { OBJECTIVES, newIdempotencyKey } from './marketing-studio-state.js';
+import { pl } from './marketing-planner-i18n.js';
+import { newIdempotencyKey } from './marketing-studio-state.js';
+import { PLAN_OBJECTIVES } from './marketing-state.js';
 import { ADDON_PRESETS, WEEKLY_PRESETS, WEEKS_PER_MONTH, addonSpec, addonBody, fmtPrice, confirmSignature,
   blocksText } from './marketing-addons-state.js';
 
@@ -152,7 +153,7 @@ export function addonSection(ctx, plan, role, reload) {
 export function flowCard() {
   return card(p('flow_title'), el('div', { class: 'card-body' },
     el('ol', { class: 'mk-flow' }, ...p('flow').map(x => el('li', {}, x))),
-    el('p', { class: 'hint' }, `${p('goals_title')}: ${OBJECTIVES.map(o => sText(`ob_${o}`)).join(' · ')}`),
+    el('p', { class: 'hint' }, `${p('goals_title')}: ${PLAN_OBJECTIVES.map(o => pl(`ob_${o}`)).join(' · ')}`),
     el('p', { class: 'mk-note' }, p('flow_note'))));
 }
 

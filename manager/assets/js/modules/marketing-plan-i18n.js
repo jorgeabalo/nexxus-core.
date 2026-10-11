@@ -1,6 +1,6 @@
 // Textos del plan de publicaciones, las ampliaciones y los resultados (español / inglés).
 // Solo lenguaje comercial: publicaciones, ampliaciones, Biblioteca, campañas y resultados.
-// Nunca presupuestos técnicos, proveedores, modelos, costos internos ni promesas de alcance.
+// Solo datos comerciales: nada técnico, ni costos internos ni promesas de alcance.
 import { getLang } from '../i18n.js';
 
 const pubs = (n, es) => (es ? (n === 1 ? 'publicación' : 'publicaciones') : (n === 1 ? 'post' : 'posts'));

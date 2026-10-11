@@ -4,7 +4,53 @@
 // (pestaña, mes del calendario y cualquier dato en memoria), así nunca se ven
 // colores, logo ni contenido de la empresa anterior.
 
-export const TABS = ['overview', 'content', 'calendar', 'campaigns', 'library', 'studio', 'jobs', 'brand'];
+// Navegación visible: exactamente estas cinco pestañas. La identidad de marca es una acción secundaria.
+export const TABS = ['overview', 'content', 'calendar', 'campaigns', 'library'];
+// Enlaces anteriores del Estudio y de Trabajos llevan a Contenido; el del Estudio abre el planificador.
+export const REDIRECTS = { studio: { tab: 'content', planner: true }, jobs: { tab: 'content', planner: false } };
+export function route(param) {
+  if (TABS.includes(param)) return { tab: param, planner: false, brand: false };
+  if (param === 'brand') return { tab: 'overview', planner: false, brand: true };
+  if (REDIRECTS[param]) return { ...REDIRECTS[param], brand: false, redirected: true };
+  return null;
+}
+
+// Estados que ve el cliente (los mismos que devuelve el backend en display_status).
+export const DISPLAY_STATUSES = ['draft', 'preparing', 'ready_for_review', 'changes_requested', 'approved', 'scheduled',
+  'published', 'could_not_prepare', 'rejected', 'archived'];
+const SHOWN = { idea: 'draft', review: 'ready_for_review', failed: 'could_not_prepare', publishing: 'scheduled' };
+export const shownStatus = (s) => (DISPLAY_STATUSES.includes(s) ? s : SHOWN[s] || 'draft');
+
+// Planear contenido: 6 pasos. Dos modos de creación y cuatro formatos (formatos, no módulos).
+export const PLAN_STEPS = ['objective', 'mode', 'format', 'instructions', 'proposal', 'review'];
+export const PLAN_OBJECTIVES = ['calls', 'messages', 'trial_visit', 'memberships', 'reactivation', 'reviews'];
+export const PLAN_MODES = ['library_ai', 'fully_ai'];
+export const PLAN_FORMATS = ['image', 'carousel', 'reel', 'video'];
+export const TONES = ['energetic', 'calm', 'professional', 'cinematic', 'educational'];
+
+// Qué falta para avanzar desde un paso (null = se puede seguir). La IA puede proponer; decide el usuario.
+export function planStepError(step, w) {
+  if (step === 'objective' && !PLAN_OBJECTIVES.includes(w.objective)) return 'pick_objective';
+  if (step === 'mode') {
+    if (!PLAN_MODES.includes(w.mode)) return 'pick_mode';
+    if (w.mode === 'library_ai' && !(w.media && w.media.length)) return 'real_media_required';
+    if (w.mode === 'fully_ai' && w.media && w.media.length) return 'fully_ai_uses_no_media';
+  }
+  if (step === 'format' && !PLAN_FORMATS.includes(w.format)) return 'pick_format';
+  if (step === 'instructions' && !(w.platforms && w.platforms.length)) return 'channels_required';
+  return null;
+}
+
+// Cuerpo del envío (solo lo que el usuario decidió). Completamente con IA nunca lleva archivos.
+export function planBody(w, labels = {}) {
+  return {
+    objective: w.objective, mode: w.mode, format: w.format,
+    media_ids: w.mode === 'library_ai' ? [...(w.media || [])] : [],
+    instructions: { topic: w.topic || '', audience: w.audience || '', offer: w.offer || '', tone: w.tone || 'professional',
+      cta: w.cta || '', platforms: [...(w.platforms || [])], preferred_date: w.date || null },
+    language: w.language === 'en' ? 'en' : 'es', idempotency_key: w.key, labels,
+  };
+}
 export const FORMATS = ['image', 'carousel', 'reel', 'story', 'video', 'text'];
 export const CHANNELS = ['instagram', 'facebook', 'tiktok', 'linkedin', 'x', 'youtube', 'google_business', 'threads'];
 export const LANGUAGES = ['en', 'es'];

@@ -78,8 +78,9 @@ def test_not_configured(monkeypatch):
 def test_marketing_assets_served():
     c = TestClient(main.app)
     for name in ("marketing.js", "marketing-forms.js", "marketing-i18n.js", "marketing-state.js", "marketing-library.js",
-                 "marketing-studio.js", "marketing-studio-i18n.js", "marketing-studio-state.js"):
+                 "marketing-planner.js", "marketing-planner-i18n.js", "marketing-studio-i18n.js", "marketing-studio-state.js"):
         assert c.get(f"/manager/assets/js/modules/{name}").status_code == 200, name
+    assert c.get("/manager/assets/js/modules/marketing-studio.js").status_code == 404      # Estudio retirado
 
 
 def test_no_provider_secrets_or_brand_hardcoded_in_frontend():
@@ -98,13 +99,22 @@ def test_manager_assets_hide_aita_internal_budget_and_routing():
 
 
 def test_marketing_studio_assets_hide_provider_and_model_details():
-    paths = [ROOT / "manager/assets/js/modules/marketing-studio.js",
-             ROOT / "manager/assets/js/modules/marketing-studio-state.js",
-             ROOT / "manager/assets/js/modules/marketing-studio-i18n.js"]
+    paths = sorted((ROOT / "manager/assets/js/modules").glob("marketing*.js"))
+    assert len(paths) >= 10
     served = "\n".join(p.read_text(errors="ignore") for p in paths).lower()
     for phrase in ("demo_mode", "proveedor", "provider", "modelo", "model", "precio unitario", "unit price",
                    "cost category", "categoría del costo"):
         assert phrase not in served, phrase
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="Node.js no disponible")
+def test_every_manager_script_parses_as_an_es_module():
+    """El navegador carga los scripts como módulos ES: una llave de más rompe todo el panel."""
+    files = sorted((ROOT / "manager/assets/js").rglob("*.js"))
+    assert len(files) > 10
+    for f in files:
+        r = subprocess.run(["node", "--input-type=module", "--check"], stdin=f.open("rb"), capture_output=True, timeout=30)
+        assert r.returncode == 0, (f.relative_to(ROOT), r.stderr.decode()[-400:])
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="Node.js no disponible")
