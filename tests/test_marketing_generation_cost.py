@@ -58,7 +58,7 @@ def test_not_estimable(bad):
 
 
 @pytest.mark.parametrize("avail,limit,level", [(20, 20, None), (5, 20, "low"), (2, 20, "critical"), (0, 20, "exhausted"),
-                                               (0, 0, "not_enabled"), (0, None, None)])
+                                               (0, 0, "not_enabled"), (0, None, "not_enabled")])
 def test_warning_levels(avail, limit, level):
     assert jd.warning_level(avail, limit) == level
 

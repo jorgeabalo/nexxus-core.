@@ -1,8 +1,10 @@
 """
 AITA Marketing (Fase 2) — ejecución de trabajos de generación (preparada para worker / cola).
 
-* Un trabajo solo se ejecuta si está 'queued' y aprobado. Se "reclama" con una actualización
-  condicional queued → processing: si dos workers lo intentan a la vez, solo uno gana.
+* Un trabajo solo se ejecuta si está 'queued' y aprobado. Se reclama con marketing_claim_job
+  (FOR UPDATE SKIP LOCKED + lease): dos workers nunca toman el mismo. El worker renueva el lease
+  (heartbeat) antes de cada subtarea; si lo pierde, se detiene sin escribir nada más. Un lease vencido
+  se reintenta (máx. MAX_ATTEMPTS, misma idempotency_key: nada se cobra dos veces) o termina en timeout.
 * Antes de enviar nada se vuelven a comprobar las entradas: consentimiento retirado, menores,
   archivo excluido o eliminado → el trabajo falla con un código público y no se envía nada.
 * Cada subtarea lleva su idempotency_key: un reintento nunca crea un segundo cargo.
@@ -13,12 +15,14 @@ AITA Marketing (Fase 2) — ejecución de trabajos de generación (preparada par
   proceso aparte (run_pending, llamado por un worker programado). En esta fase NO hay worker
   desplegado: la petición HTTP solo puede ejecutar trabajos 100 % simulados (rápidos, sin red).
 """
+import uuid
 from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from services import marketing_jobs_domain as jd
 from services import marketing_privacy as pv
+from services import marketing_retention as rt
 from services import marketing_storage as ms
 from services.marketing_studio_base import BUCKET
 from services.marketing_ai_router import RouteRequest
@@ -26,7 +30,7 @@ from services.marketing_ai_router import RouteRequest
 JOB_COLS = ("id,tenant_id,content_id,status,quality_tier,maximum_cost,estimated_cost,reserved_cost,currency,approved_at,approved_by,"
             "request_metadata,result_metadata,real_media_percent,ai_media_percent")
 MEDIA_CHECK = ("id,processing_status,validation_status,contains_people,contains_minors,people_policy,consent_status,"
-               "retention_status")
+               "retention_status,expires_at")
 
 
 OUTPUT_KINDS = ("image", "video", "subtitles", "cover", "render")
@@ -40,13 +44,17 @@ def temp_file_ok(path: Any, tenant_id: str, job_id: str) -> bool:
             and parts[3] not in ("", ".", "..") and "/" not in parts[3] and len(parts[3]) <= 120)
 
 
+LEASE_SECONDS = 120
+MAX_ATTEMPTS = 3
+
+
 class WorkerError(Exception):
     def __init__(self, code: str):
         super().__init__(code)
         self.code = code
 
 
-def recheck_inputs(db, tenant_id: str, job_id: str) -> Optional[str]:
+def recheck_inputs(db, tenant_id: str, job_id: str, now: Optional[datetime] = None) -> Optional[str]:
     """None si todas las entradas siguen permitidas; si no, el código público del motivo."""
     rows = db.select("marketing_generation_inputs", {"tenant_id": f"eq.{tenant_id}", "job_id": f"eq.{job_id}",
                                                      "select": "media_id,derivative_id", "limit": "100"}) or []
@@ -64,6 +72,8 @@ def recheck_inputs(db, tenant_id: str, job_id: str) -> Optional[str]:
             why = pv.usable_media(m)
             if why:
                 return why
+            if rt.is_expired(m, now or datetime.now(timezone.utc)):
+                return "media_expired"                    # vencido: nunca entra en un trabajo
     return None
 
 
@@ -73,8 +83,21 @@ def all_mock(est: Dict[str, Any]) -> bool:
 
 
 class JobRunner:
-    def __init__(self, db, router, adapters: Dict[str, Any], now: Optional[datetime] = None):
+    def __init__(self, db, router, adapters: Dict[str, Any], now: Optional[datetime] = None,
+                 worker_id: Optional[str] = None, lease_seconds: int = LEASE_SECONDS):
         self.db, self.router, self.adapters, self._now = db, router, adapters, now
+        self.worker_id = worker_id or str(uuid.uuid4())
+        self.lease_seconds = lease_seconds
+
+    def claim(self, job_id: Optional[str] = None) -> Dict[str, Any]:
+        """Reclamo atómico en la base: {status: claimed|empty|skipped, job?}."""
+        return self.db.rpc("marketing_claim_job", {"p_worker": self.worker_id, "p_lease_seconds": int(self.lease_seconds),
+                                                   "p_job": job_id, "p_max_attempts": MAX_ATTEMPTS}) or {"status": "empty"}
+
+    def _heartbeat(self, j) -> None:
+        if not self.db.rpc("marketing_job_heartbeat", {"p_job": j["id"], "p_worker": self.worker_id,
+                                                       "p_lease_seconds": int(self.lease_seconds)}):
+            raise WorkerError("lease_lost")                      # timeout u otro worker: no se escribe nada más
 
     def _c(self, tenant_id: str):
         return SimpleNamespace(tenant_id=tenant_id, now=self._now or datetime.now(timezone.utc))
@@ -86,9 +109,10 @@ class JobRunner:
 
     def _move(self, c, job, to, action, values=None, detail=None):
         jd.check_job_transition(job["status"], to, approved=bool(job.get("approved_at")))
-        rows = self.db.update("marketing_generation_jobs",
-                              {"id": f"eq.{job['id']}", "tenant_id": f"eq.{c.tenant_id}", "status": f"eq.{job['status']}"},
-                              {**(values or {}), "status": to})
+        filters = {"id": f"eq.{job['id']}", "tenant_id": f"eq.{c.tenant_id}", "status": f"eq.{job['status']}"}
+        if job["status"] == "processing":
+            filters["lease_owner"] = f"eq.{self.worker_id}"        # solo quien tiene el lease lo termina
+        rows = self.db.update("marketing_generation_jobs", filters, {**(values or {}), "status": to})
         if not rows:
             raise WorkerError("already_claimed")                 # otro worker se adelantó
         self._event(c, job["id"], action, job["status"], to, detail)
@@ -121,20 +145,35 @@ class JobRunner:
         ms.release(self.db, c.tenant_id, f"job:{j['id']}", consumed=False)
 
     def _fail(self, c, j, code: str, cost: float, files: Optional[List[Dict[str, Any]]] = None):
-        self._discard(c, j, files or [])
+        # Primero se cierra el trabajo (exige el lease propio): un worker obsoleto no libera nada ajeno.
         out = self._move(c, j, "failed", "fail", {"error_code": jd.public_error(code), "actual_cost": round(cost, 4),
                                                   "completed_at": c.now.isoformat()}, detail={"error_code": code})
+        self._discard(c, j, files or [])
         return out
 
     def run(self, tenant_id: str, job_id: str) -> Dict[str, Any]:
-        c = self._c(tenant_id)
+        """Un trabajo concreto de ESTE tenant (petición HTTP de un trabajo simulado)."""
         j = (self.db.select("marketing_generation_jobs", {"tenant_id": f"eq.{tenant_id}", "id": f"eq.{job_id}",
                                                           "select": JOB_COLS, "limit": "1"}) or [None])[0]
         if not j or j["status"] != "queued" or not j.get("approved_at") or not j.get("approved_by"):
             raise WorkerError("not_runnable")
+        why = recheck_inputs(self.db, tenant_id, j["id"], self._c(tenant_id).now)
+        if why:                                                    # motivo preciso (la base solo sabe "no permitido")
+            return self._fail(self._c(tenant_id), j, why, 0.0)
+        res = self.claim(j["id"])
+        if res.get("status") != "claimed" or res["job"]["tenant_id"] != tenant_id:
+            raise WorkerError("already_claimed" if res.get("status") == "empty" else "not_runnable")
+        return self._execute(res["job"])
+
+    def _execute(self, j: Dict[str, Any]) -> Dict[str, Any]:
+        tenant_id = j["tenant_id"]
+        c = self._c(tenant_id)
         est = (j["request_metadata"] or {}).get("estimate") or {}
-        j = self._move(c, j, "processing", "start")               # reclamar el trabajo
-        why = recheck_inputs(self.db, tenant_id, j["id"])
+        st = (self.db.select("marketing_settings", {"tenant_id": f"eq.{tenant_id}", "limit": "1",
+                                                    "select": "ai_generation_enabled,monthly_ai_cost_limit"}) or [{}])[0]
+        if j.get("reserved_cost") is None or st.get("ai_generation_enabled") is not True or jd.ai_budget(st) <= 0:
+            return self._fail(c, j, "budget_exceeded", 0.0)      # sin reserva, generación cerrada o presupuesto 0: nada
+        why = recheck_inputs(self.db, tenant_id, j["id"], c.now)
         if why:
             return self._fail(c, j, why, 0.0)
         total, n, first, files = 0.0, 0, None, []
@@ -148,6 +187,7 @@ class JobRunner:
             req = RouteRequest(tenant_id=tenant_id, task_type=st["task_type"], quality_tier=j["quality_tier"],
                                maximum_cost=float(j["maximum_cost"]), privacy_class=st["privacy_class"],
                                idempotency_key=st["idempotency_key"], units=float(st["units"]))
+            self._heartbeat(j)                                    # sigue siendo nuestro antes de cada envío
             done = self.db.select("marketing_model_usage", {"tenant_id": f"eq.{tenant_id}",
                                                             "idempotency_key": f"eq.{req.idempotency_key}",
                                                             "select": "actual_cost,provider_job_id", "limit": "1"})
@@ -171,6 +211,7 @@ class JobRunner:
                 "actual_cost": cost, "currency": j["currency"], "idempotency_key": req.idempotency_key,
                 "provider_job_id": res.provider_job_id, "status": "charged" if cost else "not_charged"})
         mock = all_mock(est)
+        self._heartbeat(j)                                        # antes de registrar resultados
         why = self._confirm_files(c, j, files)
         if why:
             return self._fail(c, j, why, total, files)
@@ -204,13 +245,18 @@ class JobRunner:
                 "metadata": {"mock": mock}})
 
     def run_pending(self, limit: int = 5) -> List[Dict[str, Any]]:
-        """Punto de entrada de un worker futuro (service role): procesa trabajos en cola, más antiguos
-        primero. No está programado en ningún sitio en esta fase."""
-        out = []
-        for row in self.db.select("marketing_generation_jobs", {"status": "eq.queued", "select": "id,tenant_id",
-                                                                "order": "approved_at.asc", "limit": str(int(limit))}) or []:
+        """Bucle del worker (service role): reclama y ejecuta hasta `limit` trabajos. Lo invoca
+        services/marketing_runtime.py; no está programado en producción."""
+        out: List[Dict[str, Any]] = []
+        for _ in range(max(int(limit), 0)):
+            res = self.claim()
+            if res.get("status") == "empty":
+                break
+            if res.get("status") != "claimed":
+                out.append({"id": res.get("job_id"), "error": "media_not_ready"})
+                continue
             try:
-                out.append(self.run(row["tenant_id"], row["id"]))
+                out.append(self._execute(res["job"]))
             except WorkerError as e:
-                out.append({"id": row["id"], "error": e.code})
+                out.append({"id": res["job"]["id"], "error": e.code})
         return out

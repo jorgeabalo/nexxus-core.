@@ -9,7 +9,9 @@ Comprueba con conexiones y transacciones separadas, abiertas a la vez:
   * dos subidas simultáneas cerca del límite → solo una reserva entra;
   * dos aprobaciones simultáneas cerca del límite de bytes → solo una;
   * dos aprobaciones simultáneas cerca del límite de costo → solo una;
-  * una subida y una aprobación simultáneas compitiendo por el mismo espacio → solo una.
+  * una subida y una aprobación simultáneas compitiendo por el mismo espacio → solo una;
+  * dos workers reclamando el mismo trabajo (lease + FOR UPDATE SKIP LOCKED) → solo uno;
+  * dos RetentionRunner tomando el bloqueo del purgador a la vez → solo uno.
 
 Se omite si no hay binarios de PostgreSQL. Comando exacto (ver docs/AITA_MARKETING_PHASE2.md, §4f):
   python3 -m venv /tmp/mk-pg-venv && /tmp/mk-pg-venv/bin/pip install pytest "psycopg[binary]==3.2.3"
@@ -33,7 +35,8 @@ if not PG_BIN or not (Path(PG_BIN) / "initdb").exists():
 
 ROOT = Path(__file__).resolve().parents[1]
 MIGS = ("20261009120000_aita_marketing.sql", "20261011120000_marketing_reel_studio.sql",
-        "20261011130000_marketing_library_retention.sql", "20261011140000_marketing_generation_budget.sql")
+        "20261011130000_marketing_library_retention.sql", "20261011140000_marketing_generation_budget.sql",
+        "20261012120000_marketing_runtime_safety.sql")
 OWNER = "00000000-0000-0000-0000-00000000000a"
 TA = "10000000-0000-0000-0000-00000000000a"
 HOLD = 0.4                       # cada transacción retiene su bloqueo este tiempo antes de confirmar
@@ -64,7 +67,7 @@ def pg(tmp_path_factory):
                 insert into tenant_users (tenant_id, user_id, role) values ('{TA}','{OWNER}','owner');""")
             for m in MIGS:
                 c.execute((ROOT / "supabase/migrations" / m).read_text())
-            c.execute(f"""update marketing_settings set ai_generation_enabled = true, monthly_ai_cost_limit = 1000,
+            c.execute(f"""update marketing_settings set ai_generation_enabled = true, monthly_ai_cost_limit = 80,
                 library_storage_limit_bytes = 100 where tenant_id = '{TA}'""")
             assert c.execute("select version()").fetchone()[0].startswith("PostgreSQL")
         yield dsn
@@ -73,11 +76,12 @@ def pg(tmp_path_factory):
         shutil.rmtree(base, ignore_errors=True)
 
 
-def reset(dsn, storage_limit=100, cost_limit=1000):
+def reset(dsn, storage_limit=100, cost_limit=80):
     with psycopg.connect(dsn, autocommit=True) as c:
         c.execute("update marketing_storage_reservations set status = 'released' where status = 'reserved'")
         c.execute("update marketing_generation_jobs set status = 'cancelled' where status in ('queued','processing')")
         c.execute("delete from marketing_media")
+        c.execute("delete from marketing_runtime_leases")
         lim = "null" if storage_limit is None else int(storage_limit)
         c.execute(f"""update marketing_settings set library_storage_limit_bytes = {lim},
             monthly_ai_cost_limit = {cost_limit} where tenant_id = '{TA}'""")
@@ -148,7 +152,7 @@ def test_two_simultaneous_approvals_near_storage_limit(pg, rnd):
 
 @pytest.mark.parametrize("rnd", range(ROUNDS))
 def test_two_simultaneous_approvals_near_cost_limit(pg, rnd):
-    reset(pg, storage_limit=None, cost_limit=1000)
+    reset(pg, storage_limit=None, cost_limit=80)
     with psycopg.connect(pg, autocommit=True) as c:                      # el mes ya tiene gasto: quedan 20
         spent = c.execute(f"""select coalesce(sum(case when status in ('queued','processing') then reserved_cost
             else coalesce(actual_cost, 0) end), 0) from marketing_generation_jobs where tenant_id = '{TA}'""").fetchone()[0]
@@ -181,3 +185,28 @@ def test_expired_reservation_is_closed_once_under_concurrency(pg):
         st = c.execute("select status from marketing_storage_reservations where reservation_key = 'upload:pg-expire'").fetchone()[0]
     assert st == "expired" and res[0] == 1 and res[1] is None              # cerrada una vez; la liberación no hace nada
     assert used(pg) == 0
+
+
+W1, W2 = "30000000-0000-4000-8000-000000000001", "30000000-0000-4000-8000-000000000002"
+
+
+@pytest.mark.parametrize("rnd", range(ROUNDS))
+def test_two_workers_claim_the_same_job(pg, rnd):
+    reset(pg, storage_limit=None)
+    j = awaiting_job(pg, 1)
+    with psycopg.connect(pg, autocommit=True) as c:
+        assert c.execute(f"select public.marketing_approve_generation('{TA}','{j}','{OWNER}', 1, 0)").fetchone()[0]["status"] == "approved"
+    sql = "select public.marketing_claim_job('%s', 60)"
+    res = race(pg, [sql % W1, sql % W2], must_wait=False)              # SKIP LOCKED: el segundo no espera
+    assert sorted(r["status"] for r in res) == ["claimed", "empty"]
+    with psycopg.connect(pg, autocommit=True) as c:
+        owner, attempts = c.execute(f"select lease_owner::text, attempts from marketing_generation_jobs where id = '{j}'").fetchone()
+    assert owner in (W1, W2) and attempts == 1
+
+
+@pytest.mark.parametrize("rnd", range(ROUNDS))
+def test_two_retention_runners_take_the_lock(pg, rnd):
+    reset(pg)
+    sql = "select coalesce(public.marketing_acquire_runtime_lease('retention_runner', '%s', 60), false)"
+    res = race(pg, [sql % W1, sql % W2])
+    assert sorted(res) == [False, True]

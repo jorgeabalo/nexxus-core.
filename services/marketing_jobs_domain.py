@@ -113,10 +113,24 @@ def check_generation_limits(settings: Dict[str, Any], usage: Dict[str, float], *
             raise DomainError(f"limit_{key}", 409)
 
 
+# Tope del "Marketing AI budget" por tenant y mes: nunca por encima del objetivo de costo total de AITA
+# (USD 80 por tenant). Presupuesto desconocido (None), 0 o fuera de rango → cerrado.
+AI_BUDGET_CAP_USD = 80.0
+
+
+def ai_budget(settings: Dict[str, Any]) -> float:
+    """Presupuesto efectivo en USD; 0 = cerrado (también si falta, no es numérico o supera el tope)."""
+    try:
+        v = float(settings.get("monthly_ai_cost_limit"))
+    except (TypeError, ValueError):
+        return 0.0
+    return v if 0 < v <= AI_BUDGET_CAP_USD else 0.0
+
+
 def generation_enabled(settings: Dict[str, Any]) -> bool:
     """Para la interfaz: ¿el plan permite generar algo (real o simulado)?"""
     return (settings.get("ai_generation_enabled") is True and settings.get("monthly_generation_job_limit", 0) != 0
-            and settings.get("monthly_ai_cost_limit", 0) != 0)     # presupuesto IA 0 = nada, ni el mock
+            and ai_budget(settings) > 0)                        # presupuesto IA 0 o desconocido = nada, ni el mock
 
 
 def library_state(limit: Optional[int], used: int) -> str:
@@ -149,9 +163,7 @@ def to_cost(usd: Any) -> Optional[float]:
 
 def warning_level(available: float, limit: Optional[float]) -> Optional[str]:
     """Avisos al quedar 25 %, 10 % o 0 % del presupuesto de IA de Marketing."""
-    if limit is None:
-        return None
-    if limit <= 0:
+    if limit is None or limit <= 0:                              # desconocido o 0: cerrado
         return "not_enabled"
     pct = 100 * max(available, 0) / limit
     if pct <= 0:
@@ -167,9 +179,9 @@ def budget_summary(limit: Optional[float], usage: Dict[str, float]) -> Dict[str,
     """"Marketing AI budget": SOLO el gasto de IA de Marketing del propio tenant (presupuesto, consumido,
     reservado y disponible). No es el presupuesto global de 80 USD del tenant (voz, IA, infraestructura…)."""
     used, held = round(float(usage.get("consumed") or 0), 4), round(float(usage.get("reserved") or 0), 4)
-    lim = None if limit is None else float(limit)
-    avail = None if lim is None else max(round(lim - used - held, 4), 0.0)
+    lim = ai_budget({"monthly_ai_cost_limit": limit})              # desconocido/0/fuera de tope → 0 (cerrado)
+    avail = max(round(lim - used - held, 4), 0.0)
     return {"scope": "marketing_ai_budget", "limit": lim, "consumed": used, "reserved": held, "available": avail,
             "currency": "USD",
-            "warning": warning_level(avail if avail is not None else 0, lim),
+            "warning": warning_level(avail, lim),
             "available_pct": None if not lim else math.floor(100 * avail / lim)}

@@ -181,8 +181,65 @@ trabajo activo añade como máximo 14 días. Nunca hay retención permanente.
   auditada (`purged`, `purge_failed`) e incapaz de borrar una ruta que no sea `{tenant}/…/{asset}/…` de ese archivo.
   Al empezar bloquea el acceso (`purge_pending`); al terminar borra original, derivados y resultados temporales y
   deja solo: id, tenant, hash, tipo, tamaño, quién subió, fechas y motivo (sin nombre, metadatos ni ruta real).
-* **No hay tarea programada en este PR**: `RetentionRunner.run()` está listo para un worker, pero nada lo invoca
-  en producción (lo comprueba una prueba). La única eliminación real posible es la que pide un owner/manager.
+* **Archivo vencido = inaccesible aunque el purgador no haya corrido** (migración `20261012120000`): con
+  `expires_at <= ahora` desaparece del listado (filtro en la consulta y en RLS), y abrir, descargar,
+  previsualizar, abrir una sesión de reproducción, clasificar, archivar, cambiar retención, anonimizar o usarlo
+  en un trabajo responde **410 `media_expired`**. Solo se admiten eliminarlo y retirar el consentimiento. Otro
+  tenant sigue viendo 404 (sin oráculo). En la base: RLS lo oculta a `authenticated`, ningún trabajo lo acepta
+  como entrada ni entra en cola con él, ninguna sesión de reproducción se crea para él (y ninguna dura más que
+  el archivo) y su vencimiento ya no puede ampliarse. Sigue ocupando cuota hasta que se purga.
+* **No hay tarea programada en producción**: `RetentionRunner` se ejecuta con el comando de §4g, pero nada lo
+  programa todavía (lo comprueba una prueba). La única eliminación real posible es la que pide un owner/manager.
+
+## 4g. Procesos de fondo: purgador y worker (preparados, sin programar)
+
+Comando independiente del proceso web: `python -m services.marketing_runtime` (usa la clave de servicio de
+`SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`; imprime una línea JSON por lote, sin secretos).
+
+**Purgador (`retention`)**
+* **Dry-run por defecto**: lee de verdad y solo *registra* lo que escribiría (`would_write`). Escribe únicamente
+  con `--apply`.
+* Por lotes (`--batch-size`, `--max-batches`) y repetible: cada lote vuelve a leer el estado.
+* Un solo purgador a la vez: lease `retention_runner` en `marketing_runtime_leases`
+  (`marketing_acquire_runtime_lease`, TTL 15 min). Si otro lo tiene, devuelve `{"locked": true}` y no hace nada;
+  si un purgador muere, su lease vence y otro lo retoma. No se usa `pg_advisory_lock` porque PostgREST reparte
+  las llamadas entre conexiones del pool y un bloqueo de sesión no sería fiable.
+* Orden de la purga: primero el acceso lógico (`purge_pending` + sesiones revocadas) y después el objeto de
+  Storage; nunca una ruta que no sea `{tenant}/…/{archivo}` de ese archivo; si el objeto ya no existe (404) la
+  purga se cierra; reintentos limitados (5) con `last_purge_error`.
+* Trabajos atascados (`marketing_timeout_jobs`): lease vencido sin reintentos, o aprobado hace más de 24 h sin
+  terminar → `failed`/`timeout`; sus resultados quedan bloqueados (`review_status = rejected`) y sus reservas se
+  cierran una sola vez (costo: deja de contar lo reservado; espacio: disparador). Reservas abandonadas
+  (`marketing_expire_storage_reservations`): subidas 15 min, trabajos 24 h.
+
+Comando futuro de **Railway Cron** (NO creado ni activado; servicio aparte con el mismo repositorio y variables):
+
+```bash
+python -m services.marketing_runtime retention --apply --batch-size 200 --max-batches 10
+```
+
+Frecuencia sugerida: cada 15 minutos (`*/15 * * * *`). Antes de activarlo: ejecutar a mano sin `--apply` y revisar
+la salida.
+
+**Worker (`worker`)**
+* Solo arranca con `MARKETING_WORKER_ENABLED=true`; se niega si `OMNIROUTE_ENABLED` o
+  `MARKETING_LOCAL_TOOLS_ENABLED` están activos (este PR no conecta proveedores ni ejecuta FFmpeg, MoviePy,
+  Playwright, ComfyUI, Wan ni OmniRoute).
+* Reclamo atómico: `marketing_claim_job` (`FOR UPDATE SKIP LOCKED` + lease de 30–900 s): dos workers nunca toman el
+  mismo trabajo. Heartbeat (`marketing_job_heartbeat`) antes de cada subtarea y antes de registrar resultados; si
+  el lease se perdió, el worker se detiene sin escribir nada más. Solo quien tiene el lease vigente puede
+  terminarlo con éxito o registrar resultados (disparadores de la base); un worker obsoleto no libera nada ajeno.
+* Lease vencido → reintento por otro worker (máx. 3 intentos) con la **misma** `idempotency_key`: las subtareas ya
+  cobradas no se repiten. Sin reintentos → timeout (arriba).
+* Antes de gastar vuelve a comprobar: entradas (vencidas, consentimiento, menores…), generación habilitada y
+  "Marketing AI budget" > 0. Si la entrada ya no vale al reclamar, el trabajo falla con `media_not_ready` sin
+  bloquear la cola.
+
+Comando futuro (servicio worker de Railway o Cron; NO creado ni activado):
+
+```bash
+MARKETING_WORKER_ENABLED=true python -m services.marketing_runtime worker --max-jobs 20 --lease-seconds 120
+```
 
 ## 4f. "Marketing AI budget" (costo de los trabajos de Marketing)
 
@@ -222,7 +279,9 @@ de 80 USD por tenant (voz, IA de Claudia, infraestructura…), que irá en otro 
   detiene y borra el directorio al terminar. Resultado esperado: `17 passed`.
 
 * `marketing_settings.monthly_ai_cost_limit` (USD/mes) lo fija **solo el operador**; `0` por defecto = ninguna
-  generación, ni siquiera simulada; `null` = sin límite. El tenant no puede cambiarlo (sin endpoint; SELECT only).
+  generación, ni siquiera simulada. **Desconocido (`null`) o 0 = cerrado** y nunca más de **80 USD/mes** (objetivo
+  de costo total de AITA por tenant): la base lo exige (`not null`, 0–80) y el código también falla cerrado. El
+  tenant no puede cambiarlo (sin endpoint; SELECT only).
 * Cada trabajo conserva: costo máximo estimado (`estimated_cost`), costo reservado (`reserved_cost`, inmutable
   tras aprobar), costo real (`actual_cost`), proveedor/modelo (`selected_provider`, `selected_model` y, por
   subtarea, `marketing_model_usage`) e idempotencia (`idempotency_key` del trabajo y de cada subtarea).
@@ -323,6 +382,7 @@ transporte inyectado explícitamente, `submit()` devuelve `provider_disabled`.
 | `MARKETING_AI_CATALOG_PATH` | catálogo del repo | Otro catálogo en el servidor |
 | `MARKETING_STREAM_TTL` | 600 | Vida de la sesión de reproducción (cookie) en segundos (se limita a 60–600) |
 | `APP_ENV` | `production` | `test`, `local` o `development` permiten (solo junto con la siguiente) una cookie sin Secure |
+| `MARKETING_WORKER_ENABLED` | — | `true` = el comando `worker` puede ejecutar trabajos (sin esto, no arranca) |
 | `MARKETING_STREAM_COOKIE_INSECURE` | — | `1` = cookie sin Secure, **solo** con `APP_ENV` de test/local; en producción impide arrancar |
 | `MARKETING_MAX_VIDEO_DURATION_MS` | 900000 | Duración máxima creíble de un vídeo subido (15 min) |
 | `MARKETING_HARD_MAX_UPLOAD_BYTES` | 100 MB | Tope absoluto por archivo (memoria del servidor) |
@@ -359,9 +419,9 @@ solo tiene SELECT (probado en SQL).
 
 ## 9b. Ejecución asíncrona
 
-* `marketing_worker.JobRunner` reclama un trabajo con una actualización condicional `queued → processing` (solo un
-  worker gana), vuelve a comprobar las entradas, ejecuta subtareas con idempotencia y cierra el trabajo.
-  `run_pending()` es el punto de entrada para un worker programado; **en esta fase no hay worker desplegado**.
+* `marketing_worker.JobRunner` reclama con `marketing_claim_job` (lease; ver §4g), vuelve a comprobar las entradas,
+  ejecuta subtareas con idempotencia y heartbeat y cierra el trabajo solo con su lease vigente. `run_pending()`
+  lo usa `python -m services.marketing_runtime worker`; **en esta fase no hay worker desplegado**.
 * Desde una petición HTTP solo se ejecutan trabajos **100 % simulados** (rápidos, sin red). Cualquier trabajo con
   vídeo real, render, anonimización real o proveedores reales responde `requires_worker` y queda en cola.
 * Vídeo, render, anonimización y proveedores reales **requieren** ese worker asíncrono (con timeouts, reintentos

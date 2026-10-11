@@ -112,7 +112,9 @@ def test_failed_job_releases_its_reservation(studio, db):
 
 def test_timed_out_job_releases_its_reservation(studio, db):
     j = approved_job(studio)
+    db.rpc_now = (NOW + timedelta(hours=23)).isoformat()                  # el timeout lo decide la base
     assert rt.RetentionRunner(db, now=NOW + timedelta(hours=23)).run()["timed_out"] == 0
+    db.rpc_now = (NOW + timedelta(hours=25)).isoformat()
     out = rt.RetentionRunner(db, now=NOW + timedelta(hours=25)).run()
     assert out["timed_out"] == 1 and job(db, j["id"])["status"] == "failed" and job(db, j["id"])["error_code"] == "timeout"
     assert ms.used_bytes(db, T1) == 0
@@ -202,7 +204,7 @@ def test_result_that_does_not_fit_is_rejected_cleanly(studio, db):
 
 def test_result_after_reservation_expired_fails_as_timeout(studio, db):
     j = approved_job(studio)
-    db.rpc_now = (NOW + timedelta(hours=25)).isoformat()
+    res(db, f"job:{j['id']}")["expires_at"] = (NOW - timedelta(seconds=1)).isoformat()   # reserva abandonada
     assert ms.expire_abandoned(db) == 1 and job(db, j["id"])["status"] == "queued"      # el trabajo sigue en cola
     studio.adapters["mock"] = WithFiles(db, j["id"], [10])
     out = studio.process_job(jwt(OWNER), T1, j["id"])

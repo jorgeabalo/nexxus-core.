@@ -112,3 +112,10 @@ test('el frontend de Fase 2 no contiene claves, URLs de proveedores ni nombres d
     assert.ok(!src.includes(w), w);
   }
 });
+
+test('archivo vencido (410 media_expired): mensaje claro en ES y EN, nunca el código crudo', () => {
+  for (const lang of ['es', 'en']) {
+    const msg = STUDIO_TEXT[lang].err.media_expired;
+    assert.ok(msg && !/media_expired/.test(msg), lang);
+  }
+});
