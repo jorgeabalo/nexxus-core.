@@ -219,3 +219,5 @@ button{min-height:56px;font-size:16px;border-radius:12px;padding:15px 22px}input
 .catalog-picker{padding:20px;border:1px solid var(--line);border-radius:16px;margin:16px 0;background:#7f294311}.catalog-picker h3{margin-top:0;font-size:23px}
 
 textarea{box-sizing:border-box;width:100%;padding:14px;border-radius:12px;border:1px solid var(--line,#777);background:transparent;color:inherit;font:inherit;resize:vertical;min-height:100px}.address-wide{grid-column:1/-1}
+
+.nexxus-vehicle{display:flex;flex-direction:column;align-items:center;min-width:0}.nexxus-vehicle .vehicle-art{width:260px;max-width:100%;margin:0}.nexxus-vehicle .vehicle-art img{width:100%;height:135px;object-fit:contain}.welcome{align-items:center}@media(max-width:600px){.nexxus-vehicle .vehicle-art{width:145px}.nexxus-vehicle .vehicle-art img{height:95px}}
