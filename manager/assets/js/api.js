@@ -10,10 +10,10 @@ function must({ data, error }) {
   if (error) throw error;
   return data;
 }
-async function backend(method, path, body, retried = false) {
+async function backend(method, path, body, retried = false, extra = {}) {
   const token = (await sb.auth.getSession()).data.session?.access_token;
   const res = await fetch(path, {
-    method, headers: { Authorization: `Bearer ${token || ''}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    method, headers: { Authorization: `Bearer ${token || ''}`, ...(body ? { 'Content-Type': 'application/json' } : {}), ...extra },
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
@@ -21,7 +21,7 @@ async function backend(method, path, body, retried = false) {
     // El token puede pertenecer a una sesión ya cerrada: se renueva una vez;
     // si no se puede, se cierra la sesión para volver a entrar.
     const { error } = await sb.auth.refreshSession();
-    if (!error) return backend(method, path, body, true);
+    if (!error) return backend(method, path, body, true, extra);
     await sb.auth.signOut();
   }
   if (!res.ok) { const e = new Error(data.error || `HTTP ${res.status}`); e.code = data.error; throw e; }
@@ -269,7 +269,19 @@ export const api = {
       return backend('POST', `/api/manager/marketing/content/${encodeURIComponent(id)}/transition`,
         { tenant_id: tenantId, to, comment: comment || null, scheduled_at: scheduledAt || null });
     },
-    planContent(tenantId, values) { return backend('POST', '/api/manager/marketing/content/plan', { ...values, tenant_id: tenantId }); },
+    // La clave de idempotencia la exige el backend: un doble clic o un reintento nunca crea dos contenidos.
+    planContent(tenantId, values, key) {
+      return backend('POST', '/api/manager/marketing/content/plan', { ...values, tenant_id: tenantId }, false, { 'Idempotency-Key': key });
+    },
+    autopilot(tenantId) { return backend('GET', `/api/manager/marketing/autopilot?${qs({ tenant_id: tenantId })}`); },
+    autopilotPreview(tenantId, rules) { return backend('POST', '/api/manager/marketing/autopilot/preview', { ...rules, tenant_id: tenantId }); },
+    autopilotActivate(tenantId, rules) {
+      return backend('POST', '/api/manager/marketing/autopilot/activate', { tenant_id: tenantId, rules, confirm: true });
+    },
+    autopilotPause(tenantId) { return backend('POST', '/api/manager/marketing/autopilot/pause', { tenant_id: tenantId }); },
+    autopilotPermission(tenantId, value) {
+      return backend('PUT', '/api/manager/marketing/autopilot/permissions', { tenant_id: tenantId, managers_can_manage: value });
+    },
     retryContent(tenantId, id) { return backend('POST', `/api/manager/marketing/content/${encodeURIComponent(id)}/retry`, { tenant_id: tenantId }); },
     calendar(tenantId, start, end) { return backend('GET', `/api/manager/marketing/calendar?${qs({ tenant_id: tenantId, start, end })}`); },
     // Biblioteca privada (archivos temporales, privacidad y reproducción; todo por el backend).

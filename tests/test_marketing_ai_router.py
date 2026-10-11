@@ -271,15 +271,19 @@ def test_staff_and_member_blocked_everywhere(monkeypatch, user):
     assert db.marketing_calls == []
 
 
-def test_enabled_without_new_tables_plans_a_draft_without_preparing(monkeypatch):
-    """Sin las tablas de preparación (producción hoy): el contenido se guarda como borrador; nada se prepara."""
-    db = ProdLikeDB(modules={"marketing": True}, missing_only="marketing_generation_jobs")
-    r = call(client_for(monkeypatch, db), "POST", "/api/manager/marketing/content/plan",
-             {"tenant_id": T1, "objective": "calls", "mode": "fully_ai", "format": "reel",
-              "instructions": {"platforms": ["instagram"]}})
-    assert r.status_code == 200, r.text
-    assert r.json()["preparation"] == "unavailable" and r.json()["content"]["display_status"] == "draft"
-    assert "generation" not in r.text and "jobs" not in r.text
+def test_enabled_without_the_new_migration_is_a_controlled_503(monkeypatch):
+    """Sin la migración de idempotencia aplicada (producción hoy): 503 controlado y nada creado."""
+    from test_marketing_gate import MISSING
+
+    class NoPlanFunction(ProdLikeDB):
+        def rpc(self, fn, args, timeout=None):
+            raise RuntimeError(MISSING.format(t=f"rpc/{fn}").replace("PGRST205", "PGRST202"))
+    db = NoPlanFunction(modules={"marketing": True})
+    r = client_for(monkeypatch, db).post("/api/manager/marketing/content/plan", headers={
+        "Authorization": f"Bearer jwt-{OWNER}", "Idempotency-Key": "plan-missing-fn-00000001"}, json={
+        "tenant_id": T1, "objective": "calls", "mode": "fully_ai", "format": "reel", "instructions": {"platforms": ["instagram"]}})
+    assert r.status_code == 503 and r.json() == {"error": "marketing_unavailable"}
+    assert db.tables["marketing_content"] == []
 
 
 def test_technical_job_routes_are_not_served(monkeypatch):

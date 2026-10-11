@@ -137,3 +137,36 @@ export function usageBar(used, limit) {
   const pct = limit === 0 ? 100 : Math.min(100, Math.round((used / limit) * 100));
   return { used, limit, pct, full: used >= limit };
 }
+
+// Fechas visibles de Marketing: idioma activo del Manager y zona horaria del tenant, mismo formato en Contenido,
+// Calendario, Campañas y el piloto automático (nunca «Nov 20, 10:00 AM» en español).
+const LOCALES = { es: 'es-US', en: 'en-US' };
+export function fmtWhen(iso, lang, timeZone) {
+  if (!iso) return '—';
+  return new Intl.DateTimeFormat(LOCALES[lang] || 'en-US', { timeZone, weekday: 'short', day: 'numeric', month: 'short',
+    hour: 'numeric', minute: '2-digit' }).format(new Date(iso));
+}
+// Fechas sin hora (YYYY-MM-DD: inicio de campaña, día del calendario del piloto): no dependen de la zona.
+export function fmtDay(d, lang) {
+  if (!d) return '—';
+  const [y, m, day] = String(d).slice(0, 10).split('-').map(Number);
+  return new Intl.DateTimeFormat(LOCALES[lang] || 'en-US', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short',
+    year: 'numeric' }).format(new Date(Date.UTC(y, m - 1, day)));
+}
+
+// Piloto automático: reglas que envía el panel (el backend las valida y normaliza) y qué falta para verlas.
+export function autopilotRules(f) {
+  return { objective: f.objective, platforms: [...f.platforms], days: [...f.days].map(Number).sort((a, b) => a - b),
+    hours: { from: f.from, to: f.to }, formats: [...f.formats], mode: f.mode, cta: String(f.cta || '').trim(),
+    banned_topics: String(f.banned || '').split('\n').map(x => x.trim()).filter(Boolean), starts_on: f.starts_on };
+}
+export function autopilotStepError(r) {
+  if (!PLAN_OBJECTIVES.includes(r.objective)) return 'invalid_objective';
+  if (!r.platforms.length) return 'channels_required';
+  if (!r.days.length || r.days.some(d => !(d >= 0 && d <= 6))) return 'invalid_days';
+  if (!/^\d{2}:\d{2}$/.test(r.hours.from) || !/^\d{2}:\d{2}$/.test(r.hours.to) || r.hours.from >= r.hours.to) return 'invalid_hours';
+  if (!r.formats.length || r.formats.some(x => !PLAN_FORMATS.includes(x))) return 'invalid_format';
+  if (!PLAN_MODES.includes(r.mode)) return 'invalid_mode';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(r.starts_on || '')) return 'invalid_date';
+  return null;
+}

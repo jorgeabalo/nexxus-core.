@@ -124,7 +124,8 @@ def build_router(get_db: Callable) -> APIRouter:
     @r.post(f"{P}/content/plan")
     async def plan_content(request: Request):
         b = await body(request)
-        return await call(lambda: svc().plan_content(bearer(request), tid(b), b))
+        key = request.headers.get("idempotency-key", "")                # obligatoria (doble clic, reintentos)
+        return await call(lambda: svc().plan_content(bearer(request), tid(b), b, key))
 
     @r.post(f"{P}/content/{{content_id}}/retry")
     async def retry_content(request: Request, content_id: str):
@@ -145,6 +146,31 @@ def build_router(get_db: Callable) -> APIRouter:
         b = await body(request)
         return await call(lambda: svc().transition(bearer(request), tid(b), content_id, str(b.get("to") or ""),
                                                    b.get("comment"), b.get("scheduled_at")))
+
+    # ---------- modo de control: revisar antes de publicar / piloto automático ----------
+    @r.get(f"{P}/autopilot")
+    async def autopilot(request: Request, tenant_id: str = ""):
+        return await call(lambda: svc().autopilot().status(bearer(request), tenant_id))
+
+    @r.post(f"{P}/autopilot/preview")
+    async def autopilot_preview(request: Request):
+        b = await body(request)
+        return await call(lambda: svc().autopilot().preview(bearer(request), tid(b), b))
+
+    @r.post(f"{P}/autopilot/activate")
+    async def autopilot_activate(request: Request):
+        b = await body(request)
+        return await call(lambda: svc().autopilot().activate(bearer(request), tid(b), b))
+
+    @r.post(f"{P}/autopilot/pause")
+    async def autopilot_pause(request: Request):
+        b = await body(request)
+        return await call(lambda: svc().autopilot().pause(bearer(request), tid(b)))
+
+    @r.put(f"{P}/autopilot/permissions")
+    async def autopilot_permissions(request: Request):
+        b = await body(request)
+        return await call(lambda: svc().autopilot().set_permission(bearer(request), tid(b), b))
 
     # ---------- calendario ----------
     @r.get(f"{P}/calendar")

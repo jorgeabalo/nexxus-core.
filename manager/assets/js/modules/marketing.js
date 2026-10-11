@@ -4,14 +4,15 @@
 // Los datos vienen del backend (/api/manager/marketing/*), que valida rol
 // (owner/manager), tenant y reglas de estado. Nada se publica en redes todavía.
 // El estado de la vista es por empresa: al cambiar de tenant se empieza de cero.
-import { el, clear, card, kpi, table, tabs, loading, fmtDateTime, todayISO, select, tz } from '../ui.js';
-import { errorNotice } from './marketing-ui.js';
+import { el, clear, card, kpi, table, tabs, loading, todayISO, select, tz } from '../ui.js';
+import { errorNotice, when, day } from './marketing-ui.js';
 import { api } from '../api.js';
 import { t, errText, getLang } from './marketing-i18n.js';
 import { TABS, DISPLAY_STATUSES, route, createScope, monthStart, shiftMonth, monthEnd, monthGrid, usageBar } from './marketing-state.js';
 import { contentModal, contentDetail, campaignModal, brandForm, channelLabel, statusBadge } from './marketing-forms.js';
 import { libraryView } from './marketing-library.js';
 import { plannerModal } from './marketing-planner.js';
+import { controlCard } from './marketing-autopilot.js';
 import { planCard, addonSection, flowCard, resultsCard } from './marketing-addons.js';
 
 const M = api.marketing;
@@ -96,19 +97,19 @@ export async function render(root, ctx) {
         kpi(t('k_used'), plan.total === null ? String(plan.used) : `${plan.used} ${t('of')} ${plan.total}`),
         kpi(t('k_upcoming'), String(d.upcoming.length)),
         kpi(t('k_waiting'), String(k.waiting_approval || 0), '', k.waiting_approval > 0),
-        kpi(t('k_published'), String(k.published || 0)), kpi(t('k_results'), String(k.results_available || 0))),
+        kpi(t('k_published'), String(k.published || 0))),
       card(t('recTitle'), el('div', { class: 'card-body' }, recs.length
         ? el('ul', { class: 'mk-flow mk-recs' }, ...recs.map(x => el('li', {}, t(`rec_${x.code}`, x.count))))
         : el('p', { class: 'hint' }, t('noRecs')))),
       el('div', { class: 'grid-2' },
         el('div', {}, planCard(plan), el('div', { class: 'card-body' }, bar(t('posts'), plan.used, plan.total))),
         card(t('upcoming'), table([
-          { label: t('date'), render: r => fmtDateTime(r.scheduled_at || r.planned_at) },
+          { label: t('date'), render: r => when(r.scheduled_at || r.planned_at) },
           { label: t('titleF'), key: 'title' },
           { label: t('format'), render: r => t(`f_${r.format}`) },
           { label: t('status'), render: r => statusBadge(r.display_status) },
         ], d.upcoming, { onRowClick: r => open(r.id), emptyText: t('noUpcoming') }))),
-      el('div', { class: 'grid-2' }, flowCard(), resultsCard()));
+      el('div', { class: 'grid-2' }, flowCard(), resultsCard(d.results)));
   }
 
   // ---------- contenido ----------
@@ -120,7 +121,9 @@ export async function render(root, ctx) {
     const all = (await M.contentList(ctx.tenantId)).content;
     const rows = st.status ? all.filter(r => r.display_status === st.status) : all;
     const camp = Object.fromEntries(campaigns.map(c => [c.id, c.name]));
-    return el('section', { class: 'card' },
+    // Modo de control: si aún no está disponible (migración sin aplicar), Contenido sigue funcionando sin él.
+    const control = enabled ? await controlCard(ctx, draw).catch(() => null) : null;
+    return el('div', { class: 'mk-content' }, control, el('section', { class: 'card' },
       el('div', { class: 'card-head' }, el('h2', {}, t('tab_content')),
         el('div', { class: 'btn-row' }, filter,
           el('button', { class: 'btn btn-sm', type: 'button', disabled: !enabled, onclick: () => contentModal(ctx, { campaigns }, reload) }, t('newBlank')),
@@ -131,8 +134,8 @@ export async function render(root, ctx) {
         { label: t('format'), render: r => t(`f_${r.format}`) },
         { label: t('channels'), render: r => (r.channels || []).map(channelLabel).join(', ') },
         { label: t('campaign'), render: r => camp[r.campaign_id] || null },
-        { label: t('date'), render: r => (r.scheduled_at || r.planned_at) ? fmtDateTime(r.scheduled_at || r.planned_at) : null },
-      ], rows, { onRowClick: r => open(r.id), emptyText: t('noContent') }));
+        { label: t('date'), render: r => (r.scheduled_at || r.planned_at) ? when(r.scheduled_at || r.planned_at) : null },
+      ], rows, { onRowClick: r => open(r.id), emptyText: t('noContent') })));
   }
 
   // ---------- calendario mensual ----------
@@ -178,7 +181,8 @@ export async function render(root, ctx) {
       { label: t('name'), key: 'name' },
       { label: t('status'), render: c => el('span', { class: 'badge' }, t(`c_${c.status}`)) },
       { label: t('objective'), key: 'objective' },
-      { label: t('start'), key: 'start_date' }, { label: t('end'), key: 'end_date' },
+      { label: t('start'), render: c => (c.start_date ? day(c.start_date) : null) },
+      { label: t('end'), render: c => (c.end_date ? day(c.end_date) : null) },
       { label: t('content'), num: true, render: c => String(c.content_count || 0) },
     ], campaigns, { onRowClick: c => campaignModal(ctx, c, reload), emptyText: t('noCampaigns') }),
     el('button', { class: 'btn btn-sm', type: 'button', onclick: () => campaignModal(ctx, null, reload) }, `+ ${t('newCampaign')}`));

@@ -1,8 +1,8 @@
 // Formularios del módulo AITA Marketing: contenido, detalle con aprobación,
 // campañas y Brand Kit. Todo se guarda a través del backend, que valida rol,
 // tenant y reglas de estado.
-import { el, clear, openModal, field, input, select, toast, badge, fmtDateTime, loading, tz } from '../ui.js';
-import { errorNotice } from './marketing-ui.js';
+import { el, clear, openModal, field, input, select, toast, badge, loading, tz } from '../ui.js';
+import { errorNotice, when } from './marketing-ui.js';
 import { api } from '../api.js';
 import { tr } from '../i18n.js';
 import { t, errText } from './marketing-i18n.js';
@@ -132,8 +132,8 @@ export async function contentDetail(ctx, id, { campaigns = [], reload }) {
     el('div', { class: 'mk-rows' },
       row(t('format'), t(`f_${c.format}`)), row(t('channels'), (c.channels || []).map(channelLabel).join(', ')),
       row(t('language'), t(`l_${c.language}`)), row(t('campaign'), camp ? camp.name : null),
-      row(t('planned'), c.planned_at ? fmtDateTime(c.planned_at) : null),
-      row(t('k_scheduled'), c.scheduled_at ? fmtDateTime(c.scheduled_at) : null),
+      row(t('planned'), c.planned_at ? when(c.planned_at) : null),
+      row(t('k_scheduled'), c.scheduled_at ? when(c.scheduled_at) : null),
       row(t('objective'), c.objective), row(t('topic'), c.topic),
       row(t('caption'), c.caption), row(t('script'), c.script), row(t('cta'), c.cta),
       row(t('hashtags'), (c.hashtags || []).join(' ')), row(t('notes'), c.notes)),
@@ -143,13 +143,13 @@ export async function contentDetail(ctx, id, { campaigns = [], reload }) {
       el('div', { class: 'btn-row' }, buttons), err) : null,
     el('h4', {}, t('history')),
     el('ol', { class: 'mk-history' }, data.history.map(h => el('li', {},
-      el('strong', {}, t(`ev_${h.action}`)), ' · ', fmtDateTime(h.created_at), ' · ',
-      h.actor_id === ctx.user.id ? t('you') : tr(`role_${h.actor_role}`),
+      el('strong', {}, t(`ev_${h.action}`)), ' · ', when(h.created_at), ' · ',
+      h.actor_role === 'system' ? t('bySystem') : h.actor_id === ctx.user.id ? t('you') : tr(`role_${h.actor_role}`),
       h.from_status ? el('span', { class: 'muted' }, ` (${t(`s_${shownStatus(h.from_status)}`)} → ${t(`s_${shownStatus(h.to_status)}`)})`) : null,
       h.comment ? el('div', { class: 'mk-comment' }, `“${h.comment}”`) : null))),
     data.publications.length ? el('div', {}, el('h4', {}, t('publications')),
       el('ul', { class: 'mk-history' }, data.publications.map(p => el('li', {},
-        channelLabel(p.channel), ' · ', badge(p.status, t(`p_${p.status}`)), p.scheduled_at ? ` · ${fmtDateTime(p.scheduled_at)}` : '')))) : null));
+        channelLabel(p.channel), ' · ', badge(p.status, t(`p_${p.status}`)), p.scheduled_at ? ` · ${when(p.scheduled_at)}` : '')))) : null));
 }
 
 // ---------- campañas ----------

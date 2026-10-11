@@ -1,8 +1,8 @@
 // AITA Marketing (Fase 2) — Biblioteca multimedia privada.
 // Subir, ver (URL firmada de corta duración → blob en memoria), clasificar personas,
 // crear versiones anonimizadas (siempre con revisión humana) y archivar. Nunca se borra nada.
-import { el, clear, card, table, openModal, field, select, toast, badge, fmtDateTime } from '../ui.js';
-import { errorNotice } from './marketing-ui.js';
+import { el, clear, card, table, openModal, field, select, toast, badge } from '../ui.js';
+import { errorNotice, when } from './marketing-ui.js';
 import { api } from '../api.js';
 import { s, sErr } from './marketing-studio-i18n.js';
 import { ACCEPT, PEOPLE_POLICIES, ANON_METHODS, privacyClass, fmtBytes } from './marketing-studio-state.js';
@@ -150,7 +150,7 @@ function retentionCell(ctx, m, plan, reload) {
       catch (x) { toast(sErr(x), 'error'); e.target.value = ''; }
     } });
   return el('div', { class: `mk-ret${r.warning ? ' mk-ret-warn' : ''}` },
-    el('span', {}, r.expires_at ? fmtDateTime(r.expires_at) : '—'),
+    el('span', {}, r.expires_at ? when(r.expires_at) : '—'),
     r.warning ? el('span', { class: 'badge mk-s-review' }, s('expiresIn', r.days_left)) : null,
     m.retention_status === 'protected_by_workflow' ? el('span', { class: 'hint' }, s('protectedByWorkflow')) : null,
     sel, el('span', { class: 'hint' }, s('retentionMax', plan ? plan.max_days : 30)));
@@ -210,7 +210,7 @@ export async function libraryView(ctx, reload) {
     { label: s('status'), render: m => badge(m.processing_status, s(`ms_${m.processing_status}`)) },
     { label: s('scan'), render: m => el('span', { class: 'mk-scan' }, m.validation_status === 'passed' ? `${s('formatOk')} · ` : '',
       s(`scan_${m.malware_scan_status || 'not_scanned'}`)) },
-    { label: s('created_at'), render: m => fmtDateTime(m.created_at) },
+    { label: s('created_at'), render: m => when(m.created_at) },
     { label: s('expires'), render: m => retentionCell(ctx, m, data.retention, reload) },
     { label: s('actions'), render: m => el('div', { class: 'btn-row mk-lib-actions' },
       el('button', { class: 'btn btn-sm', type: 'button', onclick: () => showPreview(ctx, m) }, s('preview')),

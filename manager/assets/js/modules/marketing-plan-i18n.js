@@ -52,7 +52,7 @@ const T = {
       'Mide los resultados.', 'Te recomienda repetir o mejorar lo que funcionó.'],
     flow_note: 'AITA analiza los resultados para aumentar la probabilidad de alcance, interacción y conversiones. Nada se genera ni se publica sin tu aprobación.',
     goals_title: 'Objetivos', results_title: 'Resultados',
-    results_none: 'Todavía no hay resultados: tus redes aún no están conectadas. Cuando lo estén, verás aquí:',
+    results_not_connected: 'Los resultados estarán disponibles cuando conectes tus canales.', results_none: 'Aún no hay resultados.',
     metrics: ['Alcance y visualizaciones', 'Me gusta, comentarios, compartidos y guardados', 'Clics', 'Mensajes y llamadas',
       'Visitas o clases de prueba', 'Clientes y ventas atribuidas'],
     err: {
@@ -109,7 +109,7 @@ const T = {
       'Measures the results.', 'Recommends repeating or improving what worked.'],
     flow_note: 'AITA analyzes results to increase the likelihood of reach, engagement and conversions. Nothing is generated or published without your approval.',
     goals_title: 'Goals', results_title: 'Results',
-    results_none: 'No results yet: your networks are not connected. Once they are, you will see here:',
+    results_not_connected: 'Results will be available when you connect your channels.', results_none: 'No results yet.',
     metrics: ['Reach and views', 'Likes, comments, shares and saves', 'Clicks', 'Messages and calls',
       'Visits or trial classes', 'Customers and attributed sales'],
     err: {

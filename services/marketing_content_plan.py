@@ -4,12 +4,17 @@ El tenant trabaja con CONTENIDO. La preparación con IA usa por dentro los traba
 idempotencia, reservas, costos, auditoría), pero nunca se exponen: la API devuelve estados comerciales.
 Nada se publica automáticamente: la propuesta llega como "Listo para revisar" y sigue la aprobación de siempre.
 """
+import hashlib
+import json
+import re
 from typing import Any, Dict, List, Optional
 
 from services.marketing_domain import CHANNELS, DomainError
 from services.marketing_reel_plan import OBJECTIVES, STYLES
 from services.member_portal import PortalError
 
+KEY = re.compile(r"^[A-Za-z0-9_-]{16,120}$")
+PLAN_ERRORS = {"idempotency_conflict": 409, "forbidden": 403}
 MODES = ("library_ai", "fully_ai")
 FORMATS = ("image", "carousel", "reel", "video")
 DURATION = {"image": 15, "carousel": 15, "reel": 30, "video": 60}
@@ -99,29 +104,36 @@ class ContentPlanner:
         self.svc, self.db, self.studio_factory = svc, svc.db, studio_factory
 
     # ------------------------------------------------------------------ planear
-    def plan(self, jwt: str, tenant_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
-        v = validate(body)
-        c = self.svc.ctx(jwt, tenant_id)
+    def plan(self, jwt: Optional[str], tenant_id: str, body: Dict[str, Any], idempotency_key: Any,
+             actor_role: Optional[str] = None) -> Dict[str, Any]:
+        """Crea el contenido UNA vez por clave (tenant + usuario), también con peticiones simultáneas: la base
+        reserva la clave y crea el contenido en la misma transacción. Misma clave y otro cuerpo → 409."""
+        c = self.svc.ctx(jwt, tenant_id)                        # rol, tenant y módulo antes que nada
         self.svc._enabled(c)
-        key = str(body.get("idempotency_key") or "")
-        if 16 <= len(key) <= 100:                                  # mismo envío repetido: mismo contenido
-            try:
-                prev = self.db.select("marketing_generation_jobs", {"tenant_id": f"eq.{c.tenant_id}",
-                                                                    "idempotency_key": f"eq.{key}",
-                                                                    "select": "content_id", "limit": "1"}) or []
-            except PortalError:
-                prev = []                                          # sin preparación con IA disponible
-            if prev and prev[0].get("content_id"):
-                row = self.svc._content(c, prev[0]["content_id"])
-                return {"content": self.present(c, row), "preparation": "existing"}
-        labels = body.get("labels") or {}
-        content = self.svc.create_content(jwt, tenant_id, {
-            "title": (v["topic"] or str(labels.get("objective") or v["objective"]))[:160], "format": v["format"],
-            "channels": v["platforms"], "language": v["language"], "topic": v["topic"] or None,
-            "objective": str(labels.get("objective") or v["objective"])[:300], "cta": v["cta"] or None,
-            **({"planned_at": v["preferred_date"]} if v["preferred_date"] else {})})
-        state = self._prepare(jwt, c, content, v, key=key)
-        return {"content": self.present(c, self.svc._content(c, content["id"])), "preparation": state}
+        key = str(idempotency_key or "")
+        if not KEY.fullmatch(key):
+            _err("idempotency_key_required")
+        v = validate(body)
+        label = str((body.get("labels") or {}).get("objective") or v["objective"])[:300]
+        try:
+            values = self.svc._content_values(c, {
+                "title": (v["topic"] or label)[:160], "format": v["format"], "channels": v["platforms"],
+                "language": v["language"], "topic": v["topic"] or None, "objective": label, "cta": v["cta"] or None,
+                "assigned_to": c.user["id"], **({"planned_at": v["preferred_date"]} if v["preferred_date"] else {})})
+        except DomainError as e:
+            raise PortalError(e.code, e.status)
+        digest = hashlib.sha256(json.dumps(v, sort_keys=True, default=str).encode()).hexdigest()
+        res = self.db.rpc("marketing_plan_content", {
+            "p_tenant": c.tenant_id, "p_user": c.user["id"], "p_role": actor_role or c.role, "p_key": key,
+            "p_hash": digest, "p_content": values}) or {}
+        if res.get("error"):
+            raise PortalError(res["error"], PLAN_ERRORS.get(res["error"], 409))
+        row = self.svc._content(c, res["content_id"])
+        if res.get("result") != "created":                         # repetición: el mismo contenido, nada nuevo
+            return {"content": self.present_rows(c, [row])[0], "preparation": "existing"}
+        job_key = "plan-" + hashlib.sha256(f"{c.tenant_id}:{c.user['id']}:{key}".encode()).hexdigest()[:40]
+        state = self._prepare(jwt, c, row, v, key=job_key)
+        return {"content": self.present(c, self.svc._content(c, row["id"])), "preparation": state}
 
     def _brief(self, v: Dict[str, Any]) -> Dict[str, Any]:
         return {"objective": v["objective"], "audience": "custom" if v["audience"] else "general",
@@ -138,13 +150,15 @@ class ContentPlanner:
             job = studio.create_job(jwt, c.tenant_id, {
                 "brief": self._brief(v), "creation_mode": v["mode"], "media_ids": v["media_ids"],
                 "quality_tier": "draft", "scenes": 4 if v["format"] in ("image", "carousel") else 6,
-                "idempotency_key": key if 16 <= len(key) <= 100 else None,
+                "idempotency_key": key or None,
                 **({"regeneration_of": regeneration_of} if regeneration_of else {})})
         except (PortalError, DomainError) as e:
             if e.code in ("fully_ai_uses_no_media", "real_media_required", "media_expired", "consent_required",
                           "media_not_usable", "forbidden_claim"):
                 raise PortalError(e.code, e.status)
             return "unavailable"
+        if job.get("status") != "draft" or (job.get("content_id") and job["content_id"] != content["id"]):
+            return "preparing"                       # la misma petición ya lo está preparando: no se toca
         self.db.update("marketing_generation_jobs", {"id": f"eq.{job['id']}", "tenant_id": f"eq.{c.tenant_id}"},
                        {"content_id": content["id"]})
         try:
@@ -156,7 +170,7 @@ class ContentPlanner:
             except (PortalError, DomainError):
                 pass
             return "unavailable"
-        if not self._system_move(c, content["id"], ("draft", "failed"), "generating", "generate"):
+        if not self._system_move(c, content["id"], ("draft", "failed"), "generating", "status"):
             return "unavailable"
         try:                    # simulado: se prepara al momento; con proveedores reales sigue en segundo plano
             studio.process_job(jwt, c.tenant_id, job["id"])
@@ -175,8 +189,10 @@ class ContentPlanner:
         rows = self.db.update("marketing_content", {"id": f"eq.{content_id}", "tenant_id": f"eq.{c.tenant_id}",
                                                     "status": f"eq.{cur['status']}"},
                               {**(values or {}), "status": to, "updated_by": c.user["id"]})
-        if rows:
-            self.svc._event(c, content_id, action, cur["status"], to, None)
+        if rows:                                   # cambio del sistema: nunca como acción personal del usuario
+            self.db.insert("marketing_approval_events", {
+                "tenant_id": c.tenant_id, "content_id": content_id, "action": action, "from_status": cur["status"],
+                "to_status": to, "comment": None, "actor_id": c.user["id"], "actor_role": "system"})
         return bool(rows)
 
     # ------------------------------------------------------------------ sincronizar y presentar
@@ -243,9 +259,7 @@ class ContentPlanner:
     def retry(self, jwt: str, tenant_id: str, content_id: str) -> Dict[str, Any]:
         c = self.svc.ctx(jwt, tenant_id)
         self.svc._enabled(c)
-        cur = self.svc._content(c, content_id)
-        if cur["status"] != "failed":
-            _err("not_retryable", 409)
+        cur = self.svc._content(c, content_id)                  # la reserva condicionada de abajo exige «failed»
         last = self._jobs(c, [cur["id"]]).get(cur["id"])
         if not last:
             _err("not_retryable", 409)
@@ -259,5 +273,10 @@ class ContentPlanner:
              "audience": brief.get("audience_notes") or "", "offer": script.get("body") or "",
              "tone": brief.get("style") or "professional", "cta": script.get("cta") or "",
              "language": brief.get("language") or "es"}
-        state = self._prepare(jwt, c, cur, v, regeneration_of=last["id"])
+        # El reintento se reserva con un cambio condicionado (No se pudo preparar → Borrador): de dos reintentos
+        # simultáneos solo uno sigue; la clave derivada del intento anterior evita además un segundo trabajo.
+        if not self._system_move(c, cur["id"], ("failed",), "draft", "reopen"):
+            _err("not_retryable", 409)
+        state = self._prepare(jwt, c, self.svc._content(c, cur["id"]), v, key=f"retry-{last['id']}",
+                              regeneration_of=last["id"])
         return {"content": self.present(c, self.svc._content(c, cur["id"])), "preparation": state}

@@ -1,8 +1,9 @@
 // Contenido → Planear contenido: objetivo, cómo crear, formato, instrucciones, propuesta y revisión.
 // El backend prepara la propuesta (si el plan lo permite) y la deja como «Listo para revisar». Nada se publica
 // automáticamente: aprobar, solicitar cambios o rechazar siguen las reglas de aprobación de siempre.
-import { el, clear, openModal, field, input, select, fmtDateTime, tz } from '../ui.js';
+import { el, clear, openModal, field, input, select, tz } from '../ui.js';
 import { api } from '../api.js';
+import { when } from './marketing-ui.js';
 import { getLang } from '../i18n.js';
 import { pl } from './marketing-planner-i18n.js';
 import { t, errText } from './marketing-i18n.js';
@@ -42,7 +43,7 @@ export async function plannerModal(ctx, reload) {
           el('input', { type: 'checkbox', checked: w.media.includes(m.id), onchange: e => {
             w.media = e.target.checked ? [...w.media, m.id] : w.media.filter(x => x !== m.id); } }),
           el('span', { class: 'mk-file' }, m.original_filename || m.id.slice(0, 8),
-            m.expires_at ? el('span', { class: 'hint' }, ` · ${pl('expiresOn', fmtDateTime(m.expires_at))}`) : null))))
+            m.expires_at ? el('span', { class: 'hint' }, ` · ${pl('expiresOn', when(m.expires_at))}`) : null))))
           : el('p', { class: 'hint' }, pl('noFiles'))) : null),
     format: () => el('div', {}, el('p', {}, pl('q_format')),
       choiceGrid(PLAN_FORMATS, w.format, v => pl(`f_${v}`), null, v => { w.format = v; render(); })),
@@ -71,7 +72,7 @@ export async function plannerModal(ctx, reload) {
           ...row(pl('p_text'), c.caption), ...row(pl('p_cta'), c.cta), ...row(pl('p_format'), pl(`f_${c.format}`)),
           ...row(pl('p_visuals'), w.mode === 'library_ai' ? pl('visualsLib', w.media.length) : pl('visualsAi')),
           ...row(pl('p_platforms'), (c.channels || []).map(channelLabel).join(', ')),
-          ...row(pl('p_date'), c.planned_at ? fmtDateTime(c.planned_at) : null), ...row(pl('p_objective'), pl(`ob_${w.objective}`))));
+          ...row(pl('p_date'), c.planned_at ? when(c.planned_at) : null), ...row(pl('p_objective'), pl(`ob_${w.objective}`))));
     },
     review: () => {
       const c = w.result.content;
@@ -107,7 +108,7 @@ export async function plannerModal(ctx, reload) {
   async function prepare(btn) {
     btn.disabled = true; err.textContent = '';
     try {
-      w.result = await M.planContent(ctx.tenantId, planBody(w, { objective: pl(`ob_${w.objective}`) }));
+      w.result = await M.planContent(ctx.tenantId, planBody(w, { objective: pl(`ob_${w.objective}`) }), w.key);
       w.step += 1; render();
     } catch (e) { err.textContent = errText(e); btn.disabled = false; }
   }

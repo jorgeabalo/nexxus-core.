@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any, Dict
 
 from services.marketing import MarketingService
+from services.marketing_autopilot import AutopilotService, channels_connected
 from services.marketing_content_plan import ContentPlanner, public_history, public_publication
 from services.member_portal import PortalError
 from services import marketing_publication_plan as pp
@@ -39,7 +40,9 @@ class MarketingPlanService(MarketingService):
             by[r["display_status"]] = by.get(r["display_status"], 0) + 1
         counts = {k: by.get(k, 0) for k in ("draft", "preparing", "ready_for_review", "changes_requested", "approved",
                                              "scheduled", "published", "could_not_prepare")}
-        out["counts"] = {**counts, "waiting_approval": counts["ready_for_review"], "results_available": 0}
+        out["counts"] = {**counts, "waiting_approval": counts["ready_for_review"]}
+        # Sin fuente real de métricas no hay cifras: solo el estado (nunca un 0 que parezca una métrica).
+        out["results"] = {"state": "none" if channels_connected(self) else "not_connected"}
         out["upcoming"] = pl.present_rows(c, out["upcoming"])
         out["recommendations"] = recommendations(counts, out["publication_plan"], len(out["upcoming"]))
         return out
@@ -67,8 +70,11 @@ class MarketingPlanService(MarketingService):
         out["items"] = self.planner().present_rows(self.ctx(jwt, tenant_id), out["items"])
         return out
 
-    def plan_content(self, jwt: str, tenant_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
-        return self.planner().plan(jwt, tenant_id, body)
+    def plan_content(self, jwt: str, tenant_id: str, body: Dict[str, Any], idempotency_key: Any = None) -> Dict[str, Any]:
+        return self.planner().plan(jwt, tenant_id, body, idempotency_key)
+
+    def autopilot(self) -> AutopilotService:
+        return AutopilotService(self)
 
     def retry_content(self, jwt: str, tenant_id: str, content_id: str) -> Dict[str, Any]:
         return self.planner().retry(jwt, tenant_id, content_id)

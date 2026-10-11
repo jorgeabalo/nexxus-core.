@@ -157,8 +157,10 @@ export function flowCard() {
     el('p', { class: 'mk-note' }, p('flow_note'))));
 }
 
-export function resultsCard() {
-  return card(p('results_title'), el('div', { class: 'card-body' },
-    el('p', { class: 'hint' }, p('results_none')),
+// Sin fuente real no se muestra ninguna cifra (ni un 0): solo el estado y qué se medirá.
+export function resultsCard(results) {
+  const state = (results && results.state) || 'not_connected';
+  return card(p('results_title'), el('div', { class: 'card-body', dataset: { results: state } },
+    el('p', { class: 'hint' }, p(state === 'not_connected' ? 'results_not_connected' : 'results_none')),
     el('ul', { class: 'mk-flow' }, ...p('metrics').map(x => el('li', {}, x)))));
 }

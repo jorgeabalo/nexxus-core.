@@ -16,7 +16,8 @@ const read = (f) => readFile(MOD(f), 'utf8');
 const TECH = /queued|\blease|worker|generation_job|reserved_cost|provider|\bmodels?\b|strategy|worker_id|attempts|estimated_cost|actual_cost|maximum_cost|error_code|awaiting_generation_approval/i;
 const MARKETING_FILES = ['marketing.js', 'marketing-forms.js', 'marketing-planner.js', 'marketing-planner-i18n.js', 'marketing-i18n.js',
   'marketing-state.js', 'marketing-library.js', 'marketing-studio-state.js', 'marketing-studio-i18n.js', 'marketing-addons.js',
-  'marketing-addons-state.js', 'marketing-plan-i18n.js', 'marketing-ui.js'];
+  'marketing-addons-state.js', 'marketing-plan-i18n.js', 'marketing-ui.js', 'marketing-autopilot.js',
+  'marketing-autopilot-i18n.js'];
 
 // ------------------------------------------------------------------ navegación
 test('navegación visible: Resumen, Contenido, Calendario, Campañas y Biblioteca (sin Estudio ni Trabajos)', async () => {

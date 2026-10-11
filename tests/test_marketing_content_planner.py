@@ -10,6 +10,7 @@ from marketing_addon_fake import install
 from marketing_planner_client import plan_body, planner_client
 from services import marketing_content_plan as cp
 from services.marketing_library import LibraryService
+from services.member_portal import PortalError
 from test_marketing import MANAGER, NOW, OWNER, T1
 from test_marketing_studio import StudioDB, no_people, png, up
 
@@ -63,12 +64,59 @@ def test_plan_creates_content_and_proposal_ready_for_review(client, db):
     assert db.tables["marketing_generation_jobs"][0]["content_id"] == item["id"]               # trabajo interno ligado
 
 
-def test_same_submission_twice_returns_the_same_content(client, db):
-    b = body(idempotency_key="plan-idem-0000000001")
-    a = client.post(f"{P}/content/plan", json=b, headers=H).json()
-    again = client.post(f"{P}/content/plan", json=b, headers=H).json()
+def test_idempotency_key_is_required_and_scoped_to_tenant_and_user(client, db):
+    r = client.post(f"{P}/content/plan", json=body(), headers=H, no_key=True)
+    assert r.status_code == 400 and r.json() == {"error": "idempotency_key_required"}
+    k = {**H, "Idempotency-Key": "plan-idem-0000000001"}
+    a = client.post(f"{P}/content/plan", json=body(), headers=k).json()
+    again = client.post(f"{P}/content/plan", json=body(), headers=k).json()
     assert again["content"]["id"] == a["content"]["id"] and again["preparation"] == "existing"
     assert len(db.tables["marketing_content"]) == 1 and len(db.tables["marketing_generation_jobs"]) == 1
+    other = client.post(f"{P}/content/plan", json=body(instructions={"topic": "Otra cosa"}), headers=k)
+    assert other.status_code == 409 and other.json() == {"error": "idempotency_conflict"}
+    mine = client.post(f"{P}/content/plan", json=body(), headers={**HM, "Idempotency-Key": "plan-idem-0000000001"})
+    assert mine.status_code == 200 and mine.json()["content"]["id"] != a["content"]["id"]    # la clave es por usuario
+    assert len(db.tables["marketing_content"]) == 2 and len(db.tables["marketing_generation_jobs"]) == 2
+
+
+def test_disabled_marketing_is_checked_by_the_planner_itself(monkeypatch, db):
+    """Sin pasar por create_content: el planificador comprueba Marketing activo antes de reservar la clave."""
+    from services.marketing_plan import MarketingPlanService
+    from marketing_autopilot_fake import install as install_autopilot
+    install_autopilot(db)
+    db.tables["marketing_settings"][0]["marketing_enabled"] = False
+    calls = []
+    real_rpc = db.rpc
+    db.rpc = lambda fn, args, *a, **k: calls.append(fn) or real_rpc(fn, args, *a, **k)
+    svc = MarketingPlanService(db, now=NOW)
+    monkeypatch.setattr(svc, "create_content", lambda *a, **k: pytest.fail("no debe usarse create_content"))
+    with pytest.raises(PortalError) as e:
+        cp.ContentPlanner(svc, lambda: pytest.fail("no debe preparar nada")).plan(
+            f"jwt-{OWNER}", T1, body(), "plan-disabled-000000001")
+    assert (e.value.code, e.value.status) == ("marketing_disabled", 403)
+    assert calls == [] and db.tables["marketing_plan_requests"] == []          # ni clave reservada
+    assert db.tables["marketing_content"] == [] and db.tables.get("marketing_generation_jobs", []) == []
+    assert svc.publication_plan(svc.ctx(f"jwt-{OWNER}", T1))["used"] == 0     # sin consumir cuota
+
+
+def test_every_history_action_is_allowed_by_the_database(client, db, monkeypatch):
+    """Las acciones del historial deben estar en el CHECK de marketing_approval_events (base real)."""
+    import re as _re
+    from pathlib import Path
+    sql = (Path(__file__).resolve().parents[1] / "supabase/migrations/20261009120000_aita_marketing.sql").read_text()
+    allowed = set(_re.findall(r"'(\w+)'", sql.split("action      text not null check (action in (")[1].split("))")[0]))
+    from services.marketing_studio import StudioService
+    with monkeypatch.context() as m:
+        m.setattr(StudioService, "process_job", lambda *a, **k: None)
+        item = client.post(f"{P}/content/plan", json=body(), headers=H).json()["content"]
+    db.tables["marketing_generation_jobs"][0]["status"] = "failed"
+    client.get(f"{P}/content/{item['id']}?tenant_id={T1}", headers=H)
+    client.post(f"{P}/content/{item['id']}/retry", json={"tenant_id": T1}, headers=H)
+    client.post(f"{P}/content/{item['id']}/transition", json={"tenant_id": T1, "to": "draft", "comment": "x"}, headers=H)
+    actions = {e["action"] for e in db.tables["marketing_approval_events"]}
+    assert actions <= allowed, actions - allowed
+    roles = {e["actor_role"] for e in db.tables["marketing_approval_events"]}
+    assert roles <= {"owner", "manager", "staff", "system"}
 
 
 @pytest.mark.parametrize("change,code", [
@@ -211,3 +259,19 @@ def test_disabled_marketing_cannot_plan_or_retry(client, db):
     assert r.status_code == 403 and r.json() == {"error": "marketing_disabled"}
     assert client.post(f"{P}/content/{cid}/retry", json={"tenant_id": T1}, headers=H).status_code == 403
     assert len(db.tables["marketing_content"]) == 1 and len(db.tables["marketing_generation_jobs"]) == 1
+
+
+def test_simultaneous_retries_prepare_only_once(client, db, monkeypatch):
+    """Si otra petición ya reservó el reintento (cambio condicionado), esta no crea un segundo trabajo."""
+    from services.marketing_studio import StudioService
+    with monkeypatch.context() as m:
+        m.setattr(StudioService, "process_job", lambda *a, **k: None)
+        item = client.post(f"{P}/content/plan", json=body(), headers=H).json()["content"]
+    db.tables["marketing_generation_jobs"][0]["status"] = "failed"
+    client.get(f"{P}/content/{item['id']}?tenant_id={T1}", headers=H)
+    real = cp.ContentPlanner._system_move
+    monkeypatch.setattr(cp.ContentPlanner, "_system_move", lambda self, c, cid, frm, to, action, values=None:
+                        False if frm == ("failed",) and to == "draft" else real(self, c, cid, frm, to, action, values))
+    r = client.post(f"{P}/content/{item['id']}/retry", json={"tenant_id": T1}, headers=H)
+    assert r.status_code == 409 and r.json() == {"error": "not_retryable"}
+    assert len(db.tables["marketing_generation_jobs"]) == 1

@@ -120,7 +120,8 @@ def test_every_manager_script_parses_as_an_es_module():
 @pytest.mark.skipif(not shutil.which("node"), reason="Node.js no disponible")
 def test_marketing_js():
     r = subprocess.run(["node", "--test", str(ROOT / "tests/js/marketing.test.mjs"),
-                        str(ROOT / "tests/js/marketing-studio.test.mjs"), str(ROOT / "tests/js/marketing-plan.test.mjs")],
+                        str(ROOT / "tests/js/marketing-studio.test.mjs"), str(ROOT / "tests/js/marketing-plan.test.mjs"),
+                        str(ROOT / "tests/js/marketing-autopilot.test.mjs")],
                        capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
 
@@ -188,3 +189,11 @@ def test_marketing_publication_addons_sql():
     r = subprocess.run(["node", str(ROOT / "tests/sql/marketing_publication_addons.mjs")], capture_output=True, text=True,
                        timeout=180, env={**os.environ, "NODE_PATH": os.environ["PGLITE_NODE_PATH"]})
     assert r.returncode == 0 and "ALL MARKETING PUBLICATION ADDON SQL TESTS PASSED" in r.stdout, r.stdout[-2000:] + r.stderr[-2000:]
+
+
+@pytest.mark.skipif(not (shutil.which("node") and os.getenv("PGLITE_NODE_PATH")),
+                    reason="PGlite no disponible (PGLITE_NODE_PATH=/ruta/node_modules)")
+def test_marketing_autopilot_sql():
+    r = subprocess.run(["node", str(ROOT / "tests/sql/marketing_autopilot.mjs")], capture_output=True, text=True,
+                       timeout=180, env={**os.environ, "NODE_PATH": os.environ["PGLITE_NODE_PATH"]})
+    assert r.returncode == 0 and "ALL MARKETING AUTOPILOT SQL TESTS PASSED" in r.stdout, r.stdout[-2000:] + r.stderr[-2000:]
