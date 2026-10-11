@@ -250,3 +250,11 @@ def test_all_plans_remain_without_charges(c):
         assert billing['charges_enabled'] is False
         assert billing['payment_collection_enabled'] is False
         assert billing['activation_requires_owner_authorization'] is True
+
+
+def test_preferred_name_and_separate_address_fields(c):
+    data={'name':'Jorge Abalo','preferred_name':'Jorge','address':'123 Main Street','city':'Miami','state':'Florida','country':'United States','phone':'5551234567'}
+    r=c.put('/api/car/profile',json=data)
+    assert r.status_code==200
+    for key,value in data.items(): assert c.get('/api/car/dashboard').json()['profile'][key]==value
+    assert c.put('/api/car/profile',json={**data,'preferred_name':' '*3}).status_code==422

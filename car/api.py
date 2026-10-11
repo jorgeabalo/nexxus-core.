@@ -51,7 +51,8 @@ def router(store, identity, *, demo=False, obd=None, assistant=None):
                'initial_odometer_miles':odometer,'mpg':26,'fuel_price':3.45,'oil_due':odometer+5000,
                'baseline_at':now(),'maintenance_interval_source':'demo_estimate'}
             store.save_vehicle(t,v)
-            p.update(name=b.name,address=b.address,phone=b.phone,onboarding_completed=True,
+            p.update(preferred_name=b.preferred_name,city=b.city,state=b.state,country=b.country,
+                     name=b.name,address=b.address,phone=b.phone,onboarding_completed=True,
                      onboarding_at=now(),primary_vehicle_id=v['id'])
             store.save_profile(t,p)
             return {'profile':p,'vehicle':v}

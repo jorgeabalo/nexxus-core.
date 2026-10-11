@@ -217,3 +217,5 @@ button{min-height:56px;font-size:16px;border-radius:12px;padding:15px 22px}input
 .vehicle-picker{flex:1;min-width:0}.vehicle-picker #add-car-top{width:100%;margin-top:0}
 
 .catalog-picker{padding:20px;border:1px solid var(--line);border-radius:16px;margin:16px 0;background:#7f294311}.catalog-picker h3{margin-top:0;font-size:23px}
+
+textarea{box-sizing:border-box;width:100%;padding:14px;border-radius:12px;border:1px solid var(--line,#777);background:transparent;color:inherit;font:inherit;resize:vertical;min-height:100px}.address-wide{grid-column:1/-1}

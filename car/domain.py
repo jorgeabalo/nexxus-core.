@@ -47,12 +47,18 @@ class Question(Input):
 class Plan(Input):
     plan: Literal['basic', 'pro']
 
-class Profile(Input):
+class AddressFields(Input):
+    preferred_name: str | None = Field(default=None, min_length=1, max_length=40)
+    city: str | None = Field(default=None, max_length=100)
+    state: str | None = Field(default=None, max_length=100)
+    country: str | None = Field(default=None, max_length=100)
+
+class Profile(AddressFields):
     name: str = Field(min_length=1, max_length=80)
     address: str | None = Field(default=None, min_length=5, max_length=300)
     phone: str | None = Field(default=None, min_length=7, max_length=30, pattern=r'^\+?[0-9 () .-]+$')
 
-class Onboarding(Input):
+class Onboarding(AddressFields):
     name: str = Field(min_length=1, max_length=80)
     address: str = Field(min_length=5, max_length=300)
     phone: str = Field(min_length=7, max_length=30, pattern=r'^\+?[0-9 () .-]+$')

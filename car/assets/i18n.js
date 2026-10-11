@@ -1,5 +1,6 @@
 'use strict';
 const EN = {
+'¿Cómo te gusta que te llamen?':'What would you like us to call you?','Calle y número':'Street address','Ciudad':'City','Estado / provincia':'State / province','País':'Country','Ej. Jorge':'e.g. Jorge',
 'Correo electrónico':'Email','Contraseña':'Password','Iniciar sesión sin cobro':'Sign in without charges','Acceso de prueba sin cobro para cuentas habilitadas.':'Trial access without charges for approved accounts.',
 'Tu espacio personal para probar AITA Car. Sin tarjeta y sin cobros. Tus datos se guardan en el servidor de esta cuenta.':'Your personal space to try AITA Car. No card and no charges. Your data is saved on this account’s server.',
 'Tu perfil y tus registros se guardan en tu cuenta. Al iniciar sesión, tus credenciales se envían al proveedor de identidad configurado. Los mapas externos reciben la información que compartas al abrirlos.':'Your profile and records are stored in your account. When signing in, your credentials are sent to the configured identity provider. External maps receive information you share when opening them.',
