@@ -4,7 +4,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { MIX_PRESETS, normalizeMix, approxScenes, privacyClass, usableAsSource, reelStage, fmtBytes, fmtCost,
-  newIdempotencyKey, WIZARD_STEPS, ACCEPT, budgetView } from '../../manager/assets/js/modules/marketing-studio-state.js';
+  newIdempotencyKey, WIZARD_STEPS, ACCEPT, budgetView, modeMix, modeFromJob,
+  addonQuote } from '../../manager/assets/js/modules/marketing-studio-state.js';
 import { STUDIO_TEXT } from '../../manager/assets/js/modules/marketing-studio-i18n.js';
 import { TABS } from '../../manager/assets/js/modules/marketing-state.js';
 
@@ -18,6 +19,29 @@ test('presets y mezcla personalizada siempre suman 100', () => {
   }
   assert.deepEqual(normalizeMix(37), { real: 35, ai: 65 });
   assert.deepEqual(normalizeMix(38, 10), { real: 40, ai: 60 });
+});
+
+test('el Manager solo ofrece biblioteca mejorada o contenido totalmente generado', async () => {
+  assert.deepEqual(modeMix('library_ai'), { real_media_percent: 100, ai_media_percent: 0, adapt_real: true });
+  assert.deepEqual(modeMix('fully_ai'), { real_media_percent: 0, ai_media_percent: 100, adapt_real: false });
+  assert.equal(modeFromJob({ real_media_percent: 100 }), 'library_ai');
+  assert.equal(modeFromJob({ real_media_percent: 0 }), 'fully_ai');
+  const src = await readFile(new URL('../../manager/assets/js/modules/marketing-studio.js', import.meta.url), 'utf8');
+  assert.ok(!/type:\s*'range'|MIX_PRESETS|mixReal|applySuggestion/.test(src));
+  for (const lang of ['es', 'en']) for (const mode of ['library_ai', 'fully_ai']) {
+    assert.ok(STUDIO_TEXT[lang][`mode_${mode}`] && STUDIO_TEXT[lang][`mode_${mode}_desc`]);
+  }
+});
+
+test('ampliaciones exactas para 1, 4, 8, 30 y 45 publicaciones mensuales', () => {
+  assert.deepEqual(addonQuote(1), { additional: 1, amount: 6, currency: 'USD', blocks: [{ size: 1, quantity: 1, subtotal: 6 }] });
+  assert.equal(addonQuote(4).amount, 20);
+  assert.equal(addonQuote(8).amount, 35);
+  assert.deepEqual(addonQuote(22).blocks.map(x => [x.size, x.quantity]), [[8, 2], [4, 1], [1, 2]]); // 8 -> 30
+  assert.equal(addonQuote(22).amount, 102);
+  assert.deepEqual(addonQuote(37).blocks.map(x => [x.size, x.quantity]), [[8, 4], [4, 1], [1, 1]]); // 8 -> 45
+  assert.equal(addonQuote(37).amount, 166);
+  for (const bad of [0, -1, 501, 1.5, 'x']) assert.equal(addonQuote(bad), null);
 });
 
 test('aproximación a escenas y segundos antes de generar', () => {
@@ -163,10 +187,10 @@ test('ningún archivo servido al Manager menciona topes internos, presupuestos g
   };
   await walk(root);
   assert.ok(files.length > 10);
-  const banned = [/\b80\s*USD\b/i, /\bUSD\s*80\b/i, /US?\$\s*80\b/i, /\b20\s*USD\b/i, /\bUSD\s*20\b/i, /US?\$\s*20\b/i,
+  const banned = [/\b80\s*USD\b/i, /\bUSD\s*80\b/i, /US?\$\s*80\b/i,
     /presupuesto global/i, /global budget/i, /AITA global/i, /costo total de AITA/i, /coste total de AITA/i, /total cost of AITA/i,
     /margen de AITA/i, /AITA('s)? margin/i, /profit margin/i, /Marketing AI budget/i, /omniroute/i, /price_source/i, /unit_price/i,
-    /precio unitario/i, /unit price/i];
+    /precio unitario/i, /unit price/i, /(?:tope|max(?:imum|imo)?)\s+(?:t[eé]cnico\s+)?(?:de\s+)?(?:USD\s*)?20/i];
   for (const f of files) {
     const src = await readFile(f, 'utf8');
     for (const re of banned) assert.ok(!re.test(src), `${f.pathname.split('/manager/')[1]}: ${re}`);

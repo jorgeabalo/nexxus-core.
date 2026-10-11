@@ -239,6 +239,11 @@ export const api = {
   // ----- AITA Marketing (backend: solo owner/manager; valida tenant y reglas de estado) -----
   marketing: {
     dashboard(tenantId) { return backend('GET', `/api/manager/marketing/dashboard?${qs({ tenant_id: tenantId })}`); },
+    authorizePublicationAddon(tenantId, additionalPublications, idempotencyKey) {
+      return backend('POST', '/api/manager/marketing/publication-addons/authorize', {
+        tenant_id: tenantId, additional_publications: additionalPublications, idempotency_key: idempotencyKey, confirm: true,
+      });
+    },
     brand(tenantId) { return backend('GET', `/api/manager/marketing/brand?${qs({ tenant_id: tenantId })}`); },
     saveBrand(tenantId, values) { return backend('PUT', '/api/manager/marketing/brand', { ...values, tenant_id: tenantId }); },
     campaigns(tenantId) { return backend('GET', `/api/manager/marketing/campaigns?${qs({ tenant_id: tenantId })}`); },

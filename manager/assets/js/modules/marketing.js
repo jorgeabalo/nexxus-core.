@@ -73,7 +73,7 @@ export async function render(root, ctx) {
     clear(notice).appendChild(el('div', {},
       enabled ? null : el('div', { class: 'error-box mk-notice' }, t('disabled')),
       el('p', { class: 'hint' }, d.settings.approval_required ? `${t('approvalOn')} ` : '', t('noPublishing'))));
-    const k = d.counts;
+    const k = d.counts, plan = d.publication_plan;
     const bar = (label, used, limit) => {
       const u = usageBar(used, limit);
       return el('div', { class: 'mk-usage' },
@@ -87,9 +87,7 @@ export async function render(root, ctx) {
       el('div', { class: 'grid-2' },
         card(t('usage'), el('div', { class: 'card-body' },
           el('p', { class: 'hint' }, `${t('plan')}: ${d.settings.plan_code}`),
-          bar(t('posts'), d.usage.posts, d.limits.monthly_post_limit),
-          bar(t('images'), d.usage.images, d.limits.monthly_image_limit),
-          bar(t('reels'), d.usage.reels, d.limits.monthly_reel_limit))),
+          bar(t('posts'), plan.used, plan.total))),
         card(t('upcoming'), table([
           { label: t('date'), render: r => fmtDateTime(r.scheduled_at || r.planned_at) },
           { label: t('titleF'), key: 'title' },

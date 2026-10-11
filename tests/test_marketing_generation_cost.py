@@ -194,8 +194,9 @@ def test_http_never_exposes_internal_costs_or_providers(monkeypatch, db):
                      "unit_price", "margin", "global_budget", "global_aita_budget"):
             assert leak not in t, leak
     job = c.get(f"/api/manager/marketing/jobs/{jid}?tenant_id={T1}", headers=H).json()
-    assert set(job["cost"]) == {"currency", "estimated", "reserved", "actual"}
-    assert job["cost"]["reserved"] == 0 and job["cost"]["actual"] == 0
+    assert "cost" not in job
+    for key in ("maximum_cost", "estimated_cost", "reserved_cost", "actual_cost", "currency"):
+        assert key not in job
     assert all(set(e) <= {"id", "action", "from_status", "to_status", "actor_role", "created_at"}
                for e in job["events"])
     assert all("storage_path" not in o and "metadata" not in o and "worker_id" not in o for o in job["outputs"])

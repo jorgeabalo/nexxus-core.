@@ -13,8 +13,12 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
-from services.marketing import MarketingService
+from services.marketing_plan import MarketingPlanService
 from services.member_portal import PortalError
+
+# Alias estable para los tests y las integraciones que sustituyen el servicio
+# al construir el router. La implementación activa incluye el plan público.
+MarketingService = MarketingPlanService
 
 logger = logging.getLogger(__name__)
 P = "/api/manager/marketing"
@@ -23,7 +27,7 @@ P = "/api/manager/marketing"
 def build_router(get_db: Callable) -> APIRouter:
     r = APIRouter()
 
-    def svc() -> MarketingService:
+    def svc() -> MarketingPlanService:
         db = get_db()
         if db is None:
             raise PortalError("portal_not_configured", 503)
@@ -55,6 +59,11 @@ def build_router(get_db: Callable) -> APIRouter:
     @r.get(f"{P}/dashboard")
     async def dashboard(request: Request, tenant_id: str = ""):
         return await call(lambda: svc().dashboard(bearer(request), tenant_id))
+
+    @r.post(f"{P}/publication-addons/authorize")
+    async def authorize_publication_addon(request: Request):
+        b = await body(request)
+        return await call(lambda: svc().authorize_addon(bearer(request), tid(b), b))
 
     # ---------- Brand Kit ----------
     @r.get(f"{P}/brand")

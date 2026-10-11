@@ -3,6 +3,7 @@
 
 export const MIX_PRESETS = [[100, 0], [75, 25], [50, 50], [25, 75], [0, 100]];
 export const MIX_STEP = 5;
+export const CREATION_MODES = ['library_ai', 'fully_ai'];
 export const OBJECTIVES = ['new_members', 'class_promo', 'event', 'offer', 'brand', 'education'];
 export const AUDIENCES = ['general', 'seniors_60_plus', 'beginners', 'athletes', 'parents', 'custom'];
 export const STYLES = ['energetic', 'calm', 'professional', 'cinematic', 'educational'];
@@ -11,7 +12,7 @@ export const TARGETS = ['instagram', 'facebook', 'tiktok', 'youtube_shorts'];
 export const QUALITY = ['draft', 'standard', 'premium'];
 export const PEOPLE_POLICIES = ['exclude', 'anonymize', 'consented', 'no_people'];
 export const ANON_METHODS = ['pixelate_faces', 'blur_faces', 'crop_people', 'silhouette', 'replace_background_and_people'];
-export const WIZARD_STEPS = ['objective', 'audience', 'sources', 'style', 'script', 'cost', 'review'];
+export const WIZARD_STEPS = ['objective', 'audience', 'sources', 'style', 'script', 'review'];
 export const ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,video/mp4,video/quicktime,video/webm';
 
 // Porcentaje real redondeado al paso del deslizador; IA = 100 - real. Siempre suma 100.
@@ -95,4 +96,27 @@ export function budgetView(b) {
   if (!b || b.enabled !== true) return { enabled: false, title: 'budgetTitle', message: 'budgetDisabled' };
   return { enabled: true, title: 'budgetTitle', currency: b.currency || 'USD', warning: b.warning || null,
     rows: [['budgetMonth', b.assigned], ['budgetUsed', b.used], ['budgetReserved', b.reserved], ['budgetAvailable', b.available]] };
+}
+
+export function modeMix(mode) {
+  return mode === 'library_ai'
+    ? { real_media_percent: 100, ai_media_percent: 0, adapt_real: true }
+    : { real_media_percent: 0, ai_media_percent: 100, adapt_real: false };
+}
+
+export function modeFromJob(job) {
+  return Number(job?.real_media_percent) > 0 ? 'library_ai' : 'fully_ai';
+}
+
+export function addonQuote(additional) {
+  const n = Number(additional);
+  if (!Number.isInteger(n) || n < 1 || n > 500) return null;
+  let left = n, amount = 0;
+  const blocks = [];
+  for (const [size, price] of [[8, 35], [4, 20], [1, 6]]) {
+    const quantity = Math.floor(left / size);
+    left %= size;
+    if (quantity) { blocks.push({ size, quantity, subtotal: quantity * price }); amount += quantity * price; }
+  }
+  return { additional: n, amount, currency: 'USD', blocks };
 }
