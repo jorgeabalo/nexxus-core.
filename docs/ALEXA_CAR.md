@@ -29,5 +29,7 @@ No introducir secretos en Git, documentación, capturas ni chat. El dueño debe 
 Configurar cliente/secret y activar endpoint solo tras aprobar alcance. En la app Alexa del iPhone (cuenta Amazon desarrolladora): habilitar skill de desarrollo, vincular cuenta AITA con inicio de sesión y consentimiento. Consultar mantenimiento, dictar gasto, cancelar, confirmar y verificarlo en Car. Revocar y verificar bloqueo. La integración en Ottocast y la detección automática de viajes son trabajos separados y no quedan resueltos por Alexa.
 
 Fuentes oficiales:
+La dependencia oscrypto se fija al commit oficial d5f3437ed24257895ae1edd9e503cfb352e635a8 para corregir la detección de OpenSSL en Linux. No se deshabilita la validación de certificados. Fuente: https://github.com/wbond/oscrypto/commit/d5f3437ed24257895ae1edd9e503cfb352e635a8
+
 https://developer.amazon.com/en-US/docs/alexa/custom-skills/security-testing-for-an-alexa-skill.html
 https://developer.amazon.com/docs/alexaplus/account-linking/configure-authorization-code-grant.html
