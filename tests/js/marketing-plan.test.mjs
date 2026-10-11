@@ -116,3 +116,22 @@ test('ningún archivo del Manager promete viralidad, vistas o likes', async () =
   assert.equal(PLAN_TEXT.es.flow_note.split('.')[0],
     'AITA analiza los resultados para aumentar la probabilidad de alcance, interacción y conversiones');
 });
+
+test('estados comerciales para owner y manager, sin decir que se pagó o cobró', () => {
+  const es = PLAN_TEXT.es, en = PLAN_TEXT.en;
+  assert.deepEqual([es.st_pending, es.st_active, es.st_declined, es.st_cancel_scheduled],
+    ['Pendiente de autorización', 'Autorizada', 'Rechazada', 'Cancelación programada']);
+  assert.deepEqual([en.st_pending, en.st_active, en.st_declined, en.st_cancel_scheduled],
+    ['Pending authorization', 'Authorized', 'Declined', 'Cancellation scheduled']);
+  for (const s of ['upcoming', 'changing']) assert.equal(es[`st_${s}`], 'Autorizada');
+  assert.equal(es.invoice_note, 'Autorizada: se añadirá a tu factura mensual.');
+  assert.equal(en.invoice_note, 'Authorized: it will be added to your monthly invoice.');
+  assert.match(es.renews, /Se renueva cada mes/);
+  assert.match(es.cancel_scheduled_line('1 de noviembre de 2026'), /^Termina el 1 de noviembre de 2026; el mes en curso se mantiene\./);
+  for (const lang of ['es', 'en']) {
+    const all = JSON.stringify(PLAN_TEXT[lang]) + Object.values(PLAN_TEXT[lang]).filter(v => typeof v === 'function')
+      .map(f => String(f(12, '$55', '1 de noviembre'))).join(' ');
+    assert.ok(!/\b(pagad[oa]s?|cobrad[oa]s?|paid|was charged|has been charged|payment (received|captured))\b/i.test(all), `${lang}: nada pagado/cobrado`);
+    assert.ok(!/uninvoiced|billing_line|amount_cents|margen|margin/i.test(all), `${lang}: sin términos internos`);
+  }
+});

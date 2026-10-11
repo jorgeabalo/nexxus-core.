@@ -112,17 +112,25 @@ export function addonSection(ctx, plan, role, reload) {
   const rowText = (a) => `${p('row', a.additional_publications, fmtPrice(a.amount))}${a.cadence === 'weekly' ? ` ${p('row_weekly', a.per_week)}` : ''}`;
   const pending = (plan.pending || []).length ? el('div', { class: 'mk-addon-list' }, el('h3', {}, p('pending_title')),
     ...plan.pending.map(a => el('div', { class: 'mk-addon-item' },
-      el('p', {}, rowText(a), a.requested_by_me ? [' · ', el('strong', { class: 'mk-addon-state' }, p('by_me'))] : null),
+      el('p', {}, rowText(a), ' · ', el('strong', { class: 'mk-addon-state' }, p('st_pending')),
+        a.requested_by_me ? ` (${p('by_me')})` : null),
       approver ? confirmRow(p('confirm_authorize', a.additional_publications, fmtPrice(a.amount)), p('approve'),
         act(a.id, 'approve', 'authorized')) : null,
       approver ? el('button', { class: 'btn btn-sm', type: 'button', onclick: (e) => act(a.id, 'decline', 'declined')(e.target) },
         p('decline')) : null))) : null;
+  // Estado comercial: autorizada (se añadirá a la factura), renovación mensual o cancelación programada.
+  const detail = (a) => [
+    p('monthly_total_line', plan.included + a.additional_publications),
+    a.state === 'cancel_scheduled' ? p('cancel_scheduled_line', fmtDay(a.ends_cycle))
+      : a.state === 'changing' ? p('changing_line', fmtDay(a.ends_cycle))
+        : `${p('since', fmtDay(a.starts_cycle))} · ${p('renews')}`,
+    p('invoice_note'),
+  ];
   const mine = [plan.current, plan.upcoming].filter(Boolean);
   const active = mine.length ? el('div', { class: 'mk-addon-list' }, el('h3', {}, p('active_title')),
     ...mine.map(a => el('div', { class: 'mk-addon-item', dataset: { state: a.state } },
-      el('p', {}, rowText(a), ' · ', el('strong', { class: 'mk-addon-state' }, p(`state_${a.state}`))),
-      el('p', { class: 'hint' }, [a.state === 'upcoming' ? p('since', fmtDay(a.starts_cycle)) : null,
-        a.ends_cycle ? p('until', fmtDay(a.ends_cycle)) : null].filter(Boolean).join(' · ')),
+      el('p', {}, rowText(a), ' · ', el('strong', { class: 'mk-addon-state' }, p(`st_${a.state}`))),
+      ...detail(a).map(line => el('p', { class: 'hint' }, line)),
       approver && ['active', 'upcoming'].includes(a.state) ? confirmRow(p('cancel_confirm', a.additional_publications,
         fmtPrice(a.amount), fmtDay(a.state === 'upcoming' ? a.starts_cycle : plan.next_cycle)), p('cancel'),
       act(a.id, 'cancel', 'cancelled'), 'btn btn-sm') : null))) : null;
@@ -131,7 +139,14 @@ export function addonSection(ctx, plan, role, reload) {
       try { await M.setPurchasePermission(ctx.tenantId, e.target.checked); toast(p('delegate_saved')); }
       catch (err) { e.target.checked = !e.target.checked; toast(pErr(err), 'error'); }
     } }), el('span', {}, p('delegate')));
-  return card(p('ad_title'), el('div', {}, body, pending, active, delegate ? el('div', { class: 'card-body' }, delegate) : null));
+  // Lo que se solicitó y en qué quedó (también para el manager): sin términos internos de facturación.
+  const shown = new Set([...(plan.pending || []), ...mine].map(a => a.id));
+  const others = (plan.recent || []).filter(a => !shown.has(a.id));
+  const recent = others.length ? el('div', { class: 'mk-addon-list' }, el('h3', {}, p('recent_title')),
+    ...others.map(a => el('div', { class: 'mk-addon-item', dataset: { state: a.state } },
+      el('p', {}, rowText(a), ' · ', el('strong', { class: 'mk-addon-state' }, p(`st_${a.state}`)))))) : null;
+  return card(p('ad_title'), el('div', {}, body, pending, active, recent,
+    delegate ? el('div', { class: 'card-body' }, delegate) : null));
 }
 
 export function flowCard() {

@@ -105,15 +105,31 @@ def effective_limit(db, c, cycle: str) -> Optional[int]:
     return None if base is None else max(int(base), 0) + addon_for_cycle(_rows(db, c), cycle)
 
 
+def public_state(st: str, start: Optional[str], end: Optional[str], cycle: str) -> str:
+    """Estado comercial (nunca el interno de facturación):
+    pending · declined · upcoming (autorizada, empieza después) · active (autorizada, vigente y se renueva) ·
+    changing (vigente; el próximo ciclo cambia la cantidad) · cancel_scheduled (vigente hasta fin de ciclo) · ended."""
+    if st == "requested":
+        return "pending"
+    if st == "declined":
+        return "declined"
+    if end and end <= cycle or (end and start and end <= start):
+        return "ended"
+    if start and start > cycle:
+        return "upcoming"
+    if st == "cancelled":
+        return "cancel_scheduled"
+    if st == "replaced":
+        return "changing"
+    return "active"
+
+
 def public_addon(row: Dict[str, Any], cycle: str, me: Optional[str] = None) -> Dict[str, Any]:
     """Sin estado interno de facturación: solo lo que el cliente entiende."""
     q = quote(row["additional_publications"])
     st, start, end = row["status"], row.get("starts_cycle"), row.get("ends_cycle")
     start, end = (str(start)[:10] if start else None), (str(end)[:10] if end else None)
-    state = {"requested": "pending", "declined": "declined"}.get(st)
-    if state is None:
-        state = ("upcoming" if start > cycle else "ended" if (end and end <= cycle)
-                 else "ending" if end else "active")
+    state = public_state(st, start, end, cycle)
     return {"id": row["id"], "state": state, "cadence": row.get("cadence") or "monthly", "per_week": row.get("per_week"),
             "additional_publications": q["additional_publications"], "amount": q["amount"], "currency": "USD",
             "blocks": q["blocks"], "starts_cycle": start, "ends_cycle": end, "requested_at": row.get("requested_at"),
@@ -125,7 +141,7 @@ def summary(db, c, used: int) -> Dict[str, Any]:
     base = c.settings.get("monthly_post_limit")
     if base is None:
         return {"included": None, "added": 0, "total": None, "used": int(used), "available": None, "offers": [],
-                "current": None, "upcoming": None, "next_total": None, "pending": [], "can_authorize": False,
+                "current": None, "upcoming": None, "next_total": None, "pending": [], "recent": [], "can_authorize": False,
                 "managers_can_authorize": False}
     cyc, me = cycle_of(c), (getattr(c, "user", None) or {}).get("id")
     nxt = shift(cyc)
@@ -143,6 +159,7 @@ def summary(db, c, used: int) -> Dict[str, Any]:
             "upcoming": public_addon(upcoming, cyc, me) if upcoming else None,
             "next_total": included + addon_for_cycle(rows, nxt),
             "pending": [public_addon(r, cyc, me) for r in rows if r.get("status") == "requested"],
+            "recent": [public_addon(r, cyc, me) for r in rows[:5]],
             "can_authorize": can_authorize(db, c),
             "managers_can_authorize": bool(perm and perm[0].get("managers_can_authorize") is True)}
 

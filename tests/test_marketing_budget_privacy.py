@@ -27,7 +27,7 @@ BANNED_KEYS = {"selected_provider", "selected_model", "provider", "providers", "
                "global_budget", "aita_budget", "cap", "limit", "scope", "usage_by_model", "demo_mode", "cost_category"}
 H = {"Authorization": f"Bearer jwt-{OWNER}"}
 PLAN_KEYS = {"included", "added", "total", "used", "available", "offers", "cycle_start", "next_cycle", "current", "upcoming",
-             "next_total", "pending", "can_authorize", "managers_can_authorize"}
+             "next_total", "pending", "recent", "can_authorize", "managers_can_authorize"}
 
 
 def banned_in(text):

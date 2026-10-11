@@ -154,7 +154,7 @@ def test_a_change_replaces_the_next_cycle_and_never_accumulates(svc, db):
     b = svc.authorize_addon(jwt(OWNER), T1, body(12))
     assert b["state"] == "upcoming" and b["starts_cycle"] == "2026-11-01"
     p = plan(svc)
-    assert p["total"] == 12 and p["next_total"] == 20 and p["current"]["state"] == "ending"
+    assert p["total"] == 12 and p["next_total"] == 20 and p["current"]["state"] == "changing"
     c = svc.authorize_addon(jwt(OWNER), T1, body(8))                           # otro cambio en el mismo mes
     p = plan(svc)
     assert p["total"] == 12 and p["next_total"] == 16 and p["upcoming"]["id"] == c["id"]
@@ -175,7 +175,7 @@ def test_cancellation_keeps_the_cycle_and_returns_to_8_next_month(svc, db):
     assert err(svc.cancel_addon, jwt(MANAGER), T1, a["id"], {"confirm": True})[0] == "owner_authorization_required"
     assert err(svc.cancel_addon, jwt(OWNER), T1, a["id"], {})[0] == "confirmation_required"
     c = svc.cancel_addon(jwt(OWNER), T1, a["id"], {"confirm": True})
-    assert c["state"] == "ending" and c["ends_cycle"] == "2026-11-01" and plan(svc)["total"] == 20
+    assert c["state"] == "cancel_scheduled" and c["ends_cycle"] == "2026-11-01" and plan(svc)["total"] == 20
     assert plan(svc)["next_total"] == 8
     assert plan(at(db, NOW + timedelta(days=20)))["total"] == 8
     assert svc.cancel_addon(jwt(OWNER), T1, a["id"], {"confirm": True})["result"] == "existing"   # doble clic
@@ -308,3 +308,20 @@ def test_a_database_quota_rejection_is_the_same_public_error(svc, db):
         return real(table, filters, values)
     db.update = racing
     assert err(go) == ("limit_monthly_post_limit", 409)
+
+
+def test_manager_sees_commercial_states_without_billing_terms(svc, db):
+    r = svc.request_addon(jwt(MANAGER), T1, body(12))
+    assert plan(svc, MANAGER)["pending"][0]["state"] == "pending"                 # "Pendiente de autorización"
+    svc.decide_addon(jwt(OWNER), T1, r["id"], False, {"confirm": True})
+    states = {a["id"]: a["state"] for a in plan(svc, MANAGER)["recent"]}
+    assert states[r["id"]] == "declined"                                          # "Rechazada"
+    a = svc.authorize_addon(jwt(OWNER), T1, body(4))
+    p = plan(svc, MANAGER)
+    assert p["current"]["state"] == "active" and p["current"]["starts_cycle"] == "2026-10-01"   # "Autorizada", se renueva
+    svc.cancel_addon(jwt(OWNER), T1, a["id"], {"confirm": True})
+    p = plan(svc, MANAGER)
+    assert p["current"]["state"] == "cancel_scheduled" and p["current"]["ends_cycle"] == "2026-11-01"
+    text = str(p)
+    for internal in ("authorized_uninvoiced", "uninvoiced", "billing", "amount_cents", "replaced", "cancelled", "invoice"):
+        assert internal not in text, internal
