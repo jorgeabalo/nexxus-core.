@@ -25,8 +25,17 @@
 .mk-mode-grid { align-items: stretch; }
 .mk-mode { width: 100%; min-height: 112px; text-align: left; cursor: pointer; display: grid; gap: 8px; }
 .mk-mode.selected { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent); }
-.mk-addon { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border); }
-.mk-addon-quote { min-height: 44px; }
+.mk-addon { display: grid; gap: 12px; }
+.mk-addon-quote { min-height: 44px; display: grid; gap: 10px; }
+.mk-addon-options { display: grid; gap: 8px; }
+.mk-addon-option { align-items: flex-start; }
+.mk-addon-qty { max-width: 180px; }
+.mk-addon-confirm { display: grid; gap: 10px; justify-items: start; }
+.mk-addon-confirm .mk-check span, .mk-addon-option span { overflow-wrap: anywhere; }
+.mk-addon-list { padding: 0 20px 16px; display: grid; gap: 10px; }
+.mk-addon-item { border: 1px solid var(--border); border-radius: 10px; padding: 12px; display: grid; gap: 8px; }
+.mk-addon-item p { margin: 0; }
+.mk-flow { margin: 0 0 8px; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; }
 .mk-job-actions { flex-wrap: wrap; margin: 12px 0; }
 .mk-events { margin: 0; padding-left: 20px; font-size: 13px; display: grid; gap: 4px; }
 @media (max-width: 720px) {

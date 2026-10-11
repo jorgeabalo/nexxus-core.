@@ -6,7 +6,7 @@ import { errorNotice } from './marketing-ui.js';
 import { api } from '../api.js';
 import { s, sErr } from './marketing-studio-i18n.js';
 import { OBJECTIVES, AUDIENCES, STYLES, DURATIONS, TARGETS, QUALITY, WIZARD_STEPS,
-  usableAsSource, reelStage, fmtCost, newIdempotencyKey, modeMix, modeFromJob, addonQuote } from './marketing-studio-state.js';
+  usableAsSource, reelStage, newIdempotencyKey, modeMix, modeFromJob } from './marketing-studio-state.js';
 import { privacyBadge } from './marketing-library.js';
 
 const M = api.marketing;
@@ -17,7 +17,7 @@ const jobBadge = (st) => badge(st, s(`js_${st}`));
 export async function studioView(ctx, goJobs) {
   const [ov, lib] = await Promise.all([M.studio(ctx.tenantId), M.library(ctx.tenantId)]);
   const usable = lib.items.filter(usableAsSource);
-  const w = { step: 0, objective: 'new_members', audience: 'general', audience_notes: '',
+  const w = { step: 0, objective: 'calls', audience: 'general', audience_notes: '',
     mode: usable.length ? 'library_ai' : 'fully_ai', scenes: 6, media: new Set(), style: 'energetic', duration: 30,
     subtitles: true, targets: new Set(['instagram']), cover: 0, hook: '', body: '', cta: '', quality: 'draft', key: newIdempotencyKey() };
   const root = el('div', { class: 'mk-studio' });
@@ -143,53 +143,12 @@ function jobDetail(ctx, id, reload, genEnabled = true) {
   draw();
 }
 
-function publicationPlanCard(ctx, plan, reload) {
-  const total = Number(plan?.total || 0), used = Number(plan?.used || 0);
-  const target = input({ type: 'number', min: String(total + 1), max: String(total + 500),
-    value: String(total + 1), class: 'input' });
-  const confirm = el('input', { type: 'checkbox' });
-  const confirmText = el('span');
-  const quoteBox = el('div', { class: 'mk-addon-quote', 'aria-live': 'polite' });
-  const key = newIdempotencyKey();
-  const drawQuote = () => {
-    const q = addonQuote(Number(target.value) - total);
-    confirmText.textContent = q ? s('addonConfirm', q.additional, fmtCost(q.amount, q.currency)) : '';
-    clear(quoteBox).append(q
-      ? el('p', {}, s('addonQuote', Number(target.value), q.additional, fmtCost(q.amount, q.currency)),
-        el('span', { class: 'hint' }, ` ${q.blocks.map(b => `${b.quantity}× +${b.size}`).join(' + ')}`))
-      : el('p', { class: 'form-error' }, s('addonInvalid')));
-    buy.disabled = !q || !confirm.checked;
-  };
-  const buy = el('button', { class: 'btn btn-accent', type: 'button', disabled: true, onclick: async () => {
-    const additional = Number(target.value) - total;
-    buy.disabled = true;
-    try {
-      await M.authorizePublicationAddon(ctx.tenantId, additional, key);
-      toast(s('addonAuthorized')); await reload();
-    } catch (e) { toast(sErr(e), 'error'); drawQuote(); }
-  } }, s('authorizeAddon'));
-  target.addEventListener('input', () => { confirm.checked = false; drawQuote(); });   // la confirmación es de ESE total
-  confirm.addEventListener('change', drawQuote);
-  drawQuote();
-  return card(s('publicationPlan'), el('div', { class: 'card-body' },
-    el('dl', { class: 'mk-summary' },
-      el('dt', {}, s('includedPublications')), el('dd', {}, plan.included === null ? '∞' : String(plan.included)),
-      el('dt', {}, s('addedPublications')), el('dd', {}, String(plan.added || 0)),
-      el('dt', {}, s('usedPublications')), el('dd', {}, String(used)),
-      el('dt', {}, s('availablePublications')), el('dd', {}, plan.available === null ? '∞' : String(plan.available))),
-    plan.total === null ? null : el('div', { class: 'mk-addon' }, el('h3', {}, s('needMorePublications')),
-      el('p', { class: 'hint' }, s('addonOptions')),
-      field(s('monthlyTotal'), target), quoteBox,
-      el('label', { class: 'mk-check' }, confirm, confirmText), buy)));
-}
-
 export async function jobsView(ctx, reload, openId) {
   const [list, ov] = await Promise.all([M.jobs(ctx.tenantId), M.studio(ctx.tenantId)]);
   const gen = ov.generation_enabled;
   if (openId) setTimeout(() => jobDetail(ctx, openId, reload, gen), 0);
   return el('div', {},
     gen ? null : el('p', { class: 'error-box mk-notice', role: 'status' }, el('strong', {}, s('genNotEnabled'))),
-    publicationPlanCard(ctx, ov.publication_plan, reload),
     card(s('tab_jobs'), table([
       { label: s('created_at'), render: j => fmtDateTime(j.created_at) },
       { label: s('status'), render: j => jobBadge(j.status) },

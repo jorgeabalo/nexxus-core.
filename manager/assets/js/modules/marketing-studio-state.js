@@ -4,7 +4,7 @@
 export const MIX_PRESETS = [[100, 0], [75, 25], [50, 50], [25, 75], [0, 100]];
 export const MIX_STEP = 5;
 export const CREATION_MODES = ['library_ai', 'fully_ai'];
-export const OBJECTIVES = ['new_members', 'class_promo', 'event', 'offer', 'brand', 'education'];
+export const OBJECTIVES = ['calls', 'messages', 'trial_visit', 'memberships', 'reactivation', 'reviews'];
 export const AUDIENCES = ['general', 'seniors_60_plus', 'beginners', 'athletes', 'parents', 'custom'];
 export const STYLES = ['energetic', 'calm', 'professional', 'cinematic', 'educational'];
 export const DURATIONS = [15, 30, 45, 60];
@@ -91,13 +91,6 @@ export function newIdempotencyKey(rand = () => Math.random()) {
   return `job-${Date.now().toString(36)}-${Array.from({ length: 16 }, () => Math.floor(rand() * 36).toString(36)).join('')}`;
 }
 
-// Presupuesto de generación con IA: lo que se muestra al tenant (solo lo asignado y su consumo).
-export function budgetView(b) {
-  if (!b || b.enabled !== true) return { enabled: false, title: 'budgetTitle', message: 'budgetDisabled' };
-  return { enabled: true, title: 'budgetTitle', currency: b.currency || 'USD', warning: b.warning || null,
-    rows: [['budgetMonth', b.assigned], ['budgetUsed', b.used], ['budgetReserved', b.reserved], ['budgetAvailable', b.available]] };
-}
-
 export function modeMix(mode) {
   return mode === 'library_ai'
     ? { real_media_percent: 100, ai_media_percent: 0, adapt_real: true }
@@ -107,17 +100,4 @@ export function modeMix(mode) {
 export function modeFromJob(job) {
   if (CREATION_MODES.includes(job?.creation_mode)) return job.creation_mode;
   return Number(job?.real_media_percent) > 0 ? 'library_ai' : 'fully_ai';
-}
-
-export function addonQuote(additional) {
-  const n = Number(additional);
-  if (!Number.isInteger(n) || n < 1 || n > 500) return null;
-  let left = n, amount = 0;
-  const blocks = [];
-  for (const [size, price] of [[8, 35], [4, 20], [1, 6]]) {
-    const quantity = Math.floor(left / size);
-    left %= size;
-    if (quantity) { blocks.push({ size, quantity, subtotal: quantity * price }); amount += quantity * price; }
-  }
-  return { additional: n, amount, currency: 'USD', blocks };
 }

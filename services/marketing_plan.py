@@ -2,12 +2,12 @@
 from typing import Any, Dict
 
 from services.marketing import MarketingService
-from services.marketing_publication_plan import authorize, summary
+from services import marketing_publication_plan as pp
 
 
 class MarketingPlanService(MarketingService):
     def publication_plan(self, c, usage=None) -> Dict[str, Any]:
-        return summary(self.db, c, (usage or self._usage(c))["posts"])
+        return pp.summary(self.db, c, (usage or self._usage(c))["posts"])
 
     def dashboard(self, jwt: str, tenant_id: str) -> Dict[str, Any]:
         out = super().dashboard(jwt, tenant_id)
@@ -19,11 +19,26 @@ class MarketingPlanService(MarketingService):
         out["settings"] = {k: v for k, v in out["settings"].items() if k not in ("monthly_image_limit", "monthly_reel_limit")}
         return out
 
-    def authorize_addon(self, jwt: str, tenant_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    # ---------- ampliaciones: el manager solicita; autoriza el owner (o un manager con permiso delegado) ----------
+    def _addon_ctx(self, jwt: str, tenant_id: str):
         c = self.ctx(jwt, tenant_id)
         self._enabled(c)
-        return authorize(self.db, c, body.get("additional_publications"), body.get("confirm") is True,
-                         body.get("idempotency_key"))
+        return c
+
+    def request_addon(self, jwt: str, tenant_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
+        return pp.submit(self.db, self._addon_ctx(jwt, tenant_id), body, authorize=False)
+
+    def authorize_addon(self, jwt: str, tenant_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
+        return pp.submit(self.db, self._addon_ctx(jwt, tenant_id), body, authorize=True)
+
+    def decide_addon(self, jwt: str, tenant_id: str, addon_id: str, approve: bool, body: Dict[str, Any]) -> Dict[str, Any]:
+        return pp.decide(self.db, self._addon_ctx(jwt, tenant_id), addon_id, approve, body.get("confirm") is True)
+
+    def cancel_addon(self, jwt: str, tenant_id: str, addon_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
+        return pp.cancel(self.db, self._addon_ctx(jwt, tenant_id), addon_id, body.get("confirm") is True)
+
+    def set_purchase_permission(self, jwt: str, tenant_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
+        return pp.set_permission(self.db, self._addon_ctx(jwt, tenant_id), body.get("managers_can_authorize"))
 
     def _schedule_checks(self, c, cur: Dict[str, Any], when: Any) -> str:
         original = c.settings

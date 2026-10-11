@@ -60,10 +60,31 @@ def build_router(get_db: Callable) -> APIRouter:
     async def dashboard(request: Request, tenant_id: str = ""):
         return await call(lambda: svc().dashboard(bearer(request), tenant_id))
 
+    # ---------- ampliaciones de publicaciones (sin cobro real: se registran para la factura) ----------
+    @r.post(f"{P}/publication-addons/request")
+    async def request_publication_addon(request: Request):
+        b = await body(request)
+        return await call(lambda: svc().request_addon(bearer(request), tid(b), b))
+
     @r.post(f"{P}/publication-addons/authorize")
     async def authorize_publication_addon(request: Request):
         b = await body(request)
         return await call(lambda: svc().authorize_addon(bearer(request), tid(b), b))
+
+    @r.post(f"{P}/publication-addons/{{addon_id}}/{{action}}")
+    async def publication_addon_action(request: Request, addon_id: str, action: str):
+        b = await body(request)
+        actions = {"approve": lambda s: s.decide_addon(bearer(request), tid(b), addon_id, True, b),
+                   "decline": lambda s: s.decide_addon(bearer(request), tid(b), addon_id, False, b),
+                   "cancel": lambda s: s.cancel_addon(bearer(request), tid(b), addon_id, b)}
+        if action not in actions:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        return await call(lambda: actions[action](svc()))
+
+    @r.put(f"{P}/publication-addons/permissions")
+    async def publication_addon_permissions(request: Request):
+        b = await body(request)
+        return await call(lambda: svc().set_purchase_permission(bearer(request), tid(b), b))
 
     # ---------- Brand Kit ----------
     @r.get(f"{P}/brand")

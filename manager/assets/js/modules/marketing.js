@@ -12,6 +12,7 @@ import { contentModal, contentDetail, campaignModal, brandForm, channelLabel, st
 import { libraryView } from './marketing-library.js';
 import { studioView, jobsView } from './marketing-studio.js';
 import { s as sText } from './marketing-studio-i18n.js';
+import { planCard, addonSection, flowCard, resultsCard } from './marketing-addons.js';
 
 const M = api.marketing;
 const scope = createScope();
@@ -85,15 +86,14 @@ export async function render(root, ctx) {
       el('div', { class: 'kpis mk-kpis' },
         ...['drafts', 'review', 'approved', 'scheduled', 'published'].map(x => kpi(t(`k_${x}`), String(k[x] || 0), '', x === 'review' && k.review > 0))),
       el('div', { class: 'grid-2' },
-        card(t('usage'), el('div', { class: 'card-body' },
-          el('p', { class: 'hint' }, `${t('plan')}: ${d.settings.plan_code}`),
-          bar(t('posts'), plan.used, plan.total))),
+        el('div', {}, planCard(plan), el('div', { class: 'card-body' }, bar(t('posts'), plan.used, plan.total))),
         card(t('upcoming'), table([
           { label: t('date'), render: r => fmtDateTime(r.scheduled_at || r.planned_at) },
           { label: t('titleF'), key: 'title' },
           { label: t('format'), render: r => t(`f_${r.format}`) },
           { label: t('status'), render: r => statusBadge(r.status) },
-        ], d.upcoming, { onRowClick: r => open(r.id), emptyText: t('noUpcoming') }))));
+        ], d.upcoming, { onRowClick: r => open(r.id), emptyText: t('noUpcoming') }))),
+      el('div', { class: 'grid-2' }, flowCard(), resultsCard()));
   }
 
   // ---------- contenido ----------
@@ -149,7 +149,11 @@ export async function render(root, ctx) {
 
   // ---------- campañas ----------
   async function campaignList() {
-    campaigns = (await M.campaigns(ctx.tenantId)).campaigns;
+    const [list, d] = await Promise.all([M.campaigns(ctx.tenantId), M.dashboard(ctx.tenantId)]);
+    campaigns = list.campaigns;
+    return el('div', {}, campaignCard(), addonSection(ctx, d.publication_plan, d.role, draw));
+  }
+  function campaignCard() {
     return card(t('tab_campaigns'), table([
       { label: t('name'), key: 'name' },
       { label: t('status'), render: c => el('span', { class: 'badge' }, t(`c_${c.status}`)) },

@@ -4,7 +4,6 @@ Nunca: el objetivo interno de costo total de AITA (USD 80), márgenes, distribuc
 proveedores, modelos, precios unitarios, el tope técnico temporal (USD 20) ni explicaciones sobre
 presupuestos globales. Ni en la API del tenant, ni en el HTML/JS servido al navegador, ni en errores.
 """
-import json
 import re
 from pathlib import Path
 from types import SimpleNamespace
@@ -27,6 +26,8 @@ BANNED_KEYS = {"selected_provider", "selected_model", "provider", "providers", "
                "router_strategy", "catalog", "catalog_version", "unit_price", "price_source", "billing_unit", "margin",
                "global_budget", "aita_budget", "cap", "limit", "scope", "usage_by_model", "demo_mode", "cost_category"}
 H = {"Authorization": f"Bearer jwt-{OWNER}"}
+PLAN_KEYS = {"included", "added", "total", "used", "available", "offers", "cycle_start", "next_cycle", "active", "pending",
+             "can_authorize", "managers_can_authorize"}
 
 
 def banned_in(text):
@@ -72,7 +73,7 @@ def test_enabled_shows_only_generation_state_and_publication_plan(client, db):
     settings(db, ai_generation_enabled=True, monthly_ai_cost_limit=10)
     ov = client.get(f"/api/manager/marketing/studio?tenant_id={T1}", headers=H).json()
     assert set(ov) == {"generation_enabled", "publication_plan"} and ov["generation_enabled"] is True
-    assert set(ov["publication_plan"]) == {"included", "added", "total", "used", "available", "offers"}
+    assert set(ov["publication_plan"]) <= PLAN_KEYS                          # solo cantidades comerciales
     assert jd.budget_summary(10, {"consumed": 2.5, "reserved": 1}) == {
         "enabled": True, "currency": "USD", "assigned": 10.0, "used": 2.5, "reserved": 1.0, "available": 6.5,
         "warning": None, "available_pct": 65}
@@ -130,14 +131,56 @@ def test_served_manager_html_and_scripts_are_clean(client):
         assert r.status_code == 200 and banned_in(r.text) == [], (rel, banned_in(r.text))
 
 
-@pytest.mark.parametrize("lang,title,disabled,labels", [
-    ("es", "Presupuesto de generación con IA", "La generación con IA no está habilitada en tu plan.",
-     ["Disponible este mes", "Utilizado", "Reservado", "Disponible"]),
-    ("en", "AI generation budget", "AI generation is not enabled in your plan.",
-     ["Available this month", "Used", "Reserved", "Available"])])
-def test_new_budget_texts_are_served(client, lang, title, disabled, labels):
-    js = client.get("/manager/assets/js/modules/marketing-studio-i18n.js").text
+@pytest.mark.parametrize("lang,texts", [
+    ("es", ["Publicaciones de este mes", "Incluidas en tu plan", "Utilizadas", "Disponibles", "¿Necesitas más publicaciones?",
+            "Es un cargo mensual recurrente hasta que lo canceles."]),
+    ("en", ["Posts this month", "Included in your plan", "Used", "Available", "Need more posts?",
+            "This is a recurring monthly charge until you cancel it."])])
+def test_plan_texts_are_served_and_budget_texts_are_gone(client, lang, texts):
+    js = client.get("/manager/assets/js/modules/marketing-plan-i18n.js").text
     block = js.split("\n  en: {")[0 if lang == "es" else 1]
-    for t in (title, disabled, *labels):
-        assert json.dumps(t, ensure_ascii=False)[1:-1] in block, t
-    assert "budgetScopeNote" not in js
+    for t in texts:
+        assert t in block, t
+    studio = client.get("/manager/assets/js/modules/marketing-studio-i18n.js").text
+    for gone in ("budgetTitle", "budgetScopeNote", "Presupuesto de generación", "AI generation budget", "costEstimated",
+                 "maxCost", "más barato", "cheapest"):
+        assert gone not in studio, gone
+
+
+# ------------------------------------------------------------------ recorrido completo de la API del tenant
+CRAWL_KEYS = BANNED_KEYS | {"worker_id", "lease_owner", "router_strategy", "catalog_version", "amount_cents",
+                            "monthly_ai_cost_limit", "maximum_cost", "estimated_cost", "reserved_cost", "actual_cost",
+                            "blocks_8", "blocks_4", "blocks_1", "decided_by", "cancelled_by", "attempts"}
+
+
+def test_every_tenant_response_has_only_commercial_data(client, db):
+    from marketing_addon_fake import install
+    from test_marketing import MANAGER
+    install(db)
+    settings(db, ai_generation_enabled=True, monthly_ai_cost_limit=20)
+    HM = {"Authorization": f"Bearer jwt-{MANAGER}"}
+    P = "/api/manager/marketing"
+    job = client.post(f"{P}/jobs", headers=H, json={"tenant_id": T1, "brief": {"objective": "calls", "audience": "general",
+                      "style": "calm", "duration_seconds": 15}, "creation_mode": "fully_ai", "quality_tier": "draft"}).json()
+    for a, extra in (("estimate", {}), ("approve", {"confirm": True}), ("process", {})):
+        client.post(f"{P}/jobs/{job['id']}/{a}", headers=H, json={"tenant_id": T1, **extra})
+    req = client.post(f"{P}/publication-addons/request", headers=HM, json={"tenant_id": T1, "additional_publications": 12,
+                      "confirm": True, "idempotency_key": "addon-crawl-req-0001"})
+    responses = [req,
+                 client.post(f"{P}/publication-addons/authorize", headers=H, json={"tenant_id": T1, "cadence": "weekly",
+                             "per_week": 2, "confirm": True, "idempotency_key": "addon-crawl-auth-001"}),
+                 client.post(f"{P}/publication-addons/{req.json()['id']}/approve", headers=H, json={"tenant_id": T1, "confirm": True}),
+                 client.post(f"{P}/publication-addons/authorize", headers=HM, json={"tenant_id": T1, "additional_publications": 1,
+                             "confirm": True, "idempotency_key": "addon-crawl-deny-001"}),
+                 client.put(f"{P}/publication-addons/permissions", headers=H, json={"tenant_id": T1, "managers_can_authorize": False})]
+    for path in ("dashboard", "brand", "campaigns", "content", "calendar?start=2026-10-01&end=2026-10-31", "library", "studio",
+                 "jobs", f"jobs/{job['id']}"):
+        sep = "&" if "?" in path else "?"
+        for headers in (H, HM):
+            responses.append(client.get(f"{P}/{path}{sep}tenant_id={T1}", headers=headers))
+    assert responses[3].status_code == 403 and responses[3].json() == {"error": "owner_authorization_required"}
+    for r in responses:
+        assert r.status_code < 500, (r.request.url, r.text[:200])
+        assert banned_in(r.text) == [], (r.request.url, banned_in(r.text))
+        assert not CRAWL_KEYS & set(keys(r.json())), (r.request.url, CRAWL_KEYS & set(keys(r.json())))
+        assert "percent" not in r.text, r.request.url

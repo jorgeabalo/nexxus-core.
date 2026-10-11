@@ -110,7 +110,8 @@ def test_marketing_studio_assets_hide_provider_and_model_details():
 @pytest.mark.skipif(not shutil.which("node"), reason="Node.js no disponible")
 def test_marketing_js():
     r = subprocess.run(["node", "--test", str(ROOT / "tests/js/marketing.test.mjs"),
-                        str(ROOT / "tests/js/marketing-studio.test.mjs")], capture_output=True, text=True, timeout=60)
+                        str(ROOT / "tests/js/marketing-studio.test.mjs"), str(ROOT / "tests/js/marketing-plan.test.mjs")],
+                       capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
 
 

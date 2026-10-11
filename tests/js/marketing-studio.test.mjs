@@ -4,8 +4,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { MIX_PRESETS, normalizeMix, approxScenes, privacyClass, usableAsSource, reelStage, fmtBytes, fmtCost,
-  newIdempotencyKey, WIZARD_STEPS, ACCEPT, budgetView, modeMix, modeFromJob,
-  addonQuote } from '../../manager/assets/js/modules/marketing-studio-state.js';
+  newIdempotencyKey, WIZARD_STEPS, ACCEPT, modeMix, modeFromJob } from '../../manager/assets/js/modules/marketing-studio-state.js';
+import { addonQuote } from '../../manager/assets/js/modules/marketing-addons-state.js';
 import { STUDIO_TEXT } from '../../manager/assets/js/modules/marketing-studio-i18n.js';
 import { TABS } from '../../manager/assets/js/modules/marketing-state.js';
 
@@ -150,29 +150,6 @@ test('archivo vencido (410 media_expired): mensaje completo en el idioma activo,
     const src = await readFile(new URL(`../../manager/assets/js/modules/${f}`, import.meta.url), 'utf8');
     assert.ok(!/errorBox/.test(src) && /errorNotice/.test(src), `${f}: usa errorNotice, no errorBox`);
   }
-});
-
-test('presupuesto de generación con IA: textos ES/EN exactos', () => {
-  const want = {
-    es: { budgetTitle: 'Presupuesto de generación con IA', budgetDisabled: 'La generación con IA no está habilitada en tu plan.',
-      budgetMonth: 'Disponible este mes', budgetUsed: 'Utilizado', budgetReserved: 'Reservado', budgetAvailable: 'Disponible' },
-    en: { budgetTitle: 'AI generation budget', budgetDisabled: 'AI generation is not enabled in your plan.',
-      budgetMonth: 'Available this month', budgetUsed: 'Used', budgetReserved: 'Reserved', budgetAvailable: 'Available' },
-  };
-  for (const lang of ['es', 'en']) {
-    for (const [k, v] of Object.entries(want[lang])) assert.equal(STUDIO_TEXT[lang][k], v, `${lang}.${k}`);
-    assert.equal(STUDIO_TEXT[lang].budgetScopeNote, undefined, `${lang}: sin nota sobre presupuestos globales`);
-  }
-});
-
-test('presupuesto: estado deshabilitado y habilitado', () => {
-  for (const b of [undefined, null, { enabled: false }, { enabled: 'yes', assigned: 10 }]) {
-    assert.deepEqual(budgetView(b), { enabled: false, title: 'budgetTitle', message: 'budgetDisabled' });
-  }
-  const v = budgetView({ enabled: true, currency: 'USD', assigned: 10, used: 2.5, reserved: 1, available: 6.5, warning: null });
-  assert.equal(v.enabled, true);
-  assert.deepEqual(v.rows, [['budgetMonth', 10], ['budgetUsed', 2.5], ['budgetReserved', 1], ['budgetAvailable', 6.5]]);
-  for (const lang of ['es', 'en']) for (const [k] of v.rows) assert.ok(STUDIO_TEXT[lang][k], `${lang}.${k}`);
 });
 
 test('ningún archivo servido al Manager menciona topes internos, presupuestos globales ni márgenes', async () => {

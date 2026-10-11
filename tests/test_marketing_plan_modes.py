@@ -1,8 +1,7 @@
 """
-Plan simple de Marketing (PR #21), revisión: las dos modalidades, la cuota única, la combinación más económica
-para cualquier total exacto, el doble clic simultáneo y lo que la API del tenant NO debe devolver.
+Plan simple de Marketing (PR #21): las dos modalidades de creación, la cuota única y lo que la API del tenant
+NO debe devolver. Las ampliaciones se prueban en tests/test_marketing_publication_plan.py.
 """
-from functools import lru_cache
 from types import SimpleNamespace
 
 import pytest
@@ -11,8 +10,8 @@ from fastapi.testclient import TestClient
 import main
 from services.marketing_ai_router import MarketingAIRouter, MockProvider, OmniRouteAdapter, DisabledLocalTools
 from services.marketing_library import LibraryService
+from marketing_addon_fake import install
 from services.marketing_plan import MarketingPlanService
-from services.marketing_publication_plan import quote
 from services.marketing_studio import StudioService
 from services.member_portal import PortalError
 from test_marketing import NOW, OWNER, T1
@@ -25,9 +24,7 @@ ADAPTERS = {"mock": MockProvider(), "omniroute": OmniRouteAdapter(env={}), "loca
 
 @pytest.fixture
 def db():
-    d = StudioDB()
-    d.tables.setdefault("marketing_publication_addons", [])
-    return d
+    return install(StudioDB())
 
 
 @pytest.fixture
@@ -38,64 +35,6 @@ def studio(db):
 @pytest.fixture
 def plan(db):
     return MarketingPlanService(db, now=NOW)
-
-
-@lru_cache(None)
-def cheapest(n):
-    return 0 if n == 0 else min(p + cheapest(n - s) for s, p in ((8, 3500), (4, 2000), (1, 600)) if s <= n)
-
-
-# ------------------------------------------------------------------ precio
-def test_every_exact_total_uses_the_cheapest_combination():
-    for n in range(1, 501):                                       # +1 permite llegar a cualquier cantidad exacta
-        q = quote(n)
-        assert sum(b["size"] * b["quantity"] for b in q["blocks"]) == n
-        assert round(q["amount"] * 100) == cheapest(n), n
-    assert quote(22)["amount"] == 102 and quote(37)["amount"] == 166
-
-
-def test_browser_cannot_send_the_price(monkeypatch, db):
-    monkeypatch.setattr(main, "member_portal", SimpleNamespace(db=db))
-    r = TestClient(main.app).post("/api/manager/marketing/publication-addons/authorize", headers=H, json={
-        "tenant_id": T1, "additional_publications": 22, "confirm": True, "idempotency_key": "addon-price-000001",
-        "amount": 0.01, "amount_cents": 1, "blocks_1": 22, "currency": "EUR"})
-    assert r.status_code == 200 and r.json()["amount"] == 102 and r.json()["currency"] == "USD"
-    row = db.tables["marketing_publication_addons"][0]
-    assert not {"amount", "amount_cents", "blocks_1", "currency"} & set(row)       # lo calcula la base
-
-
-# ------------------------------------------------------------------ doble clic simultáneo
-def race(db):
-    """Dos peticiones con la misma clave leen a la vez "no existe"; la base (índice único) deja entrar a una."""
-    real_select, real_insert = db.select, db.insert
-    state = {"blind": True}
-
-    def select(table, params):
-        if table == "marketing_publication_addons" and "idempotency_key" in params and state["blind"]:
-            state["blind"] = False
-            return []
-        return real_select(table, params)
-
-    def insert(table, row):
-        if table == "marketing_publication_addons" and any(
-                r["tenant_id"] == row["tenant_id"] and r["idempotency_key"] == row["idempotency_key"] for r in db.tables[table]):
-            raise RuntimeError("Supabase POST -> 409: duplicate key value violates unique constraint")
-        return real_insert(table, row)
-    db.select, db.insert = select, insert
-
-
-@pytest.mark.parametrize("second,expect", [(22, "same"), (8, "conflict")])
-def test_simultaneous_double_click_never_creates_two_or_fails(plan, db, second, expect):
-    body = {"additional_publications": 22, "confirm": True, "idempotency_key": "addon-race-0000001"}
-    first = plan.authorize_addon(jwt(OWNER), T1, body)
-    race(db)
-    if expect == "same":
-        assert plan.authorize_addon(jwt(OWNER), T1, body)["id"] == first["id"]
-    else:
-        with pytest.raises(PortalError) as e:
-            plan.authorize_addon(jwt(OWNER), T1, {**body, "additional_publications": second})
-        assert e.value.code == "idempotency_conflict" and e.value.status == 409
-    assert len(db.tables["marketing_publication_addons"]) == 1
 
 
 # ------------------------------------------------------------------ las dos modalidades
@@ -160,21 +99,3 @@ def test_tenant_api_has_no_percentages_ai_budget_costs_or_per_format_limits(monk
               c.get(f"/api/manager/marketing/jobs?tenant_id={T1}", headers=H)):
         assert "percent" not in r.text and "mix_confirmed" not in r.text and "cost" not in r.text, r.text[:300]
     assert c.get(f"/api/manager/marketing/jobs/{j['id']}?tenant_id={T1}", headers=H).json()["creation_mode"] == "fully_ai"
-
-
-# ------------------------------------------------------------------ aislamiento entre tenants (con T2 configurado)
-def test_addons_and_keys_never_cross_tenants(db):
-    from test_marketing import T2
-    t2 = next((s for s in db.tables["marketing_settings"] if s["tenant_id"] == T2), None)
-    if t2 is None:
-        t2 = {**db.tables["marketing_settings"][0], "tenant_id": T2}
-        db.tables["marketing_settings"].append(t2)
-    t2["monthly_post_limit"] = 8                                  # T2 con plan: la cuota sí lee ampliaciones
-    plan = MarketingPlanService(db, now=NOW)
-    key = "addon-shared-key-0001"
-    a = plan.authorize_addon(jwt(OWNER), T1, {"additional_publications": 4, "confirm": True, "idempotency_key": key})
-    assert plan.dashboard(jwt(OWNER), T2)["publication_plan"]["added"] == 0
-    b = plan.authorize_addon(jwt(OWNER), T2, {"additional_publications": 8, "confirm": True, "idempotency_key": key})
-    assert a["id"] != b["id"] and b["amount"] == 35                # misma clave en otro tenant: autorización propia
-    assert plan.dashboard(jwt(OWNER), T1)["publication_plan"]["added"] == 4
-    assert plan.dashboard(jwt(OWNER), T2)["publication_plan"]["added"] == 8

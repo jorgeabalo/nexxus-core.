@@ -171,9 +171,9 @@ export async function libraryView(ctx, reload) {
     } catch (e) { status.textContent = sErr(e); } finally { fileInput.value = ''; }
   });
   const st = data.storage;
-  // Estados distintos: Biblioteca no habilitada (0) · habilitada (usado/límite) · límite alcanzado · sin límite.
+  // Estados: incluida, espacio en preparación (0) · habilitada (usado/límite) · límite alcanzado · sin límite.
   const quota = {
-    disabled: el('p', { class: 'error-box mk-notice', role: 'status', dataset: { state: 'disabled' } },
+    disabled: el('p', { class: 'mk-note', role: 'status', dataset: { state: 'disabled' } },
       el('strong', {}, s('libDisabled')), ' ', s('libDisabledHint')),
     full: el('p', { class: 'error-box mk-notice', role: 'status', dataset: { state: 'full' } },
       el('strong', {}, s('libFull')), ` ${fmtBytes(st.used_bytes)} / ${fmtBytes(st.limit_bytes)}`),
@@ -191,6 +191,7 @@ export async function libraryView(ctx, reload) {
   const head = el('div', { class: 'mk-lib-head' },
     el('p', {}, s('libIntro')),
     quota, parts, expiredHint,
+    el('p', { class: 'hint', dataset: { storage: 'temporary' } }, s('libTemporary', data.retention?.default_days || 30)),
     st.state === 'disabled' ? null : el('p', { class: 'hint' }, `${s('formats')} ${fmtBytes(st.max_upload_bytes)}.`),
     data.generation_enabled ? null : el('p', { class: 'hint', dataset: { state: 'generation-off' } }, `${s('genNotEnabled')}. ${s('libWorksAnyway')}`),
     el('p', { class: 'mk-note' }, s('scanNote')),

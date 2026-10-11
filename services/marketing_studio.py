@@ -39,7 +39,7 @@ JOB_COLS = ("id,tenant_id,content_id,created_by,task_type,status,real_media_perc
 
 
 INTERNAL_JOB_KEYS = ("selected_provider", "selected_model", "provider_job_id", "router_strategy", "usage",
-                     "lease_owner", "lease_expires_at", "heartbeat_at", "maximum_cost", "estimated_cost",
+                     "lease_owner", "lease_expires_at", "heartbeat_at", "attempts", "maximum_cost", "estimated_cost",
                      "reserved_cost", "actual_cost", "currency", "real_media_percent", "ai_media_percent")
 PLAN_INTERNAL = ("real_media_percent", "ai_media_percent", "approx_real_percent")
 

@@ -103,7 +103,8 @@ class LibraryService(StudioBase):
                 "warnings": list(pv.WARNINGS), "enabled": st["marketing_enabled"],
                 "can_upload": bool(st["marketing_enabled"]) and state in ("enabled", "unlimited"),
                 "generation_enabled": jd.generation_enabled(st), "malware_scanner": self.scanner.name,
-                "retention": {"max_days": rt.plan_max(st), "choices": rt.allowed_choices(st)},
+                "retention": {"max_days": rt.plan_max(st), "choices": rt.allowed_choices(st),
+                              "default_days": rt.default_days(st)},
                 "anonymization": "simulated"}
 
     def content(self, jwt: str, tenant_id: str, media_id: str, derivative_id: str = "",

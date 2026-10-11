@@ -239,10 +239,20 @@ export const api = {
   // ----- AITA Marketing (backend: solo owner/manager; valida tenant y reglas de estado) -----
   marketing: {
     dashboard(tenantId) { return backend('GET', `/api/manager/marketing/dashboard?${qs({ tenant_id: tenantId })}`); },
-    authorizePublicationAddon(tenantId, additionalPublications, idempotencyKey) {
-      return backend('POST', '/api/manager/marketing/publication-addons/authorize', {
-        tenant_id: tenantId, additional_publications: additionalPublications, idempotency_key: idempotencyKey, confirm: true,
+    // Ampliaciones: `kind` = 'request' (solicitud) o 'authorize' (owner o manager con permiso delegado).
+    // Nunca se envía el precio: lo calcula la base de datos.
+    submitPublicationAddon(tenantId, kind, spec, idempotencyKey) {
+      return backend('POST', `/api/manager/marketing/publication-addons/${kind === 'authorize' ? 'authorize' : 'request'}`, {
+        tenant_id: tenantId, ...spec, idempotency_key: idempotencyKey, confirm: true,
       });
+    },
+    publicationAddonAction(tenantId, addonId, action) {
+      return backend('POST', `/api/manager/marketing/publication-addons/${encodeURIComponent(addonId)}/${action}`,
+        { tenant_id: tenantId, confirm: true });
+    },
+    setPurchasePermission(tenantId, managersCanAuthorize) {
+      return backend('PUT', '/api/manager/marketing/publication-addons/permissions',
+        { tenant_id: tenantId, managers_can_authorize: managersCanAuthorize });
     },
     brand(tenantId) { return backend('GET', `/api/manager/marketing/brand?${qs({ tenant_id: tenantId })}`); },
     saveBrand(tenantId, values) { return backend('PUT', '/api/manager/marketing/brand', { ...values, tenant_id: tenantId }); },
