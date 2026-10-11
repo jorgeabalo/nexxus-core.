@@ -202,7 +202,7 @@ def test_onboarding_km_and_profile_persist(c):
     assert c.post('/api/car/onboarding',json=ONBOARD).status_code==409
     assert len(c.get('/api/car/dashboard').json()['vehicles'])==n
 
-@pytest.mark.parametrize('change',[{'phone':'-------'},{'name':'   '},{'address':'x'},{'initial_odometer':-1},{'distance_unit':'yards'},{'year':1800},{'plan':'pro'}])
+@pytest.mark.parametrize('change',[{'phone':'-------'},{'name':'   '},{'address':'x'},{'initial_odometer':-1},{'distance_unit':'yards'},{'year':1800},{'plan':'invalid'}])
 def test_invalid_onboarding_is_atomic(c,change):
     count=len(c.get('/api/car/dashboard').json()['vehicles'])
     assert c.post('/api/car/onboarding',json={**ONBOARD,**change}).status_code==422
