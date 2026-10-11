@@ -91,6 +91,11 @@ class SupabaseAdmin:
     def update(self, table: str, filters: Dict[str, str], values: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
         return self._request("PATCH", table, params=filters, json=values, prefer="return=representation")
 
+    def rpc(self, fn: str, args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Llama a una función de PostgreSQL expuesta por PostgREST (/rest/v1/rpc/<fn>)."""
+        rows = self._request("POST", f"rpc/{fn}", json=args)
+        return rows[0] if rows else None
+
     def delete(self, table: str, filters: Dict[str, str]) -> Optional[List[Dict[str, Any]]]:
         if not filters:
             raise ValueError("delete sin filtros")  # nunca borrar una tabla entera
@@ -119,6 +124,52 @@ class SupabaseAdmin:
 
     def storage_download(self, bucket: str, key: str) -> bytes:
         return self._storage("GET", f"authenticated/{bucket}/{key}").content
+
+    def storage_stream(self, bucket: str, key: str, chunk_size: int = 65536, byte_range=None):
+        """Descarga en trozos (nunca el archivo entero en memoria) para entregarlo por el backend.
+        byte_range=(inicio, fin) inclusivos → se pide a Storage con Range; si Storage lo ignorara y
+        devolviera el archivo completo (200), se recorta aquí mismo mientras se transmite.
+        Ninguna URL de Storage llega al navegador ni a los logs."""
+        if not self.enabled:
+            raise RuntimeError("Supabase storage disabled")
+        headers = {"apikey": self._key, "Authorization": f"Bearer {self._key}"}
+        if byte_range:
+            headers["Range"] = f"bytes={int(byte_range[0])}-{int(byte_range[1])}"
+        client = httpx.Client(timeout=httpx.Timeout(60.0, connect=5.0))
+        try:
+            r = client.send(client.build_request("GET", f"{self.url}/storage/v1/object/authenticated/{bucket}/{key}",
+                                                 headers=headers), stream=True)
+        except Exception as e:
+            client.close()
+            raise RuntimeError(f"Supabase storage STREAM: {type(e).__name__}") from None
+        if r.status_code >= 400:
+            r.close()
+            client.close()
+            raise RuntimeError(f"Supabase storage STREAM -> {r.status_code}")
+        skip = int(byte_range[0]) if (byte_range and r.status_code == 200) else 0
+        want = (int(byte_range[1]) - int(byte_range[0]) + 1) if byte_range else None
+
+        def chunks():
+            nonlocal skip, want
+            try:
+                for chunk in r.iter_bytes(chunk_size):
+                    if skip:
+                        cut = min(skip, len(chunk))
+                        chunk, skip = chunk[cut:], skip - cut
+                    if want is not None:
+                        chunk, want = chunk[:want], want - min(want, len(chunk))
+                    if chunk:
+                        yield chunk
+                    if want == 0:
+                        break
+            finally:
+                r.close()
+                client.close()
+        return chunks()
+
+    def storage_remove(self, bucket: str, key: str) -> None:
+        """Elimina un objeto (borrado controlado; la auditoría la registra quien llama)."""
+        self._storage("DELETE", f"{bucket}/{key}")
 
     # -- Supabase Auth (GoTrue) -----------------------------------------
     def auth(self, method: str, path: str, *, json=None, params=None, anon: bool = False,

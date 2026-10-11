@@ -75,6 +75,10 @@ class MarketingService:
         user = self.db.user_from_jwt(jwt)
         if not user:
             raise PortalError("unauthorized", 401)
+        return self._ctx_for(user, tenant_id)
+
+    def _ctx_for(self, user: Dict[str, Any], tenant_id: str) -> SimpleNamespace:
+        """Rol owner/manager activo en el tenant + puerta de Marketing (también para tokens de streaming)."""
         tenant_id = _uuid(tenant_id, "forbidden", 403)
         rows = self.db.select("tenant_users", {
             "user_id": f"eq.{user['id']}", "tenant_id": f"eq.{tenant_id}", "active": "eq.true",
@@ -404,10 +408,20 @@ class MarketingService:
             raise PortalError("scheduled_in_past", 400)
         if not cur.get("channels"):
             raise PortalError("channels_required", 400)
+        if self._mock_generated(c, cur["id"]):
+            raise PortalError("mock_content_not_publishable", 409)   # resultado simulado (Fase 2)
         hit = d.limit_reached(c.settings, self._usage(c, at_dt), cur["format"])
         if hit:
             raise PortalError(f"limit_{hit}", 409)
         return at
+
+    def _mock_generated(self, c, content_id: str) -> bool:
+        try:
+            jobs = self.db.select("marketing_generation_jobs", {"tenant_id": f"eq.{c.tenant_id}", "content_id": f"eq.{content_id}",
+                                                                "select": "result_metadata", "limit": "20"}) or []
+        except PortalError:
+            return False                                 # tablas de Fase 2 aún no creadas: no hay mocks
+        return any((j.get("result_metadata") or {}).get("mock") is not False for j in jobs)
 
     def _queue(self, c, item: Dict[str, Any]) -> None:
         """Una fila por canal con idempotency_key estable; el proveedor (hoy desactivado) decide."""

@@ -4,7 +4,7 @@
 // (pestaña, mes del calendario y cualquier dato en memoria), así nunca se ven
 // colores, logo ni contenido de la empresa anterior.
 
-export const TABS = ['overview', 'content', 'calendar', 'campaigns', 'brand'];
+export const TABS = ['overview', 'content', 'calendar', 'campaigns', 'library', 'studio', 'jobs', 'brand'];
 export const FORMATS = ['image', 'carousel', 'reel', 'story', 'video', 'text'];
 export const CHANNELS = ['instagram', 'facebook', 'tiktok', 'linkedin', 'x', 'youtube', 'google_business', 'threads'];
 export const LANGUAGES = ['en', 'es'];

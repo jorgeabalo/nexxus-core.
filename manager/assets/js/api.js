@@ -255,6 +255,45 @@ export const api = {
         { tenant_id: tenantId, to, comment: comment || null, scheduled_at: scheduledAt || null });
     },
     calendar(tenantId, start, end) { return backend('GET', `/api/manager/marketing/calendar?${qs({ tenant_id: tenantId, start, end })}`); },
+    // Fase 2: Biblioteca privada, Estudio de Reels y trabajos de generación (todo por el backend).
+    library(tenantId) { return backend('GET', `/api/manager/marketing/library?${qs({ tenant_id: tenantId })}`); },
+    // El archivo va como cuerpo (no multipart): el backend aplica el límite antes de leerlo.
+    async upload(tenantId, file) {
+      const token = (await sb.auth.getSession()).data.session?.access_token;
+      const res = await fetch(`/api/manager/marketing/library?${qs({ tenant_id: tenantId })}`, {
+        method: 'POST', body: file,
+        headers: { Authorization: `Bearer ${token || ''}`, 'Content-Type': file.type || 'application/octet-stream',
+          'X-File-Name': encodeURIComponent(file.name || '') },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { const e = new Error(data.error || `HTTP ${res.status}`); e.code = data.error; throw e; }
+      return data;
+    },
+    // Sesión de reproducción: el servidor la guarda en una cookie HttpOnly (Path = el archivo, 10 min).
+    // El <video> usa la URL limpia que devuelve y el navegador envía la cookie en HEAD y en cada Range.
+    streamSession(tenantId, id) {
+      return backend('POST', `/api/manager/marketing/library/${encodeURIComponent(id)}/stream-session`, { tenant_id: tenantId });
+    },
+    streamRevoke(tenantId, id) { return backend('POST', `/api/manager/marketing/library/${encodeURIComponent(id)}/stream-revoke`, { tenant_id: tenantId }); },
+    setRetention(tenantId, id, days) { return backend('POST', `/api/manager/marketing/library/${encodeURIComponent(id)}/retention`, { tenant_id: tenantId, days }); },
+    revokeConsent(tenantId, id) { return backend('POST', `/api/manager/marketing/library/${encodeURIComponent(id)}/revoke-consent`, { tenant_id: tenantId }); },
+    deleteMedia(tenantId, id, reason) {
+      return backend('POST', `/api/manager/marketing/library/${encodeURIComponent(id)}/delete`, { tenant_id: tenantId, reason, confirm: true });
+    },
+    classify(tenantId, id, values) { return backend('PATCH', `/api/manager/marketing/library/${encodeURIComponent(id)}/privacy`, { ...values, tenant_id: tenantId }); },
+    archive(tenantId, id, archived) { return backend('POST', `/api/manager/marketing/library/${encodeURIComponent(id)}/archive`, { tenant_id: tenantId, archived }); },
+    anonymize(tenantId, id, method) { return backend('POST', `/api/manager/marketing/library/${encodeURIComponent(id)}/anonymize`, { tenant_id: tenantId, method }); },
+    reviewDerivative(tenantId, id, approve) {
+      return backend('POST', `/api/manager/marketing/library/derivatives/${encodeURIComponent(id)}/review`, { tenant_id: tenantId, approve, confirm_reviewed: approve });
+    },
+    studio(tenantId) { return backend('GET', `/api/manager/marketing/studio?${qs({ tenant_id: tenantId })}`); },
+    mixPreview(tenantId, values) { return backend('POST', '/api/manager/marketing/studio/mix-preview', { ...values, tenant_id: tenantId }); },
+    jobs(tenantId) { return backend('GET', `/api/manager/marketing/jobs?${qs({ tenant_id: tenantId })}`); },
+    job(tenantId, id) { return backend('GET', `/api/manager/marketing/jobs/${encodeURIComponent(id)}?${qs({ tenant_id: tenantId })}`); },
+    createJob(tenantId, values) { return backend('POST', '/api/manager/marketing/jobs', { ...values, tenant_id: tenantId }); },
+    jobAction(tenantId, id, action, values = {}) {
+      return backend('POST', `/api/manager/marketing/jobs/${encodeURIComponent(id)}/${encodeURIComponent(action)}`, { ...values, tenant_id: tenantId });
+    },
   },
 
   // ----- plan de entrenamiento (RLS: staff del mismo gym) -----

@@ -23,7 +23,8 @@ def marketing_module_enabled(tenant: Any) -> bool:
 
 
 # PostgREST responde 404 con PGRST205 (o 42P01 en versiones anteriores) cuando la tabla no existe.
-_MISSING_TABLE = re.compile(r"-> 404:.*(PGRST205|42P01)", re.S)
+_MISSING_TABLE = re.compile(r"-> 404:.*(PGRST205|PGRST202|42P01|42883)", re.S)
+_GUARDED = ("marketing_", "rpc/marketing_")
 
 
 class MarketingTablesGuard:
@@ -43,7 +44,7 @@ class MarketingTablesGuard:
         except PortalError:
             raise
         except Exception as e:
-            if str(table).startswith("marketing_") and _MISSING_TABLE.search(str(e)):
+            if str(table).startswith(_GUARDED) and _MISSING_TABLE.search(str(e)):
                 logger.warning(f"MARKETING_UNAVAILABLE tabla={table}")
                 raise PortalError("marketing_unavailable", 503)
             raise
@@ -59,3 +60,6 @@ class MarketingTablesGuard:
 
     def update(self, table, filters, values):
         return self._call(self._db.update, table, filters, values)
+
+    def rpc(self, fn, args):
+        return self._call(lambda _t, a: self._db.rpc(fn, a), f"rpc/{fn}", args)

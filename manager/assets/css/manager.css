@@ -431,7 +431,7 @@ h3.m0 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color
 
 /* ---------- AITA Marketing ---------- */
 .mk-notice { margin-bottom: 8px; }
-.mk-body { display: grid; gap: 20px; }
+.mk-body { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); }
 .kpis.mk-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .mk-usage { margin-top: 12px; }
 .mk-usage-head { display: flex; justify-content: space-between; font-size: 14px; color: var(--text-2); }
@@ -483,3 +483,4 @@ h3.m0 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color
   .mk-day { min-height: 0; }
 }
 .mk-body .card-head select.input { width: auto; max-width: 220px; }
+

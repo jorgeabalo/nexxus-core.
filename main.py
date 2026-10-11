@@ -112,7 +112,8 @@ async def manager_security_headers(request: Request, call_next):
     p = request.url.path
     if (p.startswith("/manager") or p.startswith("/api/manager")
             or p == "/m" or p.startswith("/m/") or p.startswith("/api/member")):
-        response.headers["Cache-Control"] = "no-store"
+        if "no-store" not in response.headers.get("Cache-Control", ""):
+            response.headers["Cache-Control"] = "no-store"     # respeta "private, no-store" (vista previa)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Frame-Options"] = "DENY"
@@ -388,6 +389,9 @@ app.include_router(_accounting_router(lambda: member_portal.db if member_portal 
 # AITA Marketing (/api/manager/marketing/*): solo owner/manager; Fase 1 no publica en redes.
 from services.marketing_routes import build_router as _marketing_router
 app.include_router(_marketing_router(lambda: member_portal.db if member_portal else None))
+# Fase 2: Biblioteca privada, Estudio de Reels y trabajos de IA (proveedores reales apagados).
+from services.marketing_studio_routes import build_router as _marketing_studio_router
+app.include_router(_marketing_studio_router(lambda: member_portal.db if member_portal else None))
 
 
 @app.get("/api/manager/sms-diagnostics")
