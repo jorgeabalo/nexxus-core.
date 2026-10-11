@@ -184,12 +184,18 @@ def test_stale_worker_cannot_finish_or_fail_a_reclaimed_job(studio, db):
     a = runner(db, "00000000-0000-4000-8000-0000000000e1")
     claimed = a.claim()["job"]
     at(db, seconds=200)                                                 # A se queda colgado: su lease vence
+    c = a._c(T1)
+    with pytest.raises(WorkerError) as e:                               # vencido, aún sin dueño nuevo: tampoco
+        a._fail(c, claimed, "render_failed")
+    assert e.value.code == "lease_lost" and job(db, j["id"])["status"] == "processing"
     b = runner(db, "00000000-0000-4000-8000-0000000000e2")
     assert b.claim()["status"] == "claimed"                            # B lo retoma
-    c = a._c(T1)
     with pytest.raises(WorkerError) as e:
-        a._fail(c, claimed, "render_failed", 0.0)                       # A despierta e intenta cerrarlo
-    assert e.value.code == "already_claimed"
+        a._fail(c, claimed, "render_failed")                            # A despierta e intenta cerrarlo
+    assert e.value.code == "lease_lost"
+    res = db.rpc("marketing_fail_generation", {"p_tenant": T1, "p_job": j["id"], "p_worker": claimed["lease_owner"],
+                                               "p_error_code": "cancelled_by_user", "p_usage": []})
+    assert res["status"] == "rejected"                                  # ni failed ni cancelled por el camino del worker
     assert next(x for x in db.tables["marketing_storage_reservations"]
                 if x["reservation_key"] == f"job:{j['id']}")["status"] == "reserved"     # A no libera nada ajeno
     r = job(db, j["id"])

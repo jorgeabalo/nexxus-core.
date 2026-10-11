@@ -273,9 +273,15 @@ class StudioService(StudioBase):
         c = self.ctx(jwt, tenant_id)
         self._writable(c)
         j = self._job(c, job_id)
-        # Lo reservado y no gastado deja de contar al terminar el trabajo (consumo = costo real).
-        return self._move(c, j, "cancelled", "cancel", {"error_code": "cancelled_by_user",
-                                                        "completed_at": c.now.isoformat()})
+        jd.check_job_transition(j["status"], "cancelled", approved=bool(j.get("approved_at")))
+        # Cancelación externa: camino explícito de la base (también si un worker lo está procesando). Lo
+        # reservado y no gastado deja de contar al terminar el trabajo (consumo = costo real).
+        res = self.db.rpc("marketing_cancel_generation", {"p_tenant": c.tenant_id, "p_job": j["id"], "p_to": "cancelled",
+                                                          "p_error_code": "cancelled_by_user", "p_actor": c.user["id"],
+                                                          "p_role": c.role}) or {}
+        if res.get("status") != "cancelled":
+            raise PortalError("conflict", 409)
+        return res["job"]
 
     @_guard
     def process_job(self, jwt: str, tenant_id: str, job_id: str) -> Dict[str, Any]:

@@ -70,13 +70,14 @@ def test_heartbeat_is_at_most_a_third_of_the_lease(lease, hb, expected):
 
 def test_keeper_renews_and_leaves_no_thread():
     calls = []
-    with LeaseKeeper(lambda: calls.append(1) or True, 0.01, name="t") as k:
+    with LeaseKeeper(lambda t: calls.append(t) or True, 0.01, name="t") as k:
         assert wait_for(lambda: len(calls) >= 3)
         assert not k.lost and keeper_threads()
-    assert keeper_threads() == [] and k.renewals >= 3
+    assert keeper_threads() == [] and k.renewals >= 3 and k.joined
+    assert all(0 < t <= 0.01 for t in calls)                            # cada renovación lleva su timeout
 
 
-@pytest.mark.parametrize("renew", [lambda: False, lambda: None, lambda: (_ for _ in ()).throw(RuntimeError("red"))])
+@pytest.mark.parametrize("renew", [lambda t: False, lambda t: None, lambda t: (_ for _ in ()).throw(RuntimeError("red"))])
 def test_failed_or_erroring_renewal_means_lost(renew):
     with LeaseKeeper(renew, 0.01, name="t") as k:
         assert wait_for(lambda: k.lost)
@@ -86,7 +87,7 @@ def test_failed_or_erroring_renewal_means_lost(renew):
 
 
 def test_stop_ends_the_thread_immediately():
-    with LeaseKeeper(lambda: True, 30, name="t") as k:
+    with LeaseKeeper(lambda t: True, 30, name="t") as k:
         t0 = time.monotonic()
         k.stop()
     assert time.monotonic() - t0 < 1 and keeper_threads() == []
@@ -234,12 +235,13 @@ def test_retention_stops_when_lease_lost_and_nothing_is_deleted_or_closed_twice(
     monkeypatch.setattr(db, "storage_remove", steal_on_first)
     a = RetentionRunner(db, now=NOW + timedelta(days=40), holder=A, renew_seconds=0.005)
     out = a.run()
-    assert out.get("lease_lost") is True and out["purged"] == 1 and len(removed) == 1   # se detuvo tras el primero
+    assert out.get("lease_lost") is True and out["purged"] == 0 and len(removed) == 1   # se detuvo tras el primero
+    assert out["stopped_at"] == "purge:after_original"                              # sin cerrar ese archivo
     assert db.tables["marketing_runtime_leases"][0]["holder"] == B                     # no liberó el lease ajeno
+    assert not [e for e in db.tables["marketing_media_events"] if e["action"] == "purged"]
     db.tables["marketing_runtime_leases"].clear()
     out_b = RetentionRunner(db, now=NOW + timedelta(days=40), holder=B, renew_seconds=0.005).run()
-    assert out_b["purged"] == 2
-    assert sorted(removed) == sorted(set(removed)) and len(removed) == 3            # cada objeto, una sola vez
+    assert out_b["purged"] == 3                                     # B retoma (el borrado repetido es idempotente)
     purged_events = [e for e in db.tables["marketing_media_events"] if e["action"] == "purged"]
     assert sorted(e["media_id"] for e in purged_events) == sorted(m["id"] for m in ms)   # cerrado una vez cada uno
     assert keeper_threads() == []
@@ -271,17 +273,17 @@ def test_background_renewal_failure_stops_even_if_lease_still_valid(studio, db):
     assert keeper_threads() == []
 
 
-def test_lease_lost_right_before_confirming_storage(studio, db):
-    """El lease cambia de dueño entre el último heartbeat y la confirmación del tamaño: no se registra nada."""
+def test_lease_lost_right_before_finalizing(studio, db):
+    """El lease cambia de dueño entre el último heartbeat y la finalización: no se registra nada."""
     j = approved_job(studio)
     longp = Long(db, steps=0, step_seconds=0, temps=True)
     longp.job_id = j["id"]
-    real = db._rpc_marketing_confirm_output_storage
+    real = db._rpc_marketing_finalize_generation
 
-    def steal_then_confirm(a):
+    def steal_then_finalize(a):
         job(db, j["id"]).update({"lease_owner": B})                      # B lo retomó justo ahora
         return real(a)
-    db._rpc_marketing_confirm_output_storage = steal_then_confirm
+    db._rpc_marketing_finalize_generation = steal_then_finalize
     a = JobRunner(db, MarketingAIRouter(env={}), {**ADAPTERS(), "mock": longp}, now=NOW, worker_id=A,
                   lease_seconds=30, heartbeat_seconds=0.005)
     assert a.run_pending(limit=1) == [{"id": j["id"], "error": "lease_lost"}]

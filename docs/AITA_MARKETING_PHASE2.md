@@ -216,12 +216,13 @@ procesar. Cuando haga falta, se preferirá un Cron con `--once`.
   con `--apply`. La salida indica `"mode": "dry_run"` o `"mode": "apply"`.
 * Por lotes (`--batch-size`, `--max-batches`) y repetible: cada lote vuelve a leer el estado.
 * Un solo purgador a la vez: lease `retention_runner` en `marketing_runtime_leases`
-  (`marketing_acquire_runtime_lease`, TTL 15 min). Se renueva antes de cada lote y, en segundo plano, durante
-  el lote (cada ≤ 5 min, también en borrados lentos). Si otro lo tiene, devuelve `{"locked": true}` y no hace
-  nada; si lo pierde a mitad, se detiene antes del siguiente archivo o borrado (`"lease_lost": true`) y no libera
-  el lease ajeno; si un purgador muere, su lease vence y otro lo retoma. Cada archivo se cierra con una
-  actualización condicional: dos purgadores nunca lo cierran ni lo borran dos veces. No se usa `pg_advisory_lock` porque PostgREST reparte
-  las llamadas entre conexiones del pool y un bloqueo de sesión no sería fiable.
+  (`marketing_acquire_runtime_lease`, TTL 15 min), renovado en segundo plano (≤ 5 min, con timeout) y
+  **revalidado contra la base** al empezar cada purga, tras `purge_pending`, antes y después del original y de
+  cada derivado o resultado, antes del cierre, de `marketing_timeout_jobs` y de caducar reservas. Si otro lo
+  tiene → `{"locked": true}`; si lo pierde → se detiene en ese punto (`"lease_lost"`, `"stopped_at"`), no cierra
+  nada y no libera el lease nuevo (la liberación exige ser el holder). El cierre es `marketing_close_purge`: en una
+  transacción, solo con el lease vigente de ESE holder (o un owner/manager que borra), solo si sigue
+  `purge_pending`, y un único evento `purged`. Sin `pg_advisory_lock` (PostgREST reparte conexiones del pool).
 * Orden de la purga: primero el acceso lógico (`purge_pending` + sesiones revocadas) y después el objeto de
   Storage; nunca una ruta que no sea `{tenant}/…/{archivo}` de ese archivo; si el objeto ya no existe (404) la
   purga se cierra; reintentos limitados (5) con `last_purge_error`. Al purgar, el espacio "vencido pendiente de
@@ -243,18 +244,21 @@ y revisar la salida.
   mismo trabajo. **Heartbeat continuo**: mientras dura el trabajo (también durante una subtarea larga de FFmpeg,
   vídeo o un proveedor) un hilo renueva el lease (`marketing_job_heartbeat`) como mucho cada lease/3
   (`--heartbeat-seconds`, por defecto lease/3; se rechaza un lease < 30 s o un intervalo > lease/3). La hora y la
-  validez del lease las decide PostgreSQL, nunca el reloj del proceso. Además se comprueba antes y después de
-  cada subtarea y antes de registrar resultados. El hilo se detiene y se une al terminar, fallar, cancelar o con
-  SIGTERM (sin hilos ni conexiones huérfanas).
-* **Lease perdido** (renovación fallida, también por error de red, u otro dueño): el worker marca `lease_lost`, no
-  registra resultados ni costos, no confirma almacenamiento, no toca reservas y solo borra los temporales de ESTE
-  intento (llevan su `worker_id` como prefijo). La base lo garantiza aunque el código fallara: resultados
-  (`marketing_generation_outputs.worker_id`), costos (`marketing_model_usage.worker_id`) y la confirmación de
-  almacenamiento (`marketing_confirm_output_storage(…, p_worker)`) exigen ser el dueño del lease vigente; la
-  transición final exige lease vigente y el mismo `worker_id`; y las reservas de trabajos (`job:…`) ya no se
-  pueden liberar a mano: solo las cierra la base cuando el trabajo termina.
-* **SIGTERM**: el trabajo en curso se detiene sin escribir nada (`interrupted`), no se reclaman más trabajos y el
-  lease vence para que otro worker lo retome o termine en timeout.
+  validez del lease las decide PostgreSQL, nunca el reloj del proceso. Cada renovación tiene timeout (HTTP y
+  `statement_timeout`); una tardía cuenta como perdida. Además se comprueba antes y después de cada subtarea. El
+  hilo se une con tiempo máximo (nunca bloquea) y no abre conexiones propias.
+* **Finalización atómica** (migración `20261012130000`): nada se escribe durante el trabajo; los costos y
+  resultados se preparan en memoria y `marketing_finalize_generation` lo publica TODO en una transacción: bloquea
+  el trabajo, exige `processing` + lease vigente + mismo `worker_id`, revalida presupuesto y almacenamiento,
+  registra el costo real (idempotente por `idempotency_key`), inserta los resultados (índice único por
+  trabajo/tipo/escena/archivo), marca `succeeded` y consume la reserva una vez. Si algo falla, no queda nada. Si
+  la respuesta se pierde, el worker no borra nada (`finalize_unknown`): o se confirmó entero o el lease vence.
+* **Lease perdido**: `lease_lost`; no escribe nada y solo borra sus temporales (prefijo `worker_id`); la base lo exige.
+* **Transiciones terminales** solo por caminos explícitos: `marketing_finalize_generation`/`marketing_fail_generation`
+  (lease vigente de ESE worker), `marketing_cancel_generation` (externa; nunca éxito) y `marketing_timeout_jobs`
+  (solo lease vencido, solo `failed`). Un UPDATE directo de `processing` a terminal se rechaza.
+* **SIGTERM**: deja de renovar al instante aunque la subtarea siga bloqueada; al volver no escribe nada
+  (`interrupted`), no reclama más y el lease vence para que otro lo retome.
 * Lease vencido → reintento por otro worker (máx. 3 intentos) con la **misma** `idempotency_key`: las subtareas ya
   cobradas no se repiten. Sin reintentos → timeout (arriba).
 * Antes de gastar vuelve a comprobar: entradas (vencidas, consentimiento, menores…), generación habilitada y
@@ -279,11 +283,9 @@ de 80 USD por tenant (voz, IA de Claudia, infraestructura…), que irá en otro 
   (llamada por `RetentionRunner.run`) las marca `expired` de forma idempotente. La reserva de un trabajo se cierra
   sola cuando termina (disparador `marketing_job_storage_release`): completado → `consumed`; cancelado, fallido,
   timeout (trabajo aprobado sin terminar en 24 h), consentimiento retirado o purga del archivo → `released`.
-* **Tamaño real del resultado**: antes de registrar un resultado con archivo, el worker llama a
-  `marketing_confirm_output_storage(tenant, job, bytes_reales)`, que compara el tamaño real con lo reservado + lo
-  disponible (bloqueando la configuración del tenant). Si no cabe: no se registra, se borra el temporal (solo
-  rutas `{tenant}/derivatives/{job}/…`), se libera la reserva y el trabajo falla con `storage_quota_exceeded`.
-  Si cabe, la reserva pasa al tamaño real hasta que el trabajo termina.
+* **Tamaño real del resultado**: dentro de `marketing_finalize_generation` se compara el tamaño real con lo
+  reservado + lo disponible (bloqueando la configuración). Si no cabe: nada se publica, se borran los temporales
+  propios (`{tenant}/derivatives/{job}/{worker}-…`) y el trabajo falla con `storage_quota_exceeded`.
 * **Concurrencia en PostgreSQL real**: `tests/test_marketing_pg_concurrency.py` crea un clúster desechable
   (initdb en un directorio temporal, solo 127.0.0.1), carga las migraciones y abre transacciones simultáneas:
   dos subidas, dos aprobaciones por bytes, dos por costo y subida contra aprobación, cerca del límite → solo una
@@ -293,12 +295,11 @@ de 80 USD por tenant (voz, IA de Claudia, infraestructura…), que irá en otro 
 
   ```bash
   python3 -m venv /tmp/mk-pg-venv && /tmp/mk-pg-venv/bin/pip install pytest "psycopg[binary]==3.2.3"
-  MARKETING_PG_BIN=/opt/homebrew/opt/postgresql@17/bin /tmp/mk-pg-venv/bin/python -m pytest -v -p no:cacheprovider --noconftest tests/test_marketing_pg_concurrency.py
+  MARKETING_PG_BIN=/opt/homebrew/opt/postgresql@17/bin /tmp/mk-pg-venv/bin/python -m pytest -v -p no:cacheprovider --noconftest tests/test_marketing_pg_concurrency.py tests/test_marketing_pg_finalize.py
   ```
 
-  En Linux, `MARKETING_PG_BIN` es la carpeta de `initdb`/`pg_ctl` (p. ej. `/usr/lib/postgresql/17/bin`). La
-  prueba arranca el servidor con `LC_ALL=C` (en macOS el postmaster no arranca sin un locale válido), lo
-  detiene y borra el directorio al terminar. Resultado esperado: `17 passed`.
+  En Linux, `MARKETING_PG_BIN` es la carpeta de `initdb`/`pg_ctl` (p. ej. `/usr/lib/postgresql/17/bin`). Arranca
+  con `LC_ALL=C` (macOS lo exige), y detiene y borra el clúster al terminar. Esperado: `39 passed`.
 
 * `marketing_settings.monthly_ai_cost_limit` (USD/mes) lo fija **solo el operador**; `0` por defecto = ninguna
   generación, ni siquiera simulada. **Desconocido (`null`) o 0 = cerrado**. Es el presupuesto **exclusivo de la IA
@@ -319,7 +320,7 @@ de 80 USD por tenant (voz, IA de Claudia, infraestructura…), que irá en otro 
   `budget_exceeded` si el nuevo costo máximo no cabe. Sin costo estimable → `cost_not_estimable`, no se ejecuta.
   Al cancelar o fallar sin gasto, lo reservado deja de contar automáticamente.
 * El worker nunca gasta más que lo reservado ni que el máximo aprobado (`budget_exceeded`).
-* Con proveedores reales apagados y mocks, el costo real es 0 y no hay red.
+* Con proveedores reales apagados y mocks, el costo real es 0 y no hay red. Concurrencia: ver la prueba real arriba.
 * Un Reel 100 % IA se marca (`full_ai`), muestra su costo estimado y nunca se inicia sin aprobación explícita.
   Prioridad económica: material del cliente → local → plantillas/FFmpeg → modelos pequeños → imagen →
   imagen-a-vídeo → texto-a-vídeo como último recurso; la sugerencia por defecto usa el material del cliente.
@@ -327,8 +328,6 @@ de 80 USD por tenant (voz, IA de Claudia, infraestructura…), que irá en otro 
   aclaración de que no es el presupuesto global. En cada trabajo el manager ve **costo estimado, reservado y real y
   la categoría del costo** (`marketing_ai_budget`). Proveedor y modelo son **información interna**: se guardan en
   el trabajo y en `marketing_model_usage`, pero la API no los devuelve.
-* Concurrencia: probada con hilos reales contra un doble que reproduce el bloqueo, y en SQL la lógica y el
-  `FOR UPDATE`. PGlite es de una sola conexión: conviene repetir la prueba entre conexiones reales en staging.
 
 ## 5. Mezcla real / IA
 
@@ -482,7 +481,8 @@ Para activar un proveedor real (cada paso con autorización explícita):
 * Python: `tests/test_marketing_*.py` (permisos, archivos, privacidad, retención, vencidos, costos, reservas,
   streaming, worker con lease y heartbeat, purgador y comandos). JS: `tests/js/marketing-studio.test.mjs`.
 * SQL (PGlite): `tests/sql/marketing_*.mjs` (RLS, mínimo privilegio, inmutabilidad, retención, presupuesto,
-  seguridad de ejecución). PostgreSQL 17 real: `tests/test_marketing_pg_concurrency.py` (comando en §4f).
+  seguridad de ejecución, finalización atómica). PostgreSQL 17 real: `tests/test_marketing_pg_concurrency.py` y
+  `tests/test_marketing_pg_finalize.py` (SIGTERM, fallos inyectados en la finalización; comando en §4f).
 * Ejecutar: `PGLITE_NODE_PATH=/ruta/node_modules python3 -m pytest -q tests/test_marketing*.py`.
 
 ## 13. Riesgos y pendientes

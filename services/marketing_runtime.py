@@ -61,10 +61,12 @@ class DryRunDB:
         self._record("delete", table)
         return []
 
-    def rpc(self, fn, args):
+    def rpc(self, fn, args, timeout=None):
         if fn in READ_ONLY_RPCS:
-            return self._db.rpc(fn, args)
+            return self._db.rpc(fn, args, timeout=timeout)
         self._record("rpc", fn)
+        if fn == "marketing_close_purge":
+            return {"status": "closed"}                     # contar como cerrado lo que se cerraría
         return True if fn == "marketing_acquire_runtime_lease" else 0
 
     def storage_remove(self, bucket, key):

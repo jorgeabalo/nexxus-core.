@@ -7,7 +7,8 @@
 --    ninguna sesión de reproducción nueva y su vencimiento ya no puede ampliarse.
 -- 2. Worker: reclamo atómico con lease (FOR UPDATE SKIP LOCKED), heartbeat, reintentos limitados que
 --    conservan la idempotency_key y timeout que libera reservas una sola vez y bloquea los resultados.
---    Resultados, costos y confirmación de almacenamiento: solo el worker dueño del lease vigente.
+--    Resultados, costos y confirmación de almacenamiento: solo el worker dueño del lease vigente. Un trabajo en
+--    proceso solo termina por las funciones de 20261012130000_marketing_worker_finalize.sql (o el timeout).
 -- 3. Purgador: un solo RetentionRunner a la vez (lease en marketing_runtime_leases). No se usa
 --    pg_advisory_lock porque PostgREST reparte las llamadas entre conexiones del pool.
 -- 4. "Marketing AI budget" (SOLO IA de Marketing): desconocido o 0 = cerrado; máximo TEMPORAL de 20 USD/mes
@@ -216,17 +217,37 @@ alter table public.marketing_generation_jobs
 create index if not exists marketing_generation_jobs_claim_idx
   on public.marketing_generation_jobs(status, approved_at) where status in ('queued','processing');
 
--- Solo quien tiene el lease vigente puede terminar con éxito; nadie roba un lease vigente.
+-- Un trabajo en proceso SOLO termina por un camino explícito (marcado en la transacción por la función):
+--   'worker:<id>' → marketing_finalize_generation / marketing_fail_generation: lease vigente de ESE worker;
+--   'expired' → marketing_timeout_jobs / reclamo de un reintento: solo con el lease ya vencido y solo a failed;
+--   'cancel'  → marketing_cancel_generation: cancelación externa (usuario, consentimiento, purga), nunca éxito.
+-- Cualquier UPDATE directo de processing a succeeded/failed/cancelled se rechaza. Nadie roba un lease vigente.
 create or replace function private.marketing_job_lease_guard()
 returns trigger language plpgsql set search_path = '' as $$
+declare t text := coalesce(current_setting('marketing.transition', true), '');
 begin
-  if old.status = 'processing' and new.status = 'succeeded'
-     and (old.lease_owner is null or old.lease_expires_at is null or old.lease_expires_at <= now()
-          or new.lease_owner is distinct from old.lease_owner) then
-    raise exception 'generation job lease expired or not held' using errcode = '23514';
+  if old.status = 'processing' and new.status in ('succeeded','failed','cancelled') then
+    if t like 'worker:%' then                                   -- 'worker:<worker_id>' (finalize/fail)
+      if old.lease_owner is null or old.lease_owner::text <> substr(t, 8) or old.lease_expires_at is null
+         or old.lease_expires_at <= now() or new.lease_owner is distinct from old.lease_owner
+         or new.status = 'cancelled' then                            -- cancelar es otro camino
+        raise exception 'generation job lease expired or not held' using errcode = '23514';
+      end if;
+    elsif t = 'expired' then
+      if new.status <> 'failed' or (old.lease_expires_at is not null and old.lease_expires_at > now()) then
+        raise exception 'only a job whose lease expired can be timed out (failed)' using errcode = '23514';
+      end if;
+    elsif t = 'cancel' then
+      if new.status = 'succeeded' then
+        raise exception 'a cancellation never succeeds a job' using errcode = '23514';
+      end if;
+    else
+      raise exception 'processing jobs end only through the marketing finalize/fail/cancel/timeout functions'
+        using errcode = '23514';
+    end if;
   end if;
   if old.status = 'processing' and new.lease_owner is distinct from old.lease_owner
-     and old.lease_owner is not null and old.lease_expires_at > now() then
+     and old.lease_owner is not null and old.lease_expires_at > now() and t <> 'cancel' then
     raise exception 'generation job lease is held by another worker' using errcode = '23514';
   end if;
   return new;
@@ -315,6 +336,7 @@ begin
            attempts = attempts + 1
      where id = j.id returning * into j;
   exception when check_violation then                  -- entradas ya no permitidas: falla, no bloquea la cola
+    perform set_config('marketing.transition', 'expired', true);    -- en cola, o lease ya vencido (reintento)
     update public.marketing_generation_jobs
        set status = 'failed', error_code = 'media_not_ready', completed_at = now(), lease_owner = null,
            lease_expires_at = null
@@ -323,6 +345,7 @@ begin
                                                         actor_id, actor_role)
     values (j.tenant_id, j.id, 'fail', case when retry then 'processing' else 'queued' end, 'failed',
             jsonb_build_object('error_code', 'media_not_ready'), null, 'system');
+    perform set_config('marketing.transition', '', true);
     return jsonb_build_object('status', 'skipped', 'job_id', j.id);
   end;
   insert into public.marketing_generation_job_events (tenant_id, job_id, action, from_status, to_status, detail,
@@ -334,7 +357,7 @@ end $$;
 
 -- Heartbeat: solo el dueño de un lease vigente lo renueva. Devuelve true o null (lease perdido).
 create or replace function public.marketing_job_heartbeat(p_job uuid, p_worker uuid, p_lease_seconds integer)
-returns boolean language sql security definer set search_path = '' as $$
+returns boolean language sql security definer set search_path = '' set statement_timeout = '5s' set lock_timeout = '2s' as $$
   update public.marketing_generation_jobs
      set heartbeat_at = now(),
          lease_expires_at = now() + make_interval(secs => least(greatest(coalesce(p_lease_seconds, 120), 30), 900))
@@ -348,6 +371,7 @@ create or replace function public.marketing_timeout_jobs(p_max_attempts integer 
 returns integer language plpgsql security definer set search_path = '' as $$
 declare j record; n integer := 0; maxa integer := least(greatest(coalesce(p_max_attempts, 3), 1), 10);
 begin
+  perform set_config('marketing.transition', 'expired', true);     -- camino administrativo separado
   for j in select id, tenant_id, status from public.marketing_generation_jobs
             where (status = 'processing' and (lease_expires_at is null or lease_expires_at <= now())
                    and (attempts >= maxa or approved_at <= now() - interval '24 hours'))
@@ -365,6 +389,7 @@ begin
     values (j.tenant_id, j.id, 'fail', j.status, 'failed', jsonb_build_object('error_code', 'timeout'), null, 'system');
     n := n + 1;
   end loop;
+  perform set_config('marketing.transition', '', true);
   return n;
 end $$;
 
@@ -376,7 +401,7 @@ create table if not exists public.marketing_runtime_leases (
   expires_at  timestamptz not null
 );
 create or replace function public.marketing_acquire_runtime_lease(p_name text, p_holder uuid, p_ttl_seconds integer)
-returns boolean language sql security definer set search_path = '' as $$
+returns boolean language sql security definer set search_path = '' set statement_timeout = '5s' set lock_timeout = '2s' as $$
   insert into public.marketing_runtime_leases as l (name, holder, acquired_at, expires_at)
   values (p_name, p_holder, now(), now() + make_interval(secs => least(greatest(coalesce(p_ttl_seconds, 300), 30), 3600)))
   on conflict (name) do update set holder = excluded.holder, acquired_at = excluded.acquired_at,

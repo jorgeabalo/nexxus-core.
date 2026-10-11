@@ -20,6 +20,7 @@ Se omite si no hay binarios de PostgreSQL. Comando exacto (ver docs/AITA_MARKETI
   MARKETING_PG_BIN=/opt/homebrew/opt/postgresql@17/bin /tmp/mk-pg-venv/bin/python -m pytest -v -p no:cacheprovider \
       --noconftest tests/test_marketing_pg_concurrency.py
 """
+import json
 import os
 import shutil
 import socket
@@ -38,7 +39,7 @@ if not PG_BIN or not (Path(PG_BIN) / "initdb").exists():
 ROOT = Path(__file__).resolve().parents[1]
 MIGS = ("20261009120000_aita_marketing.sql", "20261011120000_marketing_reel_studio.sql",
         "20261011130000_marketing_library_retention.sql", "20261011140000_marketing_generation_budget.sql",
-        "20261012120000_marketing_runtime_safety.sql")
+        "20261012120000_marketing_runtime_safety.sql", "20261012130000_marketing_worker_finalize.sql")
 OWNER = "00000000-0000-0000-0000-00000000000a"
 TA = "10000000-0000-0000-0000-00000000000a"
 HOLD = 0.4                       # cada transacción retiene su bloqueo este tiempo antes de confirmar
@@ -81,7 +82,9 @@ def pg(tmp_path_factory):
 def reset(dsn, storage_limit=100, cost_limit=20):
     with psycopg.connect(dsn, autocommit=True) as c:
         c.execute("update marketing_storage_reservations set status = 'released' where status = 'reserved'")
+        c.execute("select set_config('marketing.transition', 'cancel', false)")   # limpieza entre pruebas
         c.execute("update marketing_generation_jobs set status = 'cancelled' where status in ('queued','processing')")
+        c.execute("select set_config('marketing.transition', '', false)")
         c.execute("delete from marketing_media")
         c.execute("delete from marketing_runtime_leases")
         lim = "null" if storage_limit is None else int(storage_limit)
@@ -226,12 +229,21 @@ def _approved_with_storage(pg):
     return j
 
 
-def _write_result(c, j, worker):
-    c.execute(f"""insert into marketing_generation_outputs (tenant_id, job_id, kind, worker_id)
-                  values ('{TA}','{j}','render','{worker}')""")
-    c.execute(f"""insert into marketing_model_usage (tenant_id, job_id, provider, model_id, task_type, catalog_version,
-                  billing_unit, units, estimated_cost, actual_cost, idempotency_key, status, worker_id)
-                  values ('{TA}','{j}','mock','m','reel','v1','request',1,0,0,'usage-{j}-subtask-0','not_charged','{worker}')""")
+def usage(j, key="0"):
+    return [{"provider": "mock", "model_id": "m", "task_type": "reel", "catalog_version": "v1", "billing_unit": "request",
+             "units": 1, "estimated_cost": 0, "actual_cost": 0, "idempotency_key": f"usage-{j}-subtask-{key}",
+             "status": "not_charged"}]
+
+
+def finalize(c, j, worker, outputs=None, use=None):
+    """Publicación atómica del worker (marketing_finalize_generation)."""
+    return c.execute("select public.marketing_finalize_generation(%s, %s, %s, %s::jsonb, %s::jsonb, '{}'::jsonb, '{}'::jsonb)",
+                     (TA, j, worker, json.dumps(usage(j) if use is None else use),
+                      json.dumps(outputs or [{"kind": "render", "metadata": {}}]))).fetchone()[0]
+
+
+def fail(c, j, worker, code="render_failed"):
+    return c.execute("select public.marketing_fail_generation(%s, %s, %s, %s, '[]'::jsonb)", (TA, j, worker, code)).fetchone()[0]
 
 
 def test_heartbeat_keeps_long_subtask_against_second_worker(pg):
@@ -239,16 +251,14 @@ def test_heartbeat_keeps_long_subtask_against_second_worker(pg):
     j = _approved_with_storage(pg)
     with psycopg.connect(pg, autocommit=True) as a, psycopg.connect(pg, autocommit=True) as b:
         assert a.execute(f"select public.marketing_claim_job('{W1}', {LEASE})").fetchone()[0]["status"] == "claimed"
-        renew = lambda: a.execute(f"select public.marketing_job_heartbeat('{j}','{W1}', {LEASE})").fetchone()[0]  # noqa: E731
+        renew = lambda t: a.execute(f"select public.marketing_job_heartbeat('{j}','{W1}', {LEASE})").fetchone()[0]  # noqa: E731
         rival, t0 = [], time.monotonic()
         with LeaseKeeper(renew, validate(LEASE), name="pg-a") as keeper:
             while time.monotonic() - t0 < 2 * LEASE + 5:             # la subtarea dura > 2 × lease
                 rival.append(b.execute(f"select public.marketing_claim_job('{W2}', {LEASE})").fetchone()[0]["status"])
                 time.sleep(3)
             assert not keeper.lost and keeper.renewals >= 5
-            _write_result(a, j, W1)                                   # sigue siendo el dueño
-            assert a.execute(f"""update marketing_generation_jobs set status = 'succeeded', actual_cost = 0, completed_at = now()
-                                 where id = '{j}' and lease_owner = '{W1}' and status = 'processing'""").rowcount == 1
+            assert finalize(a, j, W1)["status"] == "succeeded"        # sigue siendo el dueño
         assert rival and set(rival) == {"empty"}                     # B nunca pudo reclamarlo
         counts = a.execute(f"""select (select count(*) from marketing_generation_outputs where job_id = '{j}'),
                                       (select count(*) from marketing_model_usage where job_id = '{j}'),
@@ -278,14 +288,12 @@ def test_lost_heartbeat_second_worker_takes_over_and_first_cannot_write(pg):
                 a.execute(sql)                                       # A no escribe resultados ni costos
         assert a.execute(f"select public.marketing_confirm_output_storage('{TA}','{j}', 5, '{W1}')").fetchone()[0]["reason"] == "lease_lost"
         assert a.execute(f"select public.marketing_release_storage('{TA}','job:{j}', false)").fetchone()[0] is None
-        assert a.execute(f"""update marketing_generation_jobs set status = 'failed', error_code = 'render_failed', completed_at = now()
-                             where id = '{j}' and lease_owner = '{W1}' and status = 'processing'""").rowcount == 0
+        assert fail(a, j, W1)["reason"] == "lease_lost" and finalize(a, j, W1)["reason"] == "lease_lost"
+        with pytest.raises(psycopg.errors.CheckViolation):           # tampoco por UPDATE directo
+            a.execute(f"update marketing_generation_jobs set status = 'failed' where id = '{j}'")
         assert b.execute(f"select status from marketing_storage_reservations where reservation_key = 'job:{j}'").fetchone()[0] == "reserved"
-        _write_result(b, j, W2)                                       # B termina una sola vez
-        assert b.execute(f"""update marketing_generation_jobs set status = 'succeeded', actual_cost = 0, completed_at = now()
-                             where id = '{j}' and lease_owner = '{W2}' and status = 'processing'""").rowcount == 1
-        assert b.execute(f"""update marketing_generation_jobs set status = 'succeeded'
-                             where id = '{j}' and lease_owner = '{W2}' and status = 'processing'""").rowcount == 0
+        assert finalize(b, j, W2)["status"] == "succeeded"           # B termina una sola vez
+        assert finalize(b, j, W2)["reason"] == "lease_lost"
         final = b.execute(f"""select (select status from marketing_generation_jobs where id = '{j}'),
                                      (select count(*) from marketing_generation_outputs where job_id = '{j}'),
                                      (select count(*) from marketing_model_usage where job_id = '{j}'),

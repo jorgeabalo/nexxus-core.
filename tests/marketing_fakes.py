@@ -3,6 +3,7 @@ Doble de pruebas de las funciones atómicas de Marketing (aprobación con reserv
 reserva/liberación de almacenamiento y uso total), bajo un candado como SELECT … FOR UPDATE.
 Las funciones SQL reales se prueban en tests/sql/marketing_generation_budget.mjs y marketing_retention.mjs.
 """
+import copy
 import threading
 import time
 from datetime import datetime, timedelta
@@ -53,6 +54,8 @@ class MarketingRpcMixin:
             for j in self.tables.get(table, []):
                 if not self._match(j, filters) or j["status"] != "processing":
                     continue
+                if values.get("status") in TERMINAL_JOB:      # solo por finalize/fail/cancel/timeout
+                    raise RuntimeError("processing jobs end only through the marketing functions")
                 live = bool(j.get("lease_expires_at")) and j["lease_expires_at"] > self.rpc_now
                 owner = values.get("lease_owner", j.get("lease_owner"))
                 if values.get("status") == "succeeded" and (not j.get("lease_owner") or not live or owner != j.get("lease_owner")):
@@ -68,7 +71,7 @@ class MarketingRpcMixin:
                         r["status"] = "consumed" if j["status"] == "succeeded" else "released"
         return rows
 
-    def rpc(self, fn, a):
+    def rpc(self, fn, a, timeout=None):
         self.rpc_calls.append(fn)
         with self._rpc_lock:
             return getattr(self, f"_rpc_{fn}")(a)
@@ -241,6 +244,149 @@ class MarketingRpcMixin:
             self._job_event_sys(j, "fail", frm, "failed", {"error_code": "timeout"})
             n += 1
         return n
+
+    # ---------------------------------------------------------------- finalización atómica (emulada)
+    finalize_hook = None                              # pruebas: inyectar un fallo en un paso intermedio
+
+    def _atomic(self, fn):
+        """Como una transacción: si algo falla a mitad, la base queda exactamente como antes."""
+        snap = copy.deepcopy(self.tables)
+        try:
+            return fn()
+        except Exception:
+            self.tables.clear()
+            self.tables.update(snap)
+            raise
+
+    def _close_job_reservation(self, j):
+        for r in self.tables["marketing_storage_reservations"]:
+            if r["tenant_id"] == j["tenant_id"] and r["reservation_key"] == f"job:{j['id']}" and r["status"] == "reserved":
+                r["status"] = "consumed" if j["status"] == "succeeded" else "released"
+
+    def _insert_usage(self, tenant, job_id, worker, usage):
+        keys = {u["idempotency_key"] for u in self.tables["marketing_model_usage"] if u["tenant_id"] == tenant}
+        for u in usage or []:
+            if u["idempotency_key"] not in keys:
+                keys.add(u["idempotency_key"])
+                super().insert("marketing_model_usage", {**u, "tenant_id": tenant, "job_id": job_id, "worker_id": worker})
+
+    def _rpc_marketing_finalize_generation(self, a):
+        return self._atomic(lambda: self._finalize(a))
+
+    def _hook(self, step):
+        if self.finalize_hook:
+            self.finalize_hook(step)
+
+    def _finalize(self, a):
+        t, jid, w = a["p_tenant"], a["p_job"], a["p_worker"]
+        if not self._owns_live_lease(jid, w):
+            return {"status": "rejected", "reason": "lease_lost"}
+        j = next(x for x in self.tables["marketing_generation_jobs"] if x["id"] == jid)
+        s = next((x for x in self.tables["marketing_settings"] if x["tenant_id"] == t), None)
+        if not s or s.get("ai_generation_enabled") is not True or not s.get("monthly_ai_cost_limit"):
+            return {"status": "rejected", "reason": "budget_exceeded"}
+        mine = [u for u in self.tables["marketing_model_usage"] if u["tenant_id"] == t]
+        old = sum(float(u.get("actual_cost") or 0) for u in mine if u["job_id"] == jid)
+        keys = {u["idempotency_key"] for u in mine}
+        new = sum(float(u.get("actual_cost") or 0) for u in a.get("p_usage") or [] if u["idempotency_key"] not in keys)
+        if old + new > min(float(j["maximum_cost"]), float(j.get("reserved_cost") or 0)):
+            return {"status": "rejected", "reason": "budget_exceeded"}
+        outs = a.get("p_outputs") or []
+        for o in outs:
+            p = o.get("storage_path")
+            if p and (p.split("/")[:3] != [t, "derivatives", jid] or len(p.split("/")) != 4
+                      or not p.split("/")[3].startswith(f"{w}-") or int(o.get("byte_size") or 0) <= 0):
+                return {"status": "rejected", "reason": "invalid_output"}
+        size = sum(int(o.get("byte_size") or 0) for o in outs if o.get("storage_path"))
+        if size > 0:
+            res = self._rpc_marketing_confirm_output_storage({"p_tenant": t, "p_job": jid, "p_bytes": size})
+            if res.get("status") != "ok":
+                return {"status": "rejected", "reason": res.get("reason")}
+        self._hook("after_storage")
+        self._insert_usage(t, jid, w, a.get("p_usage"))
+        seen = set()
+        for i, o in enumerate(outs):
+            key = (o["kind"], o.get("scene_index", -1), o.get("storage_path") or "")
+            if key in seen or any((x["kind"], x.get("scene_index", -1), x.get("storage_path") or "") == key
+                                  for x in self.tables["marketing_generation_outputs"] if x["job_id"] == jid):
+                raise RuntimeError("duplicate output")                      # índice único
+            seen.add(key)
+            super().insert("marketing_generation_outputs", {**o, "tenant_id": t, "job_id": jid, "worker_id": w,
+                                                            "review_status": "generated"})
+            if i == 0:
+                self._hook("after_first_output")
+        self._hook("before_succeeded")
+        sel = a.get("p_selected") or {}
+        j.update({"status": "succeeded", "completed_at": self.rpc_now, "result_metadata": a.get("p_result") or {},
+                  "actual_cost": round(sum(float(u.get("actual_cost") or 0) for u in self.tables["marketing_model_usage"]
+                                           if u["job_id"] == jid), 4),
+                  "selected_provider": sel.get("provider") or j.get("selected_provider"),
+                  "selected_model": sel.get("model") or j.get("selected_model"),
+                  "provider_job_id": sel.get("provider_job_id") or j.get("provider_job_id")})
+        self._close_job_reservation(j)
+        self._job_event_sys(j, "succeed", "processing", "succeeded", {"worker": w})
+        return {"status": "succeeded", "job": dict(j)}
+
+    def _rpc_marketing_fail_generation(self, a):
+        def go():
+            t, jid, w = a["p_tenant"], a["p_job"], a["p_worker"]
+            if not self._owns_live_lease(jid, w):
+                return {"status": "rejected", "reason": "lease_lost"}
+            j = next(x for x in self.tables["marketing_generation_jobs"] if x["id"] == jid)
+            self._insert_usage(t, jid, w, a.get("p_usage"))
+            j.update({"status": "failed", "error_code": a["p_error_code"], "completed_at": self.rpc_now,
+                      "actual_cost": round(sum(float(u.get("actual_cost") or 0) for u in self.tables["marketing_model_usage"]
+                                               if u["job_id"] == jid), 4)})
+            self._close_job_reservation(j)
+            self._job_event_sys(j, "fail", "processing", "failed", {"error_code": a["p_error_code"]})
+            return {"status": "failed", "job": dict(j)}
+        return self._atomic(go)
+
+    def _rpc_marketing_cancel_generation(self, a):
+        if a["p_to"] not in ("failed", "cancelled"):
+            return {"status": "rejected", "reason": "invalid_transition"}
+        j = next((x for x in self.tables["marketing_generation_jobs"]
+                  if x["id"] == a["p_job"] and x["tenant_id"] == a["p_tenant"]), None)
+        if not j:
+            return {"status": "rejected", "reason": "not_found"}
+        if j["status"] in TERMINAL_JOB:
+            return {"status": "unchanged", "job": dict(j)}
+        frm = j["status"]
+        j.update({"status": a["p_to"], "error_code": a["p_error_code"], "completed_at": self.rpc_now})
+        self._close_job_reservation(j)
+        for o in self.tables["marketing_generation_outputs"]:
+            if o["job_id"] == j["id"]:
+                o.update({"review_status": "rejected", "metadata": {**(o.get("metadata") or {}), "blocked": a["p_error_code"]}})
+        self.tables["marketing_generation_job_events"].append({
+            "tenant_id": j["tenant_id"], "job_id": j["id"], "action": "fail" if a["p_to"] == "failed" else "cancel",
+            "from_status": frm, "to_status": a["p_to"], "detail": {"error_code": a["p_error_code"]},
+            "actor_id": a.get("p_actor"), "actor_role": a.get("p_role") if a.get("p_role") in ("owner", "manager") else "system",
+            "created_at": self.rpc_now})
+        return {"status": a["p_to"], "job": dict(j)}
+
+    def _rpc_marketing_close_purge(self, a):
+        if a.get("p_holder"):
+            lease = next((x for x in self.tables["marketing_runtime_leases"] if x["name"] == "retention_runner"), None)
+            if not lease or lease["holder"] != a["p_holder"] or lease["expires_at"] <= self.rpc_now:
+                return {"status": "lease_lost"}
+        elif not a.get("p_actor") or a.get("p_role") not in ("owner", "manager") or a.get("p_reason") not in (
+                "user_deleted", "consent_revoked"):
+            return {"status": "rejected", "reason": "lease_required"}
+        m = next((x for x in self.tables["marketing_media"] if x["id"] == a["p_media"] and x["tenant_id"] == a["p_tenant"]), None)
+        if not m or m.get("processing_status") == "deleted" or m.get("retention_status") != "purge_pending":
+            return {"status": "already_closed"}
+        for d in self.tables["marketing_media_derivatives"]:
+            if d.get("media_id") == m["id"] and d.get("status") != "deleted":
+                d.update({"status": "deleted", "purged_at": self.rpc_now, "metadata": {}})
+        m.update({"processing_status": "deleted", "retention_status": "purged", "purged_at": self.rpc_now,
+                  "deleted_at": self.rpc_now, "deleted_by": a.get("p_actor"),
+                  "purge_reason": m.get("purge_reason") or a.get("p_reason"), "original_filename": None, "metadata": {},
+                  "storage_path": f"{m['tenant_id']}/originals/{m['id']}/purged", "last_purge_error": None})
+        self.tables["marketing_media_events"].append({
+            "tenant_id": m["tenant_id"], "media_id": m["id"], "action": "purged", "actor_id": a.get("p_actor"),
+            "actor_role": a.get("p_role") if a.get("p_role") in ("owner", "manager") else "system",
+            "detail": {"reason": m["purge_reason"]}, "created_at": self.rpc_now})
+        return {"status": "closed"}
 
     def _rpc_marketing_acquire_runtime_lease(self, a):
         ttl = min(max(int(a.get("p_ttl_seconds") or 300), 30), 3600)

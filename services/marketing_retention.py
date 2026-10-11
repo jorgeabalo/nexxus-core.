@@ -19,6 +19,7 @@ mínimos (id, tenant, hash, tipo, tamaño, quién subió, fechas, motivo).
 RetentionRunner.run() es para un worker / tarea programada. En este PR NO está programado en ningún sitio.
 """
 import logging
+from contextlib import contextmanager
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -101,13 +102,11 @@ def cancel_jobs_for_media(db, tenant_id: str, media_id: str, code: str, now: dat
                                                       "status": f"in.({','.join(ACTIVE_JOBS)})",
                                                       "select": "id,status", "limit": "1000"}) or []) if ids else []:
         to = "failed" if j["status"] == "processing" else "cancelled"
-        if db.update("marketing_generation_jobs", {"id": f"eq.{j['id']}", "tenant_id": f"eq.{tenant_id}",
-                                                   "status": f"eq.{j['status']}"},
-                     {"status": to, "error_code": code, "completed_at": now.isoformat()}):
-            db.insert("marketing_generation_job_events", {
-                "tenant_id": tenant_id, "job_id": j["id"], "action": "fail" if to == "failed" else "cancel",
-                "from_status": j["status"], "to_status": to, "detail": {"error_code": code},
-                "actor_id": actor[0] if actor else None, "actor_role": actor[1] if actor else "system"})
+        # Cancelación externa por un camino explícito de la base (aunque un worker lo esté procesando).
+        res = db.rpc("marketing_cancel_generation", {"p_tenant": tenant_id, "p_job": j["id"], "p_to": to,
+                                                     "p_error_code": code, "p_actor": actor[0] if actor else None,
+                                                     "p_role": actor[1] if actor else "system"}) or {}
+        if res.get("status") == to:
             done.append(j["id"])
     # Ningún resultado que contenga ese material puede reutilizarse.
     for jid in ids:
@@ -128,14 +127,18 @@ class RetentionRunner:
         self.renew_seconds = validate_lease(LEASE_TTL_SECONDS, renew_seconds)   # < TTL/3
         self._keeper: Optional[LeaseKeeper] = None
 
-    def _acquire(self) -> bool:
+    def _acquire(self, timeout: Optional[float] = None) -> bool:
         return bool(self.db.rpc("marketing_acquire_runtime_lease", {"p_name": LEASE_NAME, "p_holder": self.holder,
-                                                                    "p_ttl_seconds": LEASE_TTL_SECONDS}))
+                                                                    "p_ttl_seconds": LEASE_TTL_SECONDS}, timeout=timeout))
 
-    def _ensure_lease(self) -> None:
-        """Antes de cada paso destructivo: si el lease se perdió, no se procesa nada más."""
-        if self._keeper is not None and self._keeper.lost:
-            raise LeaseLost(LEASE_NAME)
+    def _revalidate(self, point: str) -> None:
+        """Revalida el lease CONTRA LA BASE antes/después de cada paso destructivo. Sin lease (borrado pedido
+        por owner/manager, fuera del purgador) no aplica: ese cierre tiene su propio camino en la base."""
+        if self._keeper is None:
+            return
+        if self._keeper.lost or not self._acquire(min(self.renew_seconds, 10.0)):
+            self._keeper.stop()
+            raise LeaseLost(point)
 
     def _event(self, m, action, detail=None, actor=None):
         self.db.insert("marketing_media_events", {"tenant_id": m["tenant_id"], "media_id": m["id"], "action": action,
@@ -192,18 +195,27 @@ class RetentionRunner:
         return out
 
     # ------------------------------------------------------------------ ciclo
+    @contextmanager
+    def _leased(self):
+        """Lease del purgador durante todo el bloque, renovado en segundo plano. Al salir solo se libera si
+        sigue siendo nuestro: la base borra la fila únicamente cuando holder coincide (nunca el lease nuevo)."""
+        with LeaseKeeper(self._acquire, self.renew_seconds, name=LEASE_NAME,
+                         renew_timeout=min(self.renew_seconds, 10.0)) as keeper:
+            self._keeper = keeper
+            try:
+                yield keeper
+            finally:
+                self._keeper = None
+                keeper.stop()
+        self.db.rpc("marketing_release_runtime_lease", {"p_name": LEASE_NAME, "p_holder": self.holder},
+                    timeout=min(self.renew_seconds, 10.0))
+
     def run(self, limit: int = 200) -> Dict[str, Any]:
         """Un lote. Solo un purgador a la vez (lease en la base); si otro lo tiene, no hace nada."""
-        if not self._acquire():                                    # renovar antes de cada lote
+        if not self._acquire(min(self.renew_seconds, 10.0)):      # renovar antes de cada lote
             return {"locked": True}
-        try:
-            with LeaseKeeper(self._acquire, self.renew_seconds, name=LEASE_NAME) as keeper:   # y durante el lote
-                self._keeper = keeper
-                return self._run(limit)
-        finally:
-            self._keeper = None
-            # Solo borra la fila si sigue siendo nuestra (si otro la tomó, no se toca).
-            self.db.rpc("marketing_release_runtime_lease", {"p_name": LEASE_NAME, "p_holder": self.holder})
+        with self._leased():
+            return self._run(limit)
 
     def _run(self, limit: int) -> Dict[str, Any]:
         out: Dict[str, Any] = {"warned": 0, "protected": 0, "purged": 0, "failed": 0, "skipped": 0,
@@ -219,17 +231,18 @@ class RetentionRunner:
             rows.setdefault(m["id"], m)
         try:
             for m in rows.values():
-                self._ensure_lease()
+                self._revalidate("batch:before_media")
                 out[self.process(m)] += 1
-        except LeaseLost:
-            out["lease_lost"] = True                              # otro purgador lo tiene: parar aquí
-            return out
-        out["derivatives"] = self._purge_derivatives(limit)
-        out["outputs"] = self._purge_outputs(limit)
-        # Trabajos atascados (lease vencido sin reintentos, o >24 h sin terminar) y reservas abandonadas
-        # (subidas 15 min, trabajos 24 h): se cierran UNA vez, de forma atómica, en la base.
-        out["timed_out"] = int(self.db.rpc("marketing_timeout_jobs", {"p_max_attempts": JOB_MAX_ATTEMPTS}) or 0)
-        out["reservations_expired"] = ms.expire_abandoned(self.db)
+            out["derivatives"] = self._purge_derivatives(limit)
+            out["outputs"] = self._purge_outputs(limit)
+            # Trabajos atascados (lease vencido sin reintentos, o >24 h sin terminar) y reservas abandonadas
+            # (subidas 15 min, trabajos 24 h): se cierran UNA vez, de forma atómica, en la base.
+            self._revalidate("batch:before_timeouts")
+            out["timed_out"] = int(self.db.rpc("marketing_timeout_jobs", {"p_max_attempts": JOB_MAX_ATTEMPTS}) or 0)
+            self._revalidate("batch:before_expire")
+            out["reservations_expired"] = ms.expire_abandoned(self.db)
+        except LeaseLost as e:
+            out.update({"lease_lost": True, "stopped_at": str(e)})   # otro purgador lo tiene: parar aquí
         return out
 
     def process(self, m: Dict[str, Any]) -> str:
@@ -286,56 +299,78 @@ class RetentionRunner:
             raise
 
     def purge(self, m: Dict[str, Any], reason: str, actor=None) -> str:
+        """Purga un archivo. Fuera de un lote, sin actor (owner/manager), toma primero el lease del purgador:
+        ninguna purga del sistema corre sin él. Si el lease se pierde en cualquier punto → LeaseLost: se para
+        sin cerrar nada; el archivo sigue purge_pending y el purgador vigente lo retoma (borrados idempotentes)."""
+        if self._keeper is None and actor is None:
+            if not self._acquire(min(self.renew_seconds, 10.0)):
+                return "locked"
+            with self._leased():
+                return self._purge(m, reason, None)
+        return self._purge(m, reason, actor)
+
+    def _purge(self, m: Dict[str, Any], reason: str, actor) -> str:
         if m.get("retention_status") == "purged" or m.get("processing_status") == "deleted":
             return "purged"
+        t, mid = m["tenant_id"], m["id"]
+        self._revalidate("purge:start")
         if m.get("retention_status") != "purge_pending":
             self._upd(m, {"retention_status": "purge_pending", "purge_reason": reason,
                           "purge_requested_at": m.get("purge_requested_at") or self.now.isoformat()})
+            self._revalidate("purge:after_pending")
         # Ningún trabajo sigue usando el archivo y ninguna reserva suya queda abierta (liberación idempotente).
-        cancel_jobs_for_media(self.db, m["tenant_id"], m["id"], "media_pending_deletion", self.now, actor)
-        ms.release(self.db, m["tenant_id"], f"upload:{m['id']}", consumed=False)
+        cancel_jobs_for_media(self.db, t, mid, "media_pending_deletion", self.now, actor)
+        self._revalidate("purge:after_cancel")
+        ms.release(self.db, t, f"upload:{mid}", consumed=False)
+        self._revalidate("purge:after_release")
         # Invalidar cualquier acceso: tokens de reproducción revocados antes de borrar nada.
-        self.db.update("marketing_stream_tokens", {"tenant_id": f"eq.{m['tenant_id']}", "media_id": f"eq.{m['id']}",
+        self.db.update("marketing_stream_tokens", {"tenant_id": f"eq.{t}", "media_id": f"eq.{mid}",
                                                    "revoked_at": "is.null"}, {"revoked_at": self.now.isoformat()})
-        ders = self.db.select("marketing_media_derivatives", {"tenant_id": f"eq.{m['tenant_id']}", "media_id": f"eq.{m['id']}",
+        ders = self.db.select("marketing_media_derivatives", {"tenant_id": f"eq.{t}", "media_id": f"eq.{mid}",
                                                               "select": "id,storage_path,status", "limit": "500"}) or []
         try:
-            self._ensure_lease()
-            self._remove(m["tenant_id"], m["id"], m["storage_path"])
+            self._revalidate("purge:before_original")
+            self._remove(t, mid, m["storage_path"])
+            self._revalidate("purge:after_original")
             for d in ders:
-                self._remove(m["tenant_id"], m["id"], d.get("storage_path"))
+                self._revalidate("purge:before_derivative")
+                self._remove(t, mid, d.get("storage_path"))
+                self._revalidate("purge:after_derivative")
         except LeaseLost:
-            raise                                                  # nada borrado de este archivo: lo retoma otro
+            raise                                                  # se para aquí: lo retoma el purgador vigente
         except Exception as e:
             code = "invalid_path" if isinstance(e, PermissionError) else "storage_error"
             logger.error(f"MARKETING_PURGE_ERROR {code}")          # sin rutas ni detalles
+            self._revalidate("purge:before_failed")
             self._upd(m, {"retention_status": "purge_failed", "last_purge_error": code,
                           "purge_attempts": int(m.get("purge_attempts") or 0) + 1})
             self._event(m, "purge_failed", {"error": code}, actor)
             return "failed"
-        for d in ders:
-            if d["status"] != "deleted":
-                self.db.update("marketing_media_derivatives", {"id": f"eq.{d['id']}", "tenant_id": f"eq.{m['tenant_id']}"},
-                               {"status": "deleted", "purged_at": self.now.isoformat(), "metadata": {}})
-        # Cierre condicional (solo si nadie lo cerró): un archivo nunca se cierra dos veces.
-        if not self._upd(m, {"processing_status": "deleted", "retention_status": "purged", "purged_at": self.now.isoformat(),
-                             "deleted_at": self.now.isoformat(), "deleted_by": actor[0] if actor else None,
-                             "purge_reason": m.get("purge_reason") or reason, "original_filename": None, "metadata": {},
-                             "storage_path": f"{m['tenant_id']}/originals/{m['id']}/purged", "last_purge_error": None}):
-            return "skipped"
-        self._event(m, "purged", {"reason": m.get("purge_reason") or reason}, actor)
+        # Cierre en la base, en una transacción y condicional: exige el lease vigente de ESTE purgador (o un
+        # owner/manager), solo cierra si sigue purge_pending y escribe un único evento 'purged'.
+        self._revalidate("purge:before_close")
+        res = self.db.rpc("marketing_close_purge", {
+            "p_tenant": t, "p_media": mid, "p_holder": self.holder if self._keeper is not None else None,
+            "p_reason": m.get("purge_reason") or reason, "p_actor": actor[0] if actor else None,
+            "p_role": actor[1] if actor else "system"}) or {}
+        status = res.get("status")
+        if status == "lease_lost":
+            raise LeaseLost("purge:close")
+        if status != "closed":
+            return "skipped"                                       # ya cerrado por otro: nada que duplicar
+        m.update({"processing_status": "deleted", "retention_status": "purged"})
         return "purged"
 
     def _purge_derivatives(self, limit: int) -> int:
         n = 0
         for d in self.db.select("marketing_media_derivatives", {"status": "neq.deleted", "expires_at": f"lte.{self.now.isoformat()}",
                                                                 "select": "*", "limit": str(limit)}) or []:
-            if self._keeper is not None and self._keeper.lost:
-                break
+            self._revalidate("derivative:before")
             try:
                 self._remove(d["tenant_id"], d["media_id"], d.get("storage_path"))
             except Exception:
                 continue                                          # se reintenta en la próxima pasada
+            self._revalidate("derivative:after")
             self.db.update("marketing_media_derivatives", {"id": f"eq.{d['id']}", "tenant_id": f"eq.{d['tenant_id']}"},
                            {"status": "deleted", "purged_at": self.now.isoformat(), "metadata": {}})
             n += 1
@@ -345,8 +380,7 @@ class RetentionRunner:
         n = 0
         for o in self.db.select("marketing_generation_outputs", {"expires_at": f"lte.{self.now.isoformat()}", "purged_at": "is.null",
                                                                  "select": "id,tenant_id,storage_path", "limit": str(limit)}) or []:
-            if self._keeper is not None and self._keeper.lost:
-                break
+            self._revalidate("output:before")
             if o.get("storage_path") and not mf.path_belongs_to(o["storage_path"], o["tenant_id"]):
                 continue
             try:
@@ -354,6 +388,7 @@ class RetentionRunner:
                     self.db.storage_remove(BUCKET, o["storage_path"])
             except Exception:
                 continue
+            self._revalidate("output:after")
             self.db.update("marketing_generation_outputs", {"id": f"eq.{o['id']}", "tenant_id": f"eq.{o['tenant_id']}"},
                            {"storage_path": None, "metadata": {}, "purged_at": self.now.isoformat()})
             n += 1
