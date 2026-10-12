@@ -17,8 +17,9 @@ def elicit(intent,slot,text):
     return answer
 
 class CarAlexa:
-    def __init__(self,store,verify_linked_token):
+    def __init__(self,store,verify_linked_token,assistant=None):
         self.store=store;self.verify_linked_token=verify_linked_token
+        self.assistant=assistant or LocalNexxus()
         with store.transaction():
             store.db.execute('CREATE TABLE IF NOT EXISTS alexa_pending (tenant TEXT, session TEXT, vehicle TEXT, data TEXT, expires REAL, PRIMARY KEY(tenant,session))')
             store.db.execute('CREATE TABLE IF NOT EXISTS alexa_requests (tenant TEXT, request TEXT, response TEXT, expires REAL, PRIMARY KEY(tenant,request))')
@@ -68,5 +69,8 @@ class CarAlexa:
             return speech(f"¿Confirmas registrar {data['amount']:.2f} dólares de {data['category']} para tu {vehicle['make']} {vehicle['model']}?")
         if name=='VehicleQueryIntent':
             expenses=self.store.records(tenant,vehicle['id'],'expense');parks=self.store.records(tenant,vehicle['id'],'parking')
-            return speech(LocalNexxus().answer(value('question'),{'vehicle':vehicle,'language':'es','expense_total':sum(x['amount'] for x in expenses),'parking':parks[0] if parks else None}))
+            from .copilot import CopilotUnavailable
+            try:answer=self.assistant.answer(value('question'),{'tenant':tenant,'conversation':session,'vehicle':vehicle,'language':'es','expense_total':sum(x['amount'] for x in expenses),'parking':parks[0] if parks else None})
+            except CopilotUnavailable:return speech('La conversación inteligente no está disponible ahora. Puedes registrar un gasto o intentarlo más tarde.')
+            return speech(answer)
         return speech('Soy Nexxus de AITA Car. Puedes preguntar por mantenimiento y gastos, o registrar gasolina por un importe en dólares.')

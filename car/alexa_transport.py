@@ -44,9 +44,9 @@ def validate_envelope(envelope, skill_id):
         raise HTTPException(400,'Solicitud Alexa inválida') from None
 
 
-def alexa_router(store,identity,link,skill_id):
+def alexa_router(store,identity,link,skill_id,assistant=None):
     router=APIRouter()
-    skill=CarAlexa(store,link.verify)
+    skill=CarAlexa(store,link.verify,assistant=assistant)
     @router.post('/api/car/alexa')
     async def alexa(request:Request):
         raw=await request.body()

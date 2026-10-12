@@ -57,7 +57,14 @@
         },
         {
           "name": "AMAZON.CancelIntent",
-          "samples": []
+          "samples": [
+            "sal de allí",
+            "sal de ahí",
+            "salir",
+            "cierra la conversación",
+            "no quiero registrar nada",
+            "cancela el gasto"
+          ]
         }
       ],
       "types": [

@@ -188,5 +188,9 @@ def router(store, identity, *, demo=False, obd=None, assistant=None):
     def ask(vid:str,b:Question,t=Depends(identity)):
         ctx=detail(vid,t)
         ctx['language']=b.language
-        return {'answer':assistant.answer(b.question,ctx),'provider':'local_context_demo'}
+        ctx['tenant']=t
+        from .copilot import CopilotUnavailable
+        try:answer=assistant.answer(b.question,ctx)
+        except CopilotUnavailable:raise HTTPException(503,'Nexxus no está disponible ahora; intenta más tarde.') from None
+        return {'answer':answer,'provider':getattr(assistant,'provider','local_context_demo')}
     return r

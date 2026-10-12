@@ -36,6 +36,12 @@ def create_production(*, origin=None, auth_url=None, auth_key=None, path=None, a
     store=Store(path); app=FastAPI(docs_url=None,redoc_url=None,openapi_url=None)
     auth=httpx.Client(base_url=auth_url.rstrip('/')+'/auth/v1',headers={'apikey':auth_key},timeout=8,transport=transport)
     app.state.store=store
+    assistant=None
+    if os.getenv('AITA_CAR_AI_ENABLED','').lower()=='true':
+        from .copilot import OpenAICopilot
+        key=os.getenv('OPENAI_API_KEY','')
+        if not key:raise RuntimeError('Copilot credential required')
+        assistant=OpenAICopilot(key,os.getenv('AITA_CAR_AI_MODEL','gpt-4.1-mini'))
     alexa_enabled=os.getenv('AITA_CAR_ALEXA_ENABLED','').lower()=='true'
     alexa_server_paths={'/api/car/alexa','/alexa/token'} if alexa_enabled else set()
     store.db.execute('CREATE TABLE IF NOT EXISTS login_limits (key TEXT PRIMARY KEY, window INTEGER, attempts INTEGER)');store.db.commit()
@@ -84,7 +90,7 @@ def create_production(*, origin=None, auth_url=None, auth_key=None, path=None, a
         if not skill_id.startswith('amzn1.ask.skill.'): raise RuntimeError('Alexa skill ID required')
         link=AlexaLink(store,os.getenv('AITA_CAR_ALEXA_CLIENT_ID',''),os.getenv('AITA_CAR_ALEXA_CLIENT_SECRET',''),
           [u.strip() for u in os.getenv('AITA_CAR_ALEXA_REDIRECTS','').split(',') if u.strip()],{'local-'+u for u in allowed})
-        app.include_router(alexa_router(store,identity,link,skill_id))
+        app.include_router(alexa_router(store,identity,link,skill_id,assistant=assistant))
     @app.post('/api/car/start')
     def login(b:Credentials,request:Request):
         # Persist limits across restarts; never retain passwords or raw email addresses.
@@ -112,7 +118,7 @@ def create_production(*, origin=None, auth_url=None, auth_key=None, path=None, a
     def trial_plan(b:Plan,t=Depends(identity)):
         with store.transaction():
             p=store.profile(t);p['plan']=b.plan;store.save_profile(t,p);return p
-    app.include_router(router(store,identity,demo=False))
+    app.include_router(router(store,identity,demo=False,assistant=assistant))
     app.mount('/car/assets',StaticFiles(directory=ROOT/'assets'),name='assets')
     @app.get('/health')
     def health(): return {'ok':True,'payments_enabled':False}
