@@ -61,7 +61,9 @@ def create_production(*, origin=None, auth_url=None, auth_key=None, path=None, a
                     if row and row[0]>=120:return JSONResponse({'detail':'Límite de solicitudes'},429)
                     store.db.execute('INSERT INTO login_limits VALUES(?,?,1) ON CONFLICT(key) DO UPDATE SET window=excluded.window,attempts=CASE WHEN window=excluded.window THEN attempts+1 ELSE 1 END',(key,window))
         response=await call_next(request)
-        response.headers.update({'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Strict-Transport-Security':'max-age=31536000',
+        # Native consent forms need their real Origin for the strict CSRF check.
+        # Keep OAuth URLs private when navigating to Amazon or any other origin.
+        response.headers.update({'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin' if request.url.path in ('/alexa/authorize','/alexa/manage') else 'no-referrer','Strict-Transport-Security':'max-age=31536000',
           'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-src https://www.openstreetmap.org; object-src 'none'; frame-ancestors 'none'; base-uri 'self'"})
         return response
     def auth_request(method,path,**kwargs):

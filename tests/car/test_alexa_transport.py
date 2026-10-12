@@ -41,7 +41,10 @@ def test_oauth_and_signed_endpoint(tmp_path,monkeypatch):
         assert c.get('/alexa/authorize',params={**params,'redirect_uri':'https://evil.test'}).status_code==400
         consent=c.get('/alexa/authorize',params=params)
         assert consent.status_code==200 and 'Amazon' in consent.text
+        assert consent.headers['referrer-policy']=='same-origin'
         assert c.post('/alexa/authorize',data=params).status_code==403
+        assert c.post('/alexa/authorize',data=params,headers={'Origin':'null'}).status_code==403
+        assert c.post('/alexa/authorize',data=params,headers={'Origin':'https://evil.test'}).status_code==403
         assert c.post('/alexa/authorize',data=params,headers={'Origin':'https://car.test'}).status_code==401
         c.cookies.set('__Host-aita-car','test',domain='car.test',path='/')
         r=c.post('/alexa/authorize',data=params,headers={'Origin':'https://car.test'},follow_redirects=False)
