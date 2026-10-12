@@ -1,0 +1,24 @@
+name: AITA Car private pilot checks
+on:
+  push:
+    branches: [feature/aita-car-prototype]
+  pull_request:
+    paths: ['car/**', 'tests/car/**', 'deploy/car/**', 'requirements-car.txt', '.github/workflows/aita-car-pilot.yml']
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install -r requirements-car.txt
+      - run: python -m pytest --noconftest tests/car -q
+      - run: node --check car/assets/app.js && node --check car/assets/i18n.js && node --test tests/car/js/vehicles.test.cjs
+      - run: docker build -f deploy/car/Dockerfile -t aita-car-pilot .
+      - name: Verify mounted volume and process user
+        run: |
+          docker volume create aita-car-ci
+          docker run --rm -v aita-car-ci:/data aita-car-pilot sh -c 'test "$(id -u)" = 10001 && touch /data/write-test && test -w /data/write-test'
