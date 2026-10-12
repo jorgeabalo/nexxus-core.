@@ -10,6 +10,12 @@ def speech(text,end=False,link=False):
     if not end: response['reprompt']={'outputSpeech':{'type':'PlainText','text':'Puedes consultar mantenimiento o registrar un gasto.'}}
     return {'version':'1.0','response':response}
 
+def elicit(intent,slot,text):
+    answer=speech(text)
+    answer['response']['reprompt']['outputSpeech']['text']=text
+    answer['response']['directives']=[{'type':'Dialog.ElicitSlot','slotToElicit':slot,'updatedIntent':intent}]
+    return answer
+
 class CarAlexa:
     def __init__(self,store,verify_linked_token):
         self.store=store;self.verify_linked_token=verify_linked_token
@@ -48,9 +54,16 @@ class CarAlexa:
             return speech('Gasto guardado.',True)
         if name=='RecordExpenseIntent':
             if not session:return speech('Inicia una sesión de Alexa para confirmar el gasto.',True)
+            # An incomplete new expense must never leave an older draft confirmable.
+            self.store.db.execute('DELETE FROM alexa_pending WHERE tenant=? AND session=?',(tenant,session))
             categories={'gasolina':'gasolina','aceite':'mantenimiento','mantenimiento':'mantenimiento','peajes':'peajes'}
-            try:data=Expense(category=categories[value('category').lower()],amount=float(value('amount').replace(',','.')),note='Registrado con Alexa').model_dump()
-            except (ValueError,KeyError):return speech('Dime la categoría y el importe en dólares, por ejemplo gasolina por cuarenta dólares.')
+            if value('category').strip().lower() not in categories:
+                return elicit(intent,'category','¿Qué tipo de gasto fue: gasolina, aceite, mantenimiento o peajes?')
+            try: amount=float(value('amount').replace(',','.'))
+            except ValueError:
+                return elicit(intent,'amount','¿Cuántos dólares gastaste? Por ejemplo, cuarenta.')
+            try:data=Expense(category=categories[value('category').strip().lower()],amount=amount,note='Registrado con Alexa').model_dump()
+            except (ValueError,KeyError):return elicit(intent,'amount','Dime un importe válido y positivo en dólares.')
             self.store.db.execute('INSERT OR REPLACE INTO alexa_pending VALUES(?,?,?,?,?)',(tenant,session,vehicle['id'],json.dumps(data),time.time()+120))
             return speech(f"¿Confirmas registrar {data['amount']:.2f} dólares de {data['category']} para tu {vehicle['make']} {vehicle['model']}?")
         if name=='VehicleQueryIntent':

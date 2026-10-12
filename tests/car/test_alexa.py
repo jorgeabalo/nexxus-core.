@@ -20,3 +20,24 @@ def test_cancel_does_not_write():
     skill=CarAlexa(s,lambda token:'a');skill.handle(envelope('RecordExpenseIntent'))
     skill.handle(envelope('AMAZON.NoIntent','2'));skill.handle(envelope('AMAZON.YesIntent','3'))
     assert s.records('a',v['id'],'expense')==[]
+
+def test_collect_expense_in_steps_and_invalidate_stale_confirmation():
+    s=Store(':memory:');s.seed('a');v=s.vehicles('a')[0]
+    with s.transaction():p=s.profile('a');p['primary_vehicle_id']=v['id'];s.save_profile('a',p)
+    skill=CarAlexa(s,lambda token:'a')
+    skill.handle(envelope('RecordExpenseIntent','old'))
+    req=envelope('RecordExpenseIntent','start');req['request']['intent']['slots']={}
+    answer=skill.handle(req)['response']
+    assert answer['directives'][0]['slotToElicit']=='category'
+    assert skill.handle(envelope('AMAZON.YesIntent','stale'))['response']['shouldEndSession']
+    assert s.records('a',v['id'],'expense')==[]
+    req=envelope('RecordExpenseIntent','category');del req['request']['intent']['slots']['amount']
+    answer=skill.handle(req)['response']
+    assert answer['directives'][0]['slotToElicit']=='amount'
+    assert answer['directives'][0]['updatedIntent']['slots']['category']['value']=='gasolina'
+    assert answer['reprompt']['outputSpeech']['text']==answer['outputSpeech']['text']
+    answer=skill.handle(envelope('RecordExpenseIntent','complete'))['response']
+    assert 'Confirmas' in answer['outputSpeech']['text']
+    assert s.records('a',v['id'],'expense')==[]
+    skill.handle(envelope('AMAZON.YesIntent','confirm'))
+    assert s.records('a',v['id'],'expense')[0]['amount']==40

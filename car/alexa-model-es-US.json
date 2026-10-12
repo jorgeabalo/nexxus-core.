@@ -30,7 +30,13 @@
           ],
           "samples": [
             "registra {category} por {amount} dólares",
-            "gasté {amount} dólares en {category}"
+            "gasté {amount} dólares en {category}",
+            "registra un gasto",
+            "registrar un gasto",
+            "gastos",
+            "registra {category}",
+            "registra {amount} dólares",
+            "{category} por {amount} dólares"
           ]
         },
         {
@@ -81,6 +87,55 @@
           ]
         }
       ]
-    }
+    },
+    "dialog": {
+      "delegationStrategy": "SKILL_RESPONSE",
+      "intents": [
+        {
+          "name": "RecordExpenseIntent",
+          "confirmationRequired": false,
+          "slots": [
+            {
+              "name": "category",
+              "type": "ExpenseCategory",
+              "elicitationRequired": true,
+              "confirmationRequired": false,
+              "prompts": {
+                "elicitation": "Expense.category"
+              }
+            },
+            {
+              "name": "amount",
+              "type": "AMAZON.NUMBER",
+              "elicitationRequired": true,
+              "confirmationRequired": false,
+              "prompts": {
+                "elicitation": "Expense.amount"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "prompts": [
+      {
+        "id": "Expense.category",
+        "variations": [
+          {
+            "type": "PlainText",
+            "value": "¿Qué tipo de gasto fue: gasolina, aceite, mantenimiento o peajes?"
+          }
+        ]
+      },
+      {
+        "id": "Expense.amount",
+        "variations": [
+          {
+            "type": "PlainText",
+            "value": "¿Cuántos dólares gastaste?"
+          }
+        ]
+      }
+    ]
   }
 }
