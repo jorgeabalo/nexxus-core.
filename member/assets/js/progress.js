@@ -113,67 +113,10 @@ export function topInsights(n = 2) {
 }
 
 // ---------------------------------------------------------------------------
-// Figura corporal (ilustrativa)
+// Figura corporal (ilustrativa): ver figure.js
 // ---------------------------------------------------------------------------
-const SHAPES = {
-  male:    { sh: 58, ch: 52, wa: 42, hi: 46, arm: 21, leg: 29, head: 25, legGap: 13 },
-  female:  { sh: 48, ch: 46, wa: 34, hi: 52, arm: 17, leg: 27, head: 24, legGap: 14 },
-  neutral: { sh: 53, ch: 49, wa: 39, hi: 48, arm: 19, leg: 28, head: 24, legGap: 13 },
-};
-
-export function figureSvg(sex, labels, { compact = false } = {}) {
-  const p = SHAPES[sex] || SHAPES.neutral;
-  const cx = 180;
-  const W = 360, H = compact ? 430 : 450;
-  const y = { head: 52, neck: 84, sh: 104, chest: 150, waist: 208, hip: 252, crotch: 272, knee: 350, foot: 424 };
-  const torso = [
-    `M ${cx - 11} ${y.neck}`, `L ${cx - 11} ${y.sh - 8}`,
-    `C ${cx - p.sh + 6} ${y.sh - 6}, ${cx - p.sh} ${y.sh}, ${cx - p.sh} ${y.sh + 14}`,
-    `C ${cx - p.ch} ${y.chest - 10}, ${cx - p.ch} ${y.chest + 6}, ${cx - p.wa} ${y.waist}`,
-    `C ${cx - p.wa - 2} ${y.waist + 18}, ${cx - p.hi} ${y.hip - 18}, ${cx - p.hi} ${y.hip}`,
-    `L ${cx - p.hi + 4} ${y.crotch + 6}`, `L ${cx + p.hi - 4} ${y.crotch + 6}`, `L ${cx + p.hi} ${y.hip}`,
-    `C ${cx + p.hi} ${y.hip - 18}, ${cx + p.wa + 2} ${y.waist + 18}, ${cx + p.wa} ${y.waist}`,
-    `C ${cx + p.ch} ${y.chest + 6}, ${cx + p.ch} ${y.chest - 10}, ${cx + p.sh} ${y.sh + 14}`,
-    `C ${cx + p.sh} ${y.sh}, ${cx + p.sh - 6} ${y.sh - 6}, ${cx + 11} ${y.sh - 8}`,
-    `L ${cx + 11} ${y.neck}`, 'Z'].join(' ');
-  const armL = `M ${cx - p.sh + 8} ${y.sh + 16} L ${cx - p.sh - 10} ${y.chest + 38} L ${cx - p.sh - 16} ${y.hip + 26}`;
-  const armR = `M ${cx + p.sh - 8} ${y.sh + 16} L ${cx + p.sh + 10} ${y.chest + 38} L ${cx + p.sh + 16} ${y.hip + 26}`;
-  const legX = p.legGap + p.leg / 2;
-  const legL = `M ${cx - legX + 2} ${y.hip + 4} L ${cx - legX} ${y.knee} L ${cx - legX + 3} ${y.foot - 10}`;
-  const legR = `M ${cx + legX - 2} ${y.hip + 4} L ${cx + legX} ${y.knee} L ${cx + legX - 3} ${y.foot - 10}`;
-
-  const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, class: 'figure-svg', role: 'img', 'aria-label': t(`fig.aria.${sex || 'neutral'}`) });
-  const defs = svgEl('defs', {},
-    svgEl('linearGradient', { id: 'figfill', x1: '0', y1: '0', x2: '0', y2: '1' },
-      svgEl('stop', { offset: '0', 'stop-color': '#2B4C7E' }), svgEl('stop', { offset: '1', 'stop-color': '#0B1F3A' })));
-  const body = svgEl('g', { class: 'fig-body', fill: 'url(#figfill)', stroke: 'url(#figfill)', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
-    svgEl('circle', { cx, cy: y.head, r: p.head, stroke: 'none' }),
-    svgEl('path', { d: armL, fill: 'none', 'stroke-width': p.arm }), svgEl('path', { d: armR, fill: 'none', 'stroke-width': p.arm }),
-    svgEl('path', { d: legL, fill: 'none', 'stroke-width': p.leg }), svgEl('path', { d: legR, fill: 'none', 'stroke-width': p.leg }),
-    svgEl('path', { d: torso, stroke: 'none' }));
-  svg.append(defs, body);
-
-  // Indicadores: brazo (izq.), cintura (der.), muslo (izq. abajo). Sin solapes.
-  const anchors = {
-    arm: { x: cx - p.sh - 8, y: y.chest + 26, side: 'left', ly: y.chest + 4 },
-    waist: { x: cx + p.wa, y: y.waist, side: 'right', ly: y.waist - 18 },
-    leg: { x: cx - legX - p.leg / 2 + 4, y: y.hip + 58, side: 'left', ly: y.hip + 44 },
-  };
-  for (const [k, a] of Object.entries(anchors)) {
-    const lab = labels[k];
-    if (!lab) continue;
-    const tx = a.side === 'left' ? 8 : W - 8;
-    const lx = a.side === 'left' ? 96 : W - 96;
-    svg.append(
-      svgEl('path', { d: `M ${a.x} ${a.y} L ${lx} ${a.ly + 14} L ${a.side === 'left' ? lx - 4 : lx + 4} ${a.ly + 14}`, class: 'fig-leader' }),
-      svgEl('circle', { cx: a.x, cy: a.y, r: 5, class: 'fig-dot' }),
-      svgEl('text', { x: tx, y: a.ly, class: 'fig-lab-title', 'text-anchor': a.side === 'left' ? 'start' : 'end' }, lab.title),
-      svgEl('text', { x: tx, y: a.ly + 17, class: `fig-lab-val ${lab.value ? '' : 'is-pending'}`, 'text-anchor': a.side === 'left' ? 'start' : 'end' }, lab.value || t('prog.pendingShort')),
-      lab.delta ? svgEl('text', { x: tx, y: a.ly + 33, class: 'fig-lab-delta', 'text-anchor': a.side === 'left' ? 'start' : 'end' }, lab.delta) : null,
-    );
-  }
-  return svg;
-}
+export { figureSvg } from './figure.js';
+import { figureSvg } from './figure.js';
 
 function figureLabels() {
   const m = bodyMetrics();
