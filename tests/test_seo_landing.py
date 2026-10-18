@@ -23,8 +23,9 @@ def test_robots_txt_allows_landing_and_points_to_sitemap(client):
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/plain")
     assert "Allow: /" in r.text
-    for rule in ("/m", "/m/", "/manager", "/manager/", "/api/"):
-        assert f"Disallow: {rule}\n" in r.text, rule
+    assert "Disallow: /api/\n" in r.text
+    rules = [l.split(":", 1)[1].strip() for l in r.text.splitlines() if l.startswith("Disallow:")]
+    assert "/m" not in rules and "/manager" not in rules  # noindex debe ser visible para Google
     assert "Sitemap: https://goldenagefit.com/sitemap.xml" in r.text
 
 
@@ -99,3 +100,34 @@ def test_private_routes_are_noindex(client):
     for path in ("/manager", "/m"):
         r = client.get(path)
         assert "noindex" in r.headers.get("X-Robots-Tag", ""), path
+
+
+def _blocked(path, rules):
+    """Coincidencia de robots.txt al estilo Google: prefijo, '$' = fin exacto, la regla más larga gana."""
+    best = None
+    for rule in rules:
+        if rule.endswith("$"):
+            ok = path == rule[:-1]
+        else:
+            ok = path.startswith(rule)
+        if ok and (best is None or len(rule) > len(best)):
+            best = rule
+    return best is not None
+
+
+def test_media_is_crawlable(client):
+    """/media/ (fotos y videos) no debe quedar bloqueado por ninguna regla de robots.txt."""
+    r = client.get("/robots.txt")
+    rules = [l.split(":", 1)[1].strip() for l in r.text.splitlines() if l.startswith("Disallow:")]
+    for path in ("/media/", "/media/videos/clip.mp4", "/media/fotos/a.jpg", "/"):
+        assert not _blocked(path, rules), path
+    assert _blocked("/api/manager/config", rules)
+
+
+def test_private_portals_send_noindex_and_are_not_robots_blocked(client):
+    r = client.get("/robots.txt")
+    rules = [l.split(":", 1)[1].strip() for l in r.text.splitlines() if l.startswith("Disallow:")]
+    for path in ("/manager", "/manager/", "/m", "/m/q/abc"):
+        assert not _blocked(path, rules), path
+        resp = client.get(path)
+        assert "noindex" in resp.headers.get("X-Robots-Tag", ""), path

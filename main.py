@@ -601,10 +601,8 @@ async def robots_txt():
     body = (
         "User-agent: *\n"
         "Allow: /\n"
-        "Disallow: /m\n"
-        "Disallow: /m/\n"
-        "Disallow: /manager\n"
-        "Disallow: /manager/\n"
+        "# Portales privados (/m, /manager): NO se bloquean aquí para que Google\n"
+        "# pueda leer la cabecera X-Robots-Tag: noindex. Bloquear el rastreo impediría verla.\n"
         "Disallow: /api/\n"
         "\n"
         f"Sitemap: {_SITE_BASE}/sitemap.xml\n"
