@@ -118,6 +118,7 @@ async def manager_security_headers(request: Request, call_next):
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Content-Security-Policy"] = _manager_csp()
+        response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
     return response
 
 
@@ -600,7 +601,9 @@ async def robots_txt():
     body = (
         "User-agent: *\n"
         "Allow: /\n"
+        "Disallow: /m\n"
         "Disallow: /m/\n"
+        "Disallow: /manager\n"
         "Disallow: /manager/\n"
         "Disallow: /api/\n"
         "\n"

@@ -23,8 +23,8 @@ def test_robots_txt_allows_landing_and_points_to_sitemap(client):
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/plain")
     assert "Allow: /" in r.text
-    assert "Disallow: /m/" in r.text
-    assert "Disallow: /manager/" in r.text
+    for rule in ("/m", "/m/", "/manager", "/manager/", "/api/"):
+        assert f"Disallow: {rule}\n" in r.text, rule
     assert "Sitemap: https://goldenagefit.com/sitemap.xml" in r.text
 
 
@@ -38,7 +38,7 @@ def test_sitemap_lists_canonical_home(client):
 def test_landing_head_has_spanish_title_description_and_canonical(client):
     html = _html(client)
     title = re.search(r"<title>(.*?)</title>", html).group(1)
-    assert "Houston" in title and "longevidad" in title and "cardiometabólica" in title
+    assert "Houston" in title and "longevidad" in title.lower()
     desc = re.search(r'<meta name="description" content="(.*?)"', html).group(1)
     assert 50 <= len(desc) <= 160
     assert '<link rel="canonical" href="https://goldenagefit.com/">' in html
@@ -84,3 +84,18 @@ def test_existing_routes_unchanged_by_seo_endpoints(client):
         assert legacy in paths, legacy
     # /manager y /m no deben devolver el robots ni el sitemap
     assert client.get("/manager").text.strip() != client.get("/robots.txt").text.strip()
+
+
+def test_meta_description_has_no_hours(client):
+    """Los horarios sólo viven en el JSON-LD y en la página; no en la descripción."""
+    html = _html(client)
+    desc = re.search(r'<meta name="description" content="(.*?)"', html).group(1)
+    assert "AM" not in desc and "PM" not in desc and "horas" not in desc
+    assert "cardiometabólica" in desc
+
+
+def test_private_routes_are_noindex(client):
+    """Las rutas privadas deben pedir no indexar, además de robots.txt."""
+    for path in ("/manager", "/m"):
+        r = client.get(path)
+        assert "noindex" in r.headers.get("X-Robots-Tag", ""), path
