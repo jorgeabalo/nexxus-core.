@@ -9,11 +9,15 @@ Incluye curl i386 de MacPorts con OpenSSL y bibliotecas portables, certificados
 CA y un capturador x86_64 construido con objetivo minimo 10.6. No instala nada
 en /opt/local, no requiere privilegios de administrador y no modifica el sistema.
 
-IMPORTANTE: el servidor NUEVO de chat NO esta desplegado. El origen Railway
-configurado es el real, pero /api/mini-ai/chat requiere un despliegue futuro
-AUTORIZADO, la migracion de cuota y la lista de usuarios permitidos. Este paquete
-no realiza ese despliegue. El token de sesion se pega en el cliente; nunca se
-guarda. No pegues claves de Anthropic ni de administracion de Supabase.
+CONEXION A NEXXUS
+El paquete apunta a https://nexxus-mini-ai-production.up.railway.app.
+Es un servicio independiente de Claudia. Abre Nexxus.command, introduce tu
+correo y contrasena de Nexxus Manager y pulsa Conectar a Nexxus. Tu usuario
+debe estar autorizado en el servidor. No hay que copiar tokens ni claves.
+
+La contrasena se envia por HTTPS a tu servidor y Supabase Auth. No se guarda
+en disco y el campo se borra al conectar. La sesion vive solo en memoria.
+Cuando caduque, introduce de nuevo la contrasena y pulsa Conectar.
 
 El microfono graba diez segundos de WAV local. Aun no transcribe ni habla.
 Selecciona el microfono en Preferencias del Sistema > Sonido > Entrada.

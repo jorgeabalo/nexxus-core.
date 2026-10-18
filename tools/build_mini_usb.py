@@ -17,7 +17,7 @@ from fetch import fetch
 from source_bundle import sources
 
 
-def finish(root, output, server):
+def finish(root, output, server, archive_name='Nexxus-Mini-AI-USB-evaluacion.zip'):
     package = root / 'Nexxus-Mini-AI'
     (package / 'config.json').write_text(json.dumps({'server': server}, indent=2) + '\n')
     shutil.copy2(DEFINITIONS / 'macports-pubkey.pem', package / 'MACPORTS-PUBLIC-KEY.pem')
@@ -32,7 +32,7 @@ def finish(root, output, server):
                              'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
     (package / 'MANIFEST.json').write_text(json.dumps({'files': manifest}, indent=2) + '\n')
     output.mkdir(parents=True, exist_ok=True)
-    archive = output / 'Nexxus-Mini-AI-USB-evaluacion.zip'
+    archive = output / archive_name
     with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as bundle:
         for path in sorted(package.rglob('*')):
             if path.is_file():
@@ -48,8 +48,11 @@ def main():
     parser.add_argument('--work', type=Path, required=True, help='Fresh work directory')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--server', required=True, help='Approved HTTPS origin, no path')
+    parser.add_argument('--archive-name', default='Nexxus-Mini-AI-USB-evaluacion.zip')
     parser.add_argument('--finish-only', action='store_true', help='Reuse already audited staging files')
     args = parser.parse_args()
+    if Path(args.archive_name).name != args.archive_name or not args.archive_name.endswith('.zip'):
+        parser.error('archive-name must be a .zip basename')
     url = urlsplit(args.server)
     if (url.scheme != 'https' or not url.hostname or url.username or url.password or
             url.path not in ('', '/') or url.query or url.fragment):
@@ -65,7 +68,7 @@ def main():
                         '-o', str(root / 'record-audio-intel')], check=True)
         subprocess.run([sys.executable, str(DEFINITIONS / 'assemble.py'), str(root)], check=True)
         sources(root, DEFINITIONS)
-    finish(root, args.output.resolve(), args.server)
+    finish(root, args.output.resolve(), args.server, args.archive_name)
 
 
 if __name__ == '__main__':

@@ -2,8 +2,8 @@
 
 Este paquete prepara la prueba en un **Mac mini Intel Core 2 Duo de 2007 con
 Snow Leopard 10.6.8**. Incluye cliente de texto, transporte TLS y grabación local.
-No se ha ejecutado todavía en ese equipo físico. El servidor nuevo sigue sin
-desplegar y requiere autorización antes de activarlo.
+No se ha ejecutado todavía en ese equipo físico. La conexión de esta entrega apunta al servicio independiente
+`https://nexxus-mini-ai-production.up.railway.app`, autorizado para tu cuenta.
 
 ## Copiar y abrir
 
@@ -58,22 +58,22 @@ Las pruebas locales con TLS 1.2 comprobaron conexión válida, CA incorrecta y n
 incorrecto; en los dos últimos casos no se transmitió Authorization. Esas pruebas
 usan el curl del host moderno: no sustituyen la ejecución del curl Intel incluido.
 
-## Activación del chat, todavía pendiente
+## Conectar a Nexxus
 
-La URL de Railway es real, pero **la ruta nueva `/api/mini-ai/chat` no está
-desplegada**. Este paquete no despliega, no aplica migraciones ni modifica Railway.
-Para conversar faltan un despliegue autorizado, la migración de cuota,
-`MINI_AI_ENABLED=true` y los UUID permitidos en `MINI_AI_USER_IDS`.
+1. Abrir **Nexxus.command**.
+2. Escribir el correo de tu cuenta existente de Nexxus Manager y su contraseña.
+3. Pulsar **Conectar a Nexxus**. Cuando indique «Conectado», escribir una pregunta
+   y pulsar Enviar.
 
-Esta versión de evaluación usa un **access token temporal de usuario Supabase**,
-obtenido por el administrador desde una sesión del portal en un equipo moderno.
-Se pega en el campo oculto del cliente y vive solo en memoria. No se debe usar
-una anon key, refresh token, service-role o clave de Anthropic. No compartir tokens
-por chat ni guardarlos en el USB. Falta una vinculación y renovación más cómoda.
+Se autoriza únicamente el UUID configurado en el servidor. No hay que copiar
+tokens ni claves. La contraseña se envía por HTTPS al servicio propio de Mini AI
+y de ahí a Supabase Auth; el campo se borra al conectar y no se guarda en disco.
+La sesión vive solo en memoria. Al caducar, volver a introducir la contraseña y
+pulsar Conectar. No se crean cuentas, guardan contraseñas ni cambian las existentes.
 
-Una vez habilitado el servidor, se envían la pregunta y hasta cuatro intercambios
-anteriores a Railway y Anthropic. «Nueva conversación» borra el contexto; cambiar
-de token lo reinicia al enviar. No se escriben conversaciones en disco.
+Se envían la pregunta y hasta cuatro intercambios anteriores a Railway y Anthropic.
+«Nueva conversación» borra el contexto. No se escriben conversaciones en disco.
+El servicio independiente no tiene herramientas ni acceso a datos de Claudia.
 
 ## Micrófono USB
 
@@ -106,7 +106,7 @@ OpenSSL con verificación RIPEMD160:
 python3 tools/build_mini_usb.py \
   --work /ruta/nueva/de/trabajo \
   --output /ruta/de/salida \
-  --server https://nexxus-core-production.up.railway.app
+  --server https://nexxus-mini-ai-production.up.railway.app
 ```
 
 No ejecutar el empaquetador en Snow Leopard. No descarga claves de servidor, no

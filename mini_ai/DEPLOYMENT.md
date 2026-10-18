@@ -36,3 +36,17 @@ verificado el primer despliegue para no repetir accesos de prueba innecesarios.
 Rollback: desactivar MINI_AI_ENABLED o detener únicamente este servicio. La tabla
 de cuota puede conservarse. No modificar fuentes, variables o despliegues de los
 servicios anteriores para revertir Mini AI.
+
+## Resultado verificado
+
+Despliegue `1441406c-f203-4ec9-8129-b5a068879265`, SUCCESS, commit
+`f53e356a86ac0a3b3593ad9a0d6cfec3b79b12f0`. El comando previo registró
+MINI_AI_SMOKE_PASS: sesión Supabase, autorización, cuota SQL y respuesta real
+de Anthropic verificadas. La sesión temporal se cerró y se retiró el comando
+previo de la configuración para futuros despliegues. No se registra su token.
+
+Se verificaron además por HTTPS público /health=200 y las rutas protegidas
+sin sesión o con cuenta no configurada=401, con la CA del paquete USB.
+Las referencias de claves utilizan el UUID del servicio existente: las
+referencias por nombre con punto final no se resolvían. Ningún valor secreto
+se guardó en el cliente, repositorio o archivos locales.
