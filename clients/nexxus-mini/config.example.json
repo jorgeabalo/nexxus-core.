@@ -1,3 +1,5 @@
 {
-  "server": "https://YOUR-APP.up.railway.app"
+  "server": "https://YOUR-APP.up.railway.app",
+  "supabase_url": "https://YOUR-PROJECT.supabase.co",
+  "supabase_public_key": "sb_publishable_REPLACE_WITH_PUBLIC_KEY"
 }
