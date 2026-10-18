@@ -591,6 +591,36 @@ if MEDIA_DIR.is_dir():
 async def root():
     return FileResponse(Path(__file__).parent / "index.html", media_type="text/html")
 
+
+_SITE_BASE = "https://goldenagefit.com"
+
+
+@app.get("/robots.txt")
+async def robots_txt():
+    body = (
+        "User-agent: *\n"
+        "Allow: /\n"
+        "Disallow: /m/\n"
+        "Disallow: /manager/\n"
+        "Disallow: /api/\n"
+        "\n"
+        f"Sitemap: {_SITE_BASE}/sitemap.xml\n"
+    )
+    return Response(body, media_type="text/plain; charset=utf-8",
+                    headers={"Cache-Control": "public, max-age=3600"})
+
+
+@app.get("/sitemap.xml")
+async def sitemap_xml():
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f"  <url><loc>{_SITE_BASE}/</loc></url>\n"
+        "</urlset>\n"
+    )
+    return Response(body, media_type="application/xml; charset=utf-8",
+                    headers={"Cache-Control": "public, max-age=3600"})
+
 _HTTPS_BASE = re.compile(r"https://[A-Za-z0-9.-]+(:\d+)?")
 
 
