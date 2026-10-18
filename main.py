@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
+from mini_ai.api import router as mini_ai_router
+app.include_router(mini_ai_router)
+
 # Domus is independent of Golden Age, Twilio and business sessions.
 from domus.alexa import router as domus_router
 app.include_router(domus_router)
@@ -111,7 +114,8 @@ async def manager_security_headers(request: Request, call_next):
     response = await call_next(request)
     p = request.url.path
     if (p.startswith("/manager") or p.startswith("/api/manager")
-            or p == "/m" or p.startswith("/m/") or p.startswith("/api/member")):
+            or p == "/m" or p.startswith("/m/") or p.startswith("/api/member")
+            or p.startswith("/api/mini-ai")):
         if "no-store" not in response.headers.get("Cache-Control", ""):
             response.headers["Cache-Control"] = "no-store"     # respeta "private, no-store" (vista previa)
         response.headers["X-Content-Type-Options"] = "nosniff"

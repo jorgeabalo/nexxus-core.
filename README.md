@@ -235,3 +235,10 @@ Para preguntas o reportar bugs, contacta a Jorge.
 **Versión**: 1.0.1
 **Última actualización**: Agosto 2026
 **Status**: MVP funcional para un solo negocio / bajo volumen. Revisar sección "Pendiente para producción real" antes de escalar a múltiples clientes.
+
+## Nexxus Mini AI (desarrollo, sin desplegar)
+
+API de texto independiente de Claudia y cliente ligero para Intel/Snow Leopard,
+con captura local de micrófono. Deshabilitado por defecto.
+Ver [arquitectura, configuración y limitaciones](docs/NEXXUS_MINI_AI.md) y
+[preparación del cliente por USB](clients/nexxus-mini/INSTALACION.md).
