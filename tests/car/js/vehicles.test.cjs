@@ -1,0 +1,11 @@
+const {readFileSync}=require('node:fs');
+const vm=require('node:vm');const assert=require('node:assert/strict');
+const ctx=vm.createContext({});vm.runInContext(readFileSync('car/assets/vehicles.js','utf8'),ctx);
+const lookup=v=>vm.runInContext(`resolveVehicleArt(${JSON.stringify(v)})`,ctx);
+assert.equal(lookup({make:' KIA ',model:'Sportage',year:2021}).src,'/car/assets/vehicles/kia-sportage-2021.png');
+assert.equal(lookup({make:'Toyota',model:'Corolla',year:'2022'}).matched,true);
+assert.equal(lookup({make:'Kia',model:'Sportage',year:2024}).matched,false);
+assert.equal(lookup({make:'Kia',model:'Sportage fake',year:2021}).matched,false);
+assert.equal(lookup({make:'Unknown',model:'../../secret',year:2021}).src,'/car/assets/vehicles/generic.svg');
+assert.equal(lookup({make:'Kia',model:'Rio',year:2023}).src,'/car/assets/vehicles/kia-rio-2023.png');
+console.log('6 vehicle-image checks passed');
