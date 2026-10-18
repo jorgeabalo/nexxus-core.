@@ -266,6 +266,20 @@ def test_brand_validation(svc, field, value, code):
     assert err(svc.save_brand, jwt(OWNER), T1, {field: value}) == (code, 400)
 
 
+@pytest.mark.parametrize("logo", [
+    "/media/logo.svg", "/media/logo.SVG", "/media/logo.html", "/media/a//logo.png",
+    "/media/../logo.png", "/media/logo.png%2e", "//evil.example/logo.png", "/media/logo.png\\x",
+    "data:image/png;base64,iVBORw0KGgo=", "https://evil.example/logo.png", "/media/logo"])
+def test_brand_logo_same_policy_as_panel(svc, logo):
+    # Paridad con safeLogoUrl (nav.js): solo rutas locales raster, sin SVG ni codificaciones.
+    assert err(svc.save_brand, jwt(OWNER), T1, {"logo_url": logo}) == ("invalid_logo", 400)
+
+
+@pytest.mark.parametrize("logo", ["/media/brand/logo.png", "/media/logo.jpeg?v=2"])
+def test_brand_logo_panel_allowed_paths(svc, logo):
+    assert svc.save_brand(jwt(OWNER), T1, {"logo_url": logo})["profile"]["logo_url"] == logo
+
+
 def test_brand_local_logo_ok(svc):
     assert svc.save_brand(jwt(OWNER), T1, {"logo_url": "/media/brand/logo.png"})["profile"]["logo_url"] == "/media/brand/logo.png"
 

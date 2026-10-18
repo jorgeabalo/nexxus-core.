@@ -106,7 +106,8 @@ def limit_reached(settings: Dict[str, Any], usage: Dict[str, int], fmt: str) -> 
 HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
 # Igual que safeLogoUrl en nav.js: ruta local con una sola barra (nunca //host ni /\host)
 # o imagen rasterizada en base64. Nada de SVG ni URLs externas.
-LOCAL_PATH = re.compile(r"^/(?![/\\])[^\s\\]*$")
+# Paridad con LOCAL_PATH de manager/assets/js/nav.js: solo rasters, sin SVG, sin %, sin backslash.
+LOCAL_PATH = re.compile(r"^/(?!/)[A-Za-z0-9._~/\-]+\.(?:png|jpe?g|webp|gif)(?:\?[A-Za-z0-9._~=&\-]*)?$", re.IGNORECASE)
 DATA_IMAGE = re.compile(r"^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$")
 WEBSITE = re.compile(r"^https?://[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?::\d{1,5})?(?:/[^\s<>\"']*)?$")
 
@@ -114,7 +115,11 @@ WEBSITE = re.compile(r"^https?://[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?::\d{1,5})?(?:/[^
 def safe_logo_url(url: Any) -> Optional[str]:
     if not isinstance(url, str) or len(url) > 2_000_000:
         return None
-    return url if LOCAL_PATH.match(url) or DATA_IMAGE.match(url) else None
+    if LOCAL_PATH.match(url):
+        path = url.split("?")[0]
+        # Como safeLocalPath en nav.js: sin "//" ni segmentos "..".
+        return url if "//" not in path and ".." not in path.split("/") else None
+    return url if DATA_IMAGE.match(url) else None
 
 
 def color(v: Any) -> Optional[str]:
