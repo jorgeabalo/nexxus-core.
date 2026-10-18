@@ -62,7 +62,10 @@ def build_router(get_db: Callable) -> APIRouter:
         try:
             return await run_in_threadpool(fn)
         except (PortalError, DomainError) as e:
-            return JSONResponse({"error": e.code}, status_code=e.status)
+            public_code = "generation_unavailable" if e.code in {
+                "provider_disabled", "provider_unavailable", "no_eligible_model"
+            } else e.code
+            return JSONResponse({"error": public_code}, status_code=e.status)
         except Exception as e:
             logger.error(f"MARKETING_STUDIO_ERROR {type(e).__name__}")       # sin detalles ni URLs
             return JSONResponse({"error": "server_error"}, status_code=500)
@@ -209,7 +212,7 @@ def build_router(get_db: Callable) -> APIRouter:
         res = await call(lambda: studio().job(bearer(request), tenant_id, job_id))
         if not isinstance(res, dict):
             return res
-        res.pop("usage", None)                                   # costos por modelo: solo internos
+        res.pop("usage", None)
         return public_job(res)
 
     @r.post(f"{P}/jobs/{{job_id}}/{{action}}")

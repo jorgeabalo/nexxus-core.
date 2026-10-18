@@ -3,7 +3,8 @@
 // Los datos vienen del backend (/api/manager/marketing/*), que valida rol
 // (owner/manager), tenant y reglas de estado. Nada se publica en redes todavía.
 // El estado de la vista es por empresa: al cambiar de tenant se empieza de cero.
-import { el, clear, card, kpi, table, tabs, errorBox, loading, fmtDateTime, todayISO, select, tz } from '../ui.js';
+import { el, clear, card, kpi, table, tabs, loading, fmtDateTime, todayISO, select, tz } from '../ui.js';
+import { errorNotice } from './marketing-ui.js';
 import { api } from '../api.js';
 import { t, errText, getLang } from './marketing-i18n.js';
 import { TABS, createScope, monthStart, shiftMonth, monthEnd, monthGrid, usageBar } from './marketing-state.js';
@@ -53,7 +54,7 @@ export async function render(root, ctx) {
       const node = await view();
       if (ctx.isCurrent()) clear(body).appendChild(node);
     } catch (e) {
-      if (ctx.isCurrent()) clear(body).appendChild(errorBox({ message: errText(e) }));
+      if (ctx.isCurrent()) clear(body).appendChild(errorNotice(errText(e)));
     }
   }
 

@@ -61,5 +61,5 @@ class MarketingTablesGuard:
     def update(self, table, filters, values):
         return self._call(self._db.update, table, filters, values)
 
-    def rpc(self, fn, args):
-        return self._call(lambda _t, a: self._db.rpc(fn, a), f"rpc/{fn}", args)
+    def rpc(self, fn, args, timeout=None):
+        return self._call(lambda _t, a: self._db.rpc(fn, a, timeout=timeout), f"rpc/{fn}", args)

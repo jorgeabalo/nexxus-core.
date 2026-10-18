@@ -46,12 +46,14 @@ class SupabaseAdmin:
             )
         return self._client
 
-    def _request(self, method: str, table: str, *, params=None, json=None, prefer=None) -> Optional[List[Dict[str, Any]]]:
+    def _request(self, method: str, table: str, *, params=None, json=None, prefer=None,
+                 timeout: Optional[float] = None) -> Optional[List[Dict[str, Any]]]:
         if not self.enabled:
             return None
         headers = {"Prefer": prefer} if prefer else None
         try:
-            r = self._http().request(method, f"/{table}", params=params, json=json, headers=headers)
+            extra = {"timeout": httpx.Timeout(float(timeout), connect=min(float(timeout), 3.0))} if timeout else {}
+            r = self._http().request(method, f"/{table}", params=params, json=json, headers=headers, **extra)
         except Exception as e:
             # Nunca propagar el texto original: algunas excepciones de httpx
             # incluyen los valores de las cabeceras (la clave secreta).
@@ -91,9 +93,10 @@ class SupabaseAdmin:
     def update(self, table: str, filters: Dict[str, str], values: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
         return self._request("PATCH", table, params=filters, json=values, prefer="return=representation")
 
-    def rpc(self, fn: str, args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Llama a una función de PostgreSQL expuesta por PostgREST (/rest/v1/rpc/<fn>)."""
-        rows = self._request("POST", f"rpc/{fn}", json=args)
+    def rpc(self, fn: str, args: Dict[str, Any], timeout: Optional[float] = None) -> Optional[Dict[str, Any]]:
+        """Llama a una función de PostgreSQL expuesta por PostgREST (/rest/v1/rpc/<fn>). `timeout` (s) acota
+        la llamada completa (p. ej. la renovación de un lease nunca queda colgada)."""
+        rows = self._request("POST", f"rpc/{fn}", json=args, timeout=timeout)
         return rows[0] if rows else None
 
     def delete(self, table: str, filters: Dict[str, str]) -> Optional[List[Dict[str, Any]]]:
