@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" href="data:,">
+  <title>Nexxus Manager · Marketing (demostración)</title>
+  <style>
+    :root{
+      --navy:#0B1F3A; --gold:#C9A227; --bg:#F4F6F9; --card:#FFFFFF;
+      --text:#1B2433; --muted:#4F5B6E; --line:#D9DFE8; --focus:#1F6FEB;
+      --ok:#1E6B3A; --warn:#7A4B00; --bad:#9B1C1C;
+    }
+    @media (prefers-color-scheme: dark){
+      :root:not([data-theme="light"]){ --bg:#0E1726; --card:#16233A; --text:#EEF2F7; --muted:#B5C0CF; --line:#2A3A55; }
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0}
+    body{font:15px/1.5 Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+    a{color:inherit}
+    :focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+    .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+    .skip{position:absolute;left:8px;top:-60px;background:var(--gold);color:var(--navy);padding:8px 12px;border-radius:6px;z-index:10;font-weight:600}
+    .skip:focus{top:8px}
+
+    /* cabecera */
+    header{background:var(--navy);color:#fff;display:flex;align-items:center;gap:12px;padding:10px 16px;position:sticky;top:0;z-index:5}
+    .mark{width:34px;height:34px;border-radius:8px;border:2px solid var(--gold);display:grid;place-items:center;font-weight:700;color:var(--gold);font-size:13px;flex:none}
+    .brand{font-weight:700;letter-spacing:.2px}
+    .brand small{display:block;font-weight:400;opacity:.8;font-size:12px}
+    .spacer{flex:1}
+    .pill{border:1px solid rgba(255,255,255,.4);background:transparent;color:#fff;border-radius:999px;padding:4px 12px;font:inherit;font-size:13px;cursor:pointer}
+    .pill:hover{background:rgba(255,255,255,.1)}
+    .badge{background:var(--gold);color:var(--navy);font-weight:700;font-size:12px;padding:3px 8px;border-radius:6px}
+
+    .demo-banner{background:#FFF4CC;color:#3D2E00;border-bottom:1px solid #E7CF73;padding:8px 16px;font-size:14px}
+
+    /* disposición */
+    .layout{display:grid;grid-template-columns:220px 1fr;min-height:calc(100vh - 110px)}
+    nav.side{background:var(--card);border-right:1px solid var(--line);padding:12px 8px}
+    nav.side a{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;text-decoration:none;color:var(--muted);font-weight:500;min-height:44px}
+    nav.side a:hover{background:var(--bg);color:var(--text)}
+    nav.side a[aria-current="page"]{background:var(--navy);color:#fff}
+    nav.side a[aria-current="page"] .ico{color:var(--gold)}
+    .ico{width:20px;text-align:center;font-weight:700}
+    main{padding:20px 24px;max-width:1200px;width:100%}
+    h1{font-size:22px;margin:0 0 4px}
+    .sub{color:var(--muted);margin:0 0 16px}
+
+    /* tarjetas y controles */
+    .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+    .card h2{font-size:16px;margin:0 0 10px}
+    .btn{font:inherit;font-weight:600;border-radius:8px;padding:9px 14px;min-height:40px;border:1px solid var(--line);background:var(--card);color:var(--text);cursor:pointer}
+    .btn:hover{border-color:var(--navy)}
+    .btn.primary{background:var(--gold);border-color:var(--gold);color:var(--navy)}
+    .btn.navy{background:var(--navy);border-color:var(--navy);color:#fff}
+    .btn.small{min-height:32px;padding:4px 10px;font-size:13px}
+    .btn[disabled]{opacity:.5;cursor:not-allowed}
+    a.btn{text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
+    .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    select,input{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--text);min-height:40px}
+    label{font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+    .stat{font-size:28px;font-weight:700;color:var(--navy)}
+    @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .stat{color:var(--gold)} }
+    .muted{color:var(--muted)}
+    .hint{font-size:13px;color:var(--muted);margin:6px 0 0}
+
+    /* estados */
+    .st{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap;border:1px solid transparent}
+    .st-borrador{background:#E9EDF2;color:#2F3A4C}
+    .st-revision{background:#FFF1C2;color:#5A3E00;border-color:#E7CF73}
+    .st-aprobada{background:#DCE8FF;color:#123E86}
+    .st-programada{background:#fff;color:var(--navy);border-color:var(--navy)}
+    .st-publicada{background:#D8F0DF;color:var(--ok)}
+    .st-atencion{background:#FBE0E0;color:var(--bad)}
+    @media (prefers-color-scheme: dark){
+      :root:not([data-theme="light"]) .st-borrador{background:#2A3A55;color:#E6ECF5}
+      :root:not([data-theme="light"]) .st-programada{background:transparent;color:#E6ECF5;border-color:#8FA6C8}
+    }
+
+    /* tablas y listas */
+    .table-wrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:12px}
+    table{width:100%;border-collapse:collapse}
+    th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+    th{font-size:13px;color:var(--muted);font-weight:600}
+    tr:last-child td{border-bottom:0}
+    .list{display:none;gap:10px;flex-direction:column}
+    .item{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+    .item h3{font-size:15px;margin:0 0 4px}
+    .filters{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0 16px}
+
+    /* calendario */
+    .cal-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+    .cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+    .cal .dow{font-size:12px;color:var(--muted);font-weight:600;text-align:center;padding:4px}
+    .day{background:var(--card);border:1px solid var(--line);border-radius:8px;min-height:92px;padding:6px;font-size:12px}
+    .day.out{opacity:.45}
+    .day.today{border:2px solid var(--gold)}
+    .chip{display:block;width:100%;text-align:left;margin-top:4px;border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:6px;padding:3px 5px;font:inherit;font-size:12px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .chip:hover{border-color:var(--navy)}
+    .cal-list{display:none}
+
+    /* campañas */
+    .bar{height:8px;background:var(--line);border-radius:999px;overflow:hidden;margin:8px 0}
+    .bar > span{display:block;height:100%;background:var(--navy)}
+    .counts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+
+    /* diálogos y avisos */
+    dialog{border:1px solid var(--line);border-radius:14px;padding:0;max-width:min(520px,calc(100vw - 32px));background:var(--card);color:var(--text)}
+    dialog::backdrop{background:rgba(11,31,58,.55)}
+    .dlg{padding:20px}
+    .dlg h2{margin:0 0 8px;font-size:18px}
+    .dlg ol{padding-left:20px}
+    .dlg ol li{margin-bottom:6px}
+    .dlg .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;flex-wrap:wrap}
+    .toast{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 16px;border-radius:10px;max-width:calc(100vw - 32px);box-shadow:0 6px 24px rgba(0,0,0,.25);display:none;z-index:20}
+    .toast.show{display:block}
+    footer{padding:12px 24px;color:var(--muted);font-size:12px;border-top:1px solid var(--line)}
+
+    /* móvil */
+    @media (max-width: 760px){
+      .layout{grid-template-columns:1fr}
+      nav.side{display:flex;overflow-x:auto;gap:6px;padding:8px;border-right:0;border-bottom:1px solid var(--line);position:sticky;top:58px;z-index:4}
+      nav.side a{flex:none;min-height:40px}
+      main{padding:16px}
+      .table-wrap{display:none}
+      .list{display:flex}
+      .cal{display:none}
+      .cal-list{display:block}
+      .brand small{display:none}
+    }
+    .sr-only-mobile{}
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main">Saltar al contenido</a>
+
+  <header>
+    <div class="mark" aria-hidden="true">GA</div>
+    <div class="brand">Nexxus Manager<small>Golden Age Fitness &amp; Training</small></div>
+    <div class="spacer"></div>
+    <span class="badge" id="badge">DEMO</span>
+    <button class="pill" id="lang-btn" type="button" aria-label="Change language / Cambiar idioma">EN</button>
+  </header>
+  <div class="demo-banner" role="note" id="banner"></div>
+
+  <div class="layout">
+    <nav class="side" aria-label="Principal" id="side">
+      <a href="#/resumen" data-nav="resumen"><span class="ico" aria-hidden="true">▣</span><span id="n-resumen"></span></a>
+      <a href="#/publicaciones" data-nav="publicaciones"><span class="ico" aria-hidden="true">≡</span><span id="n-publicaciones"></span></a>
+      <a href="#/calendario" data-nav="calendario"><span class="ico" aria-hidden="true">▦</span><span id="n-calendario"></span></a>
+      <a href="#/campanas" data-nav="campanas"><span class="ico" aria-hidden="true">◎</span><span id="n-campanas"></span></a>
+    </nav>
+    <main id="main" tabindex="-1"></main>
+  </div>
+
+  <footer id="foot"></footer>
+
+  <dialog id="dlg-how" aria-labelledby="how-title">
+    <div class="dlg">
+      <h2 id="how-title"></h2>
+      <ol id="how-steps"></ol>
+      <p class="hint" id="how-note"></p>
+      <div class="actions"><button class="btn navy" type="button" data-close>OK</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="dlg-confirm" aria-labelledby="confirm-title">
+    <div class="dlg">
+      <h2 id="confirm-title"></h2>
+      <p id="confirm-text"></p>
+      <div class="actions">
+        <button class="btn" type="button" data-close id="confirm-cancel"></button>
+        <button class="btn primary" type="button" id="confirm-ok"></button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="dlg-post" aria-labelledby="post-title">
+    <div class="dlg">
+      <h2 id="post-title"></h2>
+      <div id="post-body"></div>
+      <div class="actions"><button class="btn navy" type="button" data-close id="post-close"></button></div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ---------- textos ES/EN (la interfaz); los datos de ejemplo están en español ---------- */
+const I18N = {
+  es: {
+    title: 'Marketing', summary: 'Resumen', posts: 'Publicaciones', calendar: 'Calendario', campaigns: 'Campañas',
+    banner: 'Demostración con datos sintéticos. No se conecta a Supabase, redes sociales ni proveedores; ningún botón publica, cobra ni envía nada.',
+    foot: 'Maqueta de diseño. Estructura visual inspirada en TailAdmin Free (licencia MIT, ver LICENSE-TailAdmin.txt). Logo: monograma provisional, no oficial.',
+    howBtn: '¿Cómo publico?', howTitle: 'Cómo publicar en 6 pasos',
+    howSteps: ['Elige foto, vídeo o carrusel.', 'Escribe el texto. La ayuda con IA aparece solo si está activada.', 'Elige las cuentas y revisa la vista previa de cada red.', 'Envía a revisión, o aprueba si tienes permiso.', 'Elige «Publicar ahora» o «Programar».', 'Confirma cuentas, contenido, fecha, hora y zona horaria.'],
+    howNote: 'Nada se publica en esta demostración.',
+    pendingTitle: 'Pendientes de revisión', pendingNone: 'No hay nada pendiente.',
+    upcomingTitle: 'Próximas publicaciones', quickTitle: 'Accesos rápidos',
+    quickNew: 'Nueva publicación', quickCal: 'Ver calendario', quickCamp: 'Ver campañas',
+    newDemo: 'Demostración: el formulario de nueva publicación no está conectado todavía.',
+    filterState: 'Estado', filterNet: 'Red', filterCamp: 'Campaña', all: 'Todas', allF: 'Todos', noCamp: 'Sin campaña',
+    colTitle: 'Título', colNet: 'Red', colCamp: 'Campaña', colState: 'Estado', colDate: 'Fecha', colAct: 'Acciones',
+    empty: 'No hay publicaciones con estos filtros.', details: 'Ver detalles',
+    act_review: 'Enviar a revisión', act_approve: 'Aprobar', act_schedule: 'Programar', act_publish: 'Publicar ahora',
+    act_cancelSched: 'Quitar programación', act_fix: 'Revisar',
+    confirmPubTitle: 'Simular publicación ahora', confirmPubText: 'Esto es una demostración. En la versión real, la red debe confirmar la publicación antes de mostrar «Publicada», y el enlace solo aparecerá si la red lo devuelve.',
+    confirmCancel: 'Cancelar', confirmOk: 'Simular',
+    demoDone: 'Demostración: el cambio es solo visual, no hay nada conectado.',
+    month: ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'],
+    dow: ['L','M','X','J','V','S','D'], prev: 'Mes anterior', next: 'Mes siguiente', monthList: 'Lista de publicaciones',
+    camp_goal: 'Objetivo', camp_dates: 'Fechas', camp_progress: 'Avance (publicadas o programadas)', camp_view: 'Ver publicaciones',
+    fmt_foto: 'Foto', fmt_vídeo: 'Vídeo', fmt_carrusel: 'Carrusel',
+    st_borrador: 'Borrador', st_revision: 'En revisión', st_aprobada: 'Aprobada', st_programada: 'Programada', st_publicada: 'Publicada', st_atencion: 'Necesita atención',
+    close: 'Cerrar', caption: 'Texto', hashtags: 'Hashtags', when: 'Cuándo', campaign: 'Campaña', network: 'Red', format: 'Formato',
+    langNote: 'Idioma: español (inicial). Inglés disponible para la interfaz.',
+  },
+  en: {
+    title: 'Marketing', summary: 'Overview', posts: 'Posts', calendar: 'Calendar', campaigns: 'Campaigns',
+    banner: 'Demo with synthetic data. It does not connect to Supabase, social networks or providers; no button publishes, charges or sends anything.',
+    foot: 'Design mock-up. Visual structure inspired by TailAdmin Free (MIT license, see LICENSE-TailAdmin.txt). Logo: provisional monogram, not official.',
+    howBtn: 'How do I publish?', howTitle: 'How to publish in 6 steps',
+    howSteps: ['Choose a photo, video or carousel.', 'Write the text. AI help appears only if it is enabled.', 'Choose accounts and review each network preview.', 'Send for review, or approve if you have permission.', 'Choose “Publish now” or “Schedule”.', 'Confirm accounts, content, date, time and time zone.'],
+    howNote: 'Nothing is published in this demo.',
+    pendingTitle: 'Pending review', pendingNone: 'Nothing pending.',
+    upcomingTitle: 'Upcoming posts', quickTitle: 'Quick actions',
+    quickNew: 'New post', quickCal: 'View calendar', quickCamp: 'View campaigns',
+    newDemo: 'Demo: the new-post form is not connected yet.',
+    filterState: 'Status', filterNet: 'Network', filterCamp: 'Campaign', all: 'All', allF: 'All', noCamp: 'No campaign',
+    colTitle: 'Title', colNet: 'Network', colCamp: 'Campaign', colState: 'Status', colDate: 'Date', colAct: 'Actions',
+    empty: 'No posts match these filters.', details: 'View details',
+    act_review: 'Send for review', act_approve: 'Approve', act_schedule: 'Schedule', act_publish: 'Publish now',
+    act_cancelSched: 'Remove schedule', act_fix: 'Review',
+    confirmPubTitle: 'Simulate publishing now', confirmPubText: 'This is a demo. In the real version, the network must confirm publishing before “Published” is shown, and the link appears only if the network returns it.',
+    confirmCancel: 'Cancel', confirmOk: 'Simulate',
+    demoDone: 'Demo: the change is visual only; nothing is connected.',
+    month: ['January','February','March','April','May','June','July','August','September','October','November','December'],
+    dow: ['M','T','W','T','F','S','S'], prev: 'Previous month', next: 'Next month', monthList: 'Post list',
+    camp_goal: 'Goal', camp_dates: 'Dates', camp_progress: 'Progress (published or scheduled)', camp_view: 'View posts',
+    fmt_foto: 'Photo', fmt_vídeo: 'Video', fmt_carrusel: 'Carousel',
+    st_borrador: 'Draft', st_revision: 'In review', st_aprobada: 'Approved', st_programada: 'Scheduled', st_publicada: 'Published', st_atencion: 'Needs attention',
+    close: 'Close', caption: 'Text', hashtags: 'Hashtags', when: 'When', campaign: 'Campaign', network: 'Network', format: 'Format',
+    langNote: 'Language: Spanish (initial). English available for the interface.',
+  }
+};
+
+/* ---------- datos sintéticos (no son clientes reales) ---------- */
+const CAMPAIGNS = [
+  { id: 'c1', name: { es: 'Inscripciones de otoño', en: 'Autumn sign-ups' }, goal: { es: 'Captar 20 visitas de prueba en octubre', en: 'Get 20 trial visits in October' }, start: '2026-10-01', end: '2026-11-15' },
+  { id: 'c2', name: { es: 'Movilidad después de los 60', en: 'Mobility after 60' }, goal: { es: 'Llenar el grupo de movilidad de las 9:00', en: 'Fill the 9:00 mobility group' }, start: '2026-10-12', end: '2026-10-31' },
+  { id: 'c3', name: { es: 'Día del socio', en: 'Member day' }, goal: { es: 'Invitar a socios a traer un amigo', en: 'Invite members to bring a friend' }, start: '2026-11-01', end: '2026-11-07' },
+];
+const NETWORKS = ['Instagram', 'Facebook', 'TikTok', 'Google Business'];
+let posts = [
+  { id: 'p1', title: 'Reel: 3 ejercicios de movilidad', fmt: 'vídeo', net: 'Instagram', camp: 'c2', state: 'aprobada', date: '2026-10-19', time: '09:00', caption: 'Tres ejercicios para empezar el día sin rigidez.', tags: '#movilidad #golden' },
+  { id: 'p2', title: 'Clase de movilidad, sábado', fmt: 'foto', net: 'Facebook', camp: 'c2', state: 'borrador', date: '2026-10-21', time: '10:00', caption: 'Plaza libre en el grupo de las 9:00.', tags: '#clases' },
+  { id: 'p3', title: 'Testimonio de socia (con permiso)', fmt: 'vídeo', net: 'Instagram', camp: 'c1', state: 'revision', date: '2026-10-20', time: '18:00', caption: 'Pendiente de la autorización escrita de la socia.', tags: '#testimonio' },
+  { id: 'p4', title: 'Qué traer a tu primera clase', fmt: 'carrusel', net: 'Instagram', camp: 'c1', state: 'revision', date: '2026-10-22', time: '12:00', caption: 'Ropa cómoda, agua y ganas de probar.', tags: '#primeraclase' },
+  { id: 'p5', title: 'Horario de otoño', fmt: 'foto', net: 'Google Business', camp: 'c1', state: 'programada', date: '2026-10-18', time: '08:00', caption: 'Nuevo horario de otoño, consulta las clases.', tags: '' },
+  { id: 'p6', title: 'Reto de 7 días', fmt: 'vídeo', net: 'TikTok', camp: 'c1', state: 'atencion', date: '2026-10-23', time: '19:00', caption: 'La cuenta de TikTok necesita volver a conectarse.', tags: '#reto' },
+  { id: 'p7', title: 'Día del socio: invita a un amigo', fmt: 'foto', net: 'Facebook', camp: 'c3', state: 'borrador', date: '2026-11-01', time: '09:00', caption: 'Trae a un amigo gratis esa semana.', tags: '#diadelsocio' },
+  { id: 'p8', title: 'Pilates con Golden Age', fmt: 'foto', net: 'Instagram', camp: 'c1', state: 'publicada', date: '2026-10-14', time: '09:00', caption: 'Clases de pilates los martes y jueves.', tags: '#pilates' },
+  { id: 'p9', title: 'Entrenamiento de fuerza para principiantes', fmt: 'carrusel', net: 'Instagram', camp: 'c2', state: 'borrador', date: '2026-10-27', time: '07:30', caption: 'Cuatro ejercicios básicos con progresión.', tags: '#fuerza' },
+  { id: 'p10', title: 'Preguntas frecuentes sobre la inscripción', fmt: 'carrusel', net: 'Facebook', camp: 'c1', state: 'aprobada', date: '2026-10-24', time: '11:00', caption: 'Respondemos las dudas más comunes.', tags: '#faq' },
+  { id: 'p11', title: 'Bienvenida al equipo', fmt: 'foto', net: 'Instagram', camp: null, state: 'publicada', date: '2026-10-10', time: '16:00', caption: 'Presentamos a nuestro nuevo equipo de entrenadores.', tags: '#equipo' },
+  { id: 'p12', title: 'Clase abierta de movilidad', fmt: 'vídeo', net: 'TikTok', camp: 'c2', state: 'programada', date: '2026-10-29', time: '18:30', caption: 'Clase abierta gratuita, reserva tu plaza.', tags: '#movilidad' },
+];
+
+/* ---------- estado de la demostración ---------- */
+let lang = 'es';
+let calMonth = new Date(2026, 9, 1); // octubre 2026
+const TODAY = '2026-10-17';
+const filters = { state: '', net: '', camp: '' };
+let pendingAction = null;
+
+const $ = (s, r = document) => r.querySelector(s);
+const t = (k) => (I18N[lang][k] ?? I18N.es[k] ?? k);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const campName = (id) => { const c = CAMPAIGNS.find((x) => x.id === id); return c ? c.name[lang] : t('noCamp'); };
+const stBadge = (s) => `<span class="st st-${s}">${esc(t('st_' + s))}</span>`;
+const fmtDate = (iso, time) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  const label = dt.toLocaleDateString(lang === 'es' ? 'es-ES' : 'en-US', { weekday: 'short', day: 'numeric', month: 'short' });
+  return `${label} · ${time}`;
+};
+
+/* ---------- acciones por estado (solo cambian la vista) ---------- */
+const NEXT = {
+  borrador: [['act_review', 'revision']],
+  revision: [['act_approve', 'aprobada']],
+  aprobada: [['act_schedule', 'programada'], ['act_publish', 'publicada']],
+  programada: [['act_cancelSched', 'aprobada']],
+  atencion: [['act_fix', 'revision']],
+  publicada: [],
+};
+
+function actionButtons(p, small = true) {
+  return (NEXT[p.state] || []).map(([k, to]) =>
+    `<button class="btn ${small ? 'small' : ''} ${k === 'act_publish' ? 'primary' : ''}" type="button" data-act="${k}" data-id="${p.id}" data-to="${to}">${esc(t(k))}</button>`
+  ).join(' ');
+}
+
+function applyAction(id, to, k) {
+  const p = posts.find((x) => x.id === id);
+  if (!p) return;
+  p.state = to;
+  toast(t('demoDone'));
+  render();
+  // devuelve el foco al mismo control tras re-renderizar
+  const btn = document.querySelector(`[data-act="${k}"][data-id="${id}"]`);
+  if (btn) btn.focus(); else document.querySelector('main')?.focus();
+}
+
+/* ---------- vistas ---------- */
+function viewSummary() {
+  const pending = posts.filter((p) => p.state === 'revision' || p.state === 'atencion');
+  const upcoming = posts.filter((p) => p.date >= TODAY && p.state !== 'borrador' && p.state !== 'publicada')
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)).slice(0, 4);
+  return `
+    <h1>${esc(t('summary'))}</h1>
+    <p class="sub">Golden Age Fitness &amp; Training · ${esc(t('title'))}</p>
+    <div class="grid">
+      <section class="card" aria-labelledby="h-pend">
+        <h2 id="h-pend">${esc(t('pendingTitle'))}</h2>
+        <div class="stat" aria-label="${pending.length}">${pending.length}</div>
+        ${pending.length ? `<ul style="padding-left:18px;margin:8px 0 0">${pending.slice(0, 3).map((p) => `<li style="margin-bottom:6px">${esc(p.title)} ${stBadge(p.state)}</li>`).join('')}</ul>` : `<p class="muted">${esc(t('pendingNone'))}</p>`}
+        <p class="hint"><a href="#/publicaciones?state=revision">→ ${esc(t('posts'))}</a></p>
+      </section>
+      <section class="card" aria-labelledby="h-up">
+        <h2 id="h-up">${esc(t('upcomingTitle'))}</h2>
+        <ul style="list-style:none;padding:0;margin:0">
+          ${upcoming.map((p) => `<li style="padding:8px 0;border-bottom:1px solid var(--line)"><strong>${esc(p.title)}</strong><div class="muted" style="font-size:13px">${esc(p.net)} · ${esc(fmtDate(p.date, p.time))}</div></li>`).join('')}
+        </ul>
+      </section>
+      <section class="card" aria-labelledby="h-quick">
+        <h2 id="h-quick">${esc(t('quickTitle'))}</h2>
+        <div class="row" style="flex-direction:column;align-items:stretch">
+          <button class="btn primary" type="button" data-demo="new">${esc(t('quickNew'))}</button>
+          <a class="btn" href="#/calendario">${esc(t('quickCal'))}</a>
+          <a class="btn" href="#/campanas">${esc(t('quickCamp'))}</a>
+        </div>
+      </section>
+    </div>`;
+}
+
+function filteredPosts() {
+  return posts.filter((p) =>
+    (!filters.state || p.state === filters.state) &&
+    (!filters.net || p.net === filters.net) &&
+    (!filters.camp || (filters.camp === 'none' ? !p.camp : p.camp === filters.camp)))
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+}
+
+function viewPosts() {
+  const list = filteredPosts();
+  const opt = (v, label, cur) => `<option value="${esc(v)}" ${cur === v ? 'selected' : ''}>${esc(label)}</option>`;
+  return `
+    <h1>${esc(t('posts'))}</h1>
+    <div class="filters" role="group" aria-label="${esc(t('posts'))}">
+      <label>${esc(t('filterState'))}
+        <select id="f-state">${opt('', t('all'), filters.state)}${Object.keys(NEXT).map((s) => opt(s, t('st_' + s), filters.state)).join('')}</select>
+      </label>
+      <label>${esc(t('filterNet'))}
+        <select id="f-net">${opt('', t('all'), filters.net)}${NETWORKS.map((n) => opt(n, n, filters.net)).join('')}</select>
+      </label>
+      <label>${esc(t('filterCamp'))}
+        <select id="f-camp">${opt('', t('all'), filters.camp)}${CAMPAIGNS.map((c) => opt(c.id, c.name[lang], filters.camp)).join('')}${opt('none', t('noCamp'), filters.camp)}</select>
+      </label>
+    </div>
+    ${list.length ? '' : `<p class="muted">${esc(t('empty'))}</p>`}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">${esc(t('colTitle'))}</th><th scope="col">${esc(t('colNet'))}</th><th scope="col">${esc(t('colCamp'))}</th><th scope="col">${esc(t('colState'))}</th><th scope="col">${esc(t('colDate'))}</th><th scope="col">${esc(t('colAct'))}</th></tr></thead>
+        <tbody>
+          ${list.map((p) => `<tr>
+            <td><button class="btn small" type="button" data-detail="${p.id}" style="border:0;padding:0;background:none;font-weight:600;text-align:left">${esc(p.title)}</button></td>
+            <td>${esc(p.net)}</td><td>${esc(campName(p.camp))}</td><td>${stBadge(p.state)}</td>
+            <td>${esc(fmtDate(p.date, p.time))}</td><td><div class="row">${actionButtons(p)}</div></td></tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div class="list" aria-label="${esc(t('posts'))}">
+      ${list.map((p) => `<article class="item">
+        <h3>${esc(p.title)}</h3>
+        <div class="row" style="margin-bottom:6px">${stBadge(p.state)} <span class="muted" style="font-size:13px">${esc(p.net)} · ${esc(fmtDate(p.date, p.time))}</span></div>
+        <div class="row"><button class="btn small" type="button" data-detail="${p.id}">${esc(t('details'))}</button>${actionButtons(p)}</div>
+      </article>`).join('')}
+    </div>`;
+}
+
+function viewCalendar() {
+  const y = calMonth.getFullYear(), m = calMonth.getMonth();
+  const first = new Date(y, m, 1);
+  const offset = (first.getDay() + 6) % 7;
+  const start = new Date(y, m, 1 - offset);
+  const cells = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const day = posts.filter((p) => p.date === iso).sort((a, b) => a.time.localeCompare(b.time));
+    cells.push(`<div class="day ${d.getMonth() !== m ? 'out' : ''} ${iso === TODAY ? 'today' : ''}" role="group" aria-label="${iso}">
+      <strong>${d.getDate()}</strong>
+      ${day.map((p) => `<button class="chip" type="button" data-detail="${p.id}" title="${esc(p.title)}">${esc(p.time)} ${esc(p.title)}</button>`).join('')}
+    </div>`);
+  }
+  const monthName = `${t('month')[m]} ${y}`;
+  const groups = {};
+  posts.filter((p) => p.date.startsWith(`${y}-${String(m + 1).padStart(2, '0')}`))
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+    .forEach((p) => { (groups[p.date] ||= []).push(p); });
+  return `
+    <div class="cal-head">
+      <button class="btn small" type="button" data-month="-1" aria-label="${esc(t('prev'))}">‹</button>
+      <h1 style="margin:0;font-size:20px" aria-live="polite">${esc(monthName)}</h1>
+      <button class="btn small" type="button" data-month="1" aria-label="${esc(t('next'))}">›</button>
+    </div>
+    <div class="cal" role="grid" aria-label="${esc(monthName)}">
+      ${t('dow').map((d) => `<div class="dow" role="columnheader">${d}</div>`).join('')}
+      ${cells.join('')}
+    </div>
+    <div class="cal-list" aria-label="${esc(t('monthList'))}">
+      ${Object.keys(groups).length ? Object.entries(groups).map(([iso, ps]) => `<h2 style="font-size:15px;margin:14px 0 6px">${esc(fmtDate(iso, ''))}</h2>
+        ${ps.map((p) => `<button class="item" type="button" data-detail="${p.id}" style="display:block;width:100%;text-align:left;margin-bottom:8px;font:inherit;color:inherit;cursor:pointer"><strong>${esc(p.time)} · ${esc(p.title)}</strong><div>${stBadge(p.state)} <span class="muted" style="font-size:13px">${esc(p.net)}</span></div></button>`).join('')}`).join('') : `<p class="muted">${esc(t('empty'))}</p>`}
+    </div>`;
+}
+
+function viewCampaigns() {
+  return `
+    <h1>${esc(t('campaigns'))}</h1>
+    <div class="grid">
+      ${CAMPAIGNS.map((c) => {
+        const ps = posts.filter((p) => p.camp === c.id);
+        const ok = ps.filter((p) => p.state === 'publicada' || p.state === 'programada').length;
+        const pct = ps.length ? Math.round((ok / ps.length) * 100) : 0;
+        const counts = Object.keys(NEXT).map((s) => ({ s, n: ps.filter((p) => p.state === s).length })).filter((x) => x.n);
+        return `<section class="card" aria-labelledby="c-${c.id}">
+          <h2 id="c-${c.id}">${esc(c.name[lang])}</h2>
+          <p style="margin:0 0 6px"><strong>${esc(t('camp_goal'))}:</strong> ${esc(c.goal[lang])}</p>
+          <p class="muted" style="margin:0;font-size:13px">${esc(t('camp_dates'))}: ${esc(c.start)} → ${esc(c.end)}</p>
+          <p class="hint" style="margin-top:10px">${esc(t('camp_progress'))}: ${pct}%</p>
+          <div class="bar" role="progressbar" aria-label="${esc(t('camp_progress'))}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div>
+          <div class="counts">${counts.map((x) => stBadge(x.s) + ` <span class="muted" style="font-size:13px">${x.n}</span>`).join(' ')}</div>
+          <div class="row" style="margin-top:12px"><button class="btn small" type="button" data-camp="${c.id}">${esc(t('camp_view'))}</button></div>
+        </section>`;
+      }).join('')}
+    </div>`;
+}
+
+/* ---------- enrutado y render ---------- */
+function currentRoute() {
+  const h = location.hash.replace(/^#\//, '');
+  const [name, qs] = h.split('?');
+  if (qs) {
+    const params = new URLSearchParams(qs);
+    if (params.get('state')) filters.state = params.get('state');
+  }
+  return ['resumen', 'publicaciones', 'calendario', 'campanas'].includes(name) ? name : 'resumen';
+}
+
+function render() {
+  const r = currentRoute();
+  document.documentElement.lang = lang;
+  document.title = `Nexxus Manager · ${t('title')} (demostración)`;
+  $('#lang-btn').textContent = lang === 'es' ? 'EN' : 'ES';
+  $('#banner').textContent = t('banner');
+  $('#foot').textContent = t('foot');
+  $('#badge').textContent = lang === 'es' ? 'DEMO' : 'DEMO';
+  ['resumen', 'publicaciones', 'calendario', 'campanas'].forEach((k) => {
+    const label = { resumen: 'summary', publicaciones: 'posts', calendario: 'calendar', campanas: 'campaigns' }[k];
+    $('#n-' + k).textContent = t(label);
+    const a = document.querySelector(`[data-nav="${k}"]`);
+    a.setAttribute('aria-current', k === r ? 'page' : 'false');
+  });
+  const views = { resumen: viewSummary, publicaciones: viewPosts, calendario: viewCalendar, campanas: viewCampaigns };
+  const focusId = document.activeElement && document.activeElement.id;
+  $('#main').innerHTML = `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="btn" type="button" id="how-btn">${esc(t('howBtn'))}</button></div>` + views[r]();
+  if (focusId && document.getElementById(focusId)) document.getElementById(focusId).focus();
+  $('#how-title') && ($('#how-title').textContent = t('howTitle'));
+  $('#how-steps').innerHTML = t('howSteps').map((s) => `<li>${esc(s)}</li>`).join('');
+  $('#how-note').textContent = t('howNote');
+}
+
+function toast(msg) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove('show'), 3800);
+}
+
+function openPost(id) {
+  const p = posts.find((x) => x.id === id);
+  if (!p) return;
+  $('#post-title').textContent = p.title;
+  $('#post-close').textContent = t('close');
+  $('#post-body').innerHTML = `
+    <p style="margin:0 0 8px">${stBadge(p.state)}</p>
+    <dl style="display:grid;grid-template-columns:auto 1fr;gap:6px 12px;margin:0 0 10px">
+      <dt class="muted">${esc(t('network'))}</dt><dd style="margin:0">${esc(p.net)}</dd>
+      <dt class="muted">${esc(t('format'))}</dt><dd style="margin:0">${esc(t('fmt_' + p.fmt))}</dd>
+      <dt class="muted">${esc(t('when'))}</dt><dd style="margin:0">${esc(fmtDate(p.date, p.time))}</dd>
+      <dt class="muted">${esc(t('campaign'))}</dt><dd style="margin:0">${esc(campName(p.camp))}</dd>
+    </dl>
+    <p style="margin:0 0 6px"><strong>${esc(t('caption'))}:</strong> ${esc(p.caption)}</p>
+    <p class="muted" style="margin:0"><strong>${esc(t('hashtags'))}:</strong> ${esc(p.tags || '—')}</p>`;
+  $('#dlg-post').showModal();
+}
+
+/* ---------- eventos (delegados) ---------- */
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('button, a');
+  if (!el) return;
+  if (el.id === 'lang-btn') { lang = lang === 'es' ? 'en' : 'es'; render(); toast(t('langNote')); return; }
+  if (el.id === 'how-btn') { $('#dlg-how').showModal(); return; }
+  if (el.dataset.close !== undefined) { el.closest('dialog').close(); return; }
+  if (el.dataset.detail) { openPost(el.dataset.detail); return; }
+  if (el.dataset.camp) { filters.camp = el.dataset.camp; filters.state = ''; location.hash = '#/publicaciones'; render(); $('#main').focus(); return; }
+  if (el.dataset.month) { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + Number(el.dataset.month), 1); render(); return; }
+  if (el.dataset.demo === 'new') { toast(t('newDemo')); return; }
+  if (el.dataset.act) {
+    const { act, id, to } = el.dataset;
+    if (act === 'act_publish') {
+      pendingAction = { id, to, act };
+      $('#confirm-title').textContent = t('confirmPubTitle');
+      $('#confirm-text').textContent = t('confirmPubText');
+      $('#confirm-cancel').textContent = t('confirmCancel');
+      $('#confirm-ok').textContent = t('confirmOk');
+      $('#dlg-confirm').showModal();
+    } else {
+      applyAction(id, to, act);
+    }
+  }
+});
+
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'f-state') filters.state = e.target.value;
+  if (e.target.id === 'f-net') filters.net = e.target.value;
+  if (e.target.id === 'f-camp') filters.camp = e.target.value;
+  if (['f-state', 'f-net', 'f-camp'].includes(e.target.id)) render();
+});
+
+$('#confirm-ok').addEventListener('click', () => {
+  const a = pendingAction; pendingAction = null;
+  $('#dlg-confirm').close();
+  if (a) applyAction(a.id, a.to, a.act);
+});
+
+window.addEventListener('hashchange', () => { render(); $('#main').focus(); });
+render();
+</script>
+</body>
+</html>
