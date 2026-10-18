@@ -187,6 +187,14 @@ def test_disabled_tenant_is_read_only(svc, db):
     assert err(draft, svc) == ("marketing_disabled", 403)
 
 
+def test_disabled_tenant_cannot_save_brand(svc, db):
+    # Corrección: el Brand Kit respeta el mismo contrato de solo lectura que el resto del módulo.
+    db.tables["marketing_settings"][0]["marketing_enabled"] = False
+    before = [dict(r) for r in db.tables.get("marketing_brand_profiles", [])]
+    assert err(svc.save_brand, jwt(OWNER), T1, {"business_name": "Golden Age"}) == ("marketing_disabled", 403)
+    assert [dict(r) for r in db.tables.get("marketing_brand_profiles", [])] == before
+
+
 def test_missing_settings_default_to_disabled_with_approval(svc, db):
     db.tables["marketing_settings"] = []
     s = svc.dashboard(jwt(OWNER), T1)["settings"]

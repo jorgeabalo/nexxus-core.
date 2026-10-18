@@ -180,6 +180,7 @@ class MarketingService:
     @_guard
     def save_brand(self, jwt: str, tenant_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
         c = self.ctx(jwt, tenant_id)
+        self._enabled(c)
         v: Dict[str, Any] = {
             "business_name": d.text(body.get("business_name"), 120, "invalid_business_name"),
             "description": d.text(body.get("description"), 2000, "invalid_description"),
