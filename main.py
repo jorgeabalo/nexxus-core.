@@ -739,6 +739,34 @@ def _twiml_despedida(texto: str) -> str:
 </Response>"""
 
 
+SUPERVISOR_TELEFONO = os.getenv("SUPERVISOR_TELEFONO", "+18322454634")  # Roberto Gracian
+
+def _twiml_transferencia(texto: str, numero_negocio: str) -> str:
+    seguro = (texto or "Un momento, te comunico con Roberto.").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    caller = (numero_negocio or "").replace("&", "&amp;").replace("\"", "")
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="Polly.Lupe-Neural" language="es-US">{seguro}</Say>
+    <Dial callerId="{caller}" timeout="25" action="/api/twilio/transferencia-fallback" method="POST">
+        <Number>{SUPERVISOR_TELEFONO}</Number>
+    </Dial>
+</Response>"""
+
+@app.post("/api/twilio/transferencia-fallback")
+async def twilio_transferencia_fallback(request: Request):
+    """Twilio llama aquí al terminar el <Dial>. Si Roberto contestó, solo colgamos."""
+    form = await request.form()
+    estado = form.get("DialCallStatus", "")
+    if estado in ("completed", "answered"):
+        twiml = '<?xml version="1.0" encoding="UTF-8"?>\n<Response><Hangup/></Response>'
+    else:
+        twiml = ("""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="Polly.Lupe-Neural" language="es-US">Lo siento, Roberto no está disponible en este momento. Puedes volver a llamar más tarde o comunicarte al dos ocho uno, tres cinco dos, cuatro siete ocho cuatro. Gracias por llamar a Golden Age Gym.</Say>
+    <Hangup/>
+</Response>""")
+    return Response(content=twiml, status_code=200, media_type="application/xml")
+
 @app.post("/api/twilio/mensaje")
 async def twilio_mensaje_callback(request: Request):
     """
@@ -808,6 +836,10 @@ async def twilio_mensaje_callback(request: Request):
             respuesta = "Disculpa, hubo un error procesando tu mensaje. Por favor intenta de nuevo."
 
         _silencios.pop(call_sid, None)
+        if recepcionista and recepcionista.debe_transferir(session_id):
+            logger.info(f"[{call_sid}] Transferencia a Roberto")
+            return Response(content=_twiml_transferencia(respuesta, call_data.get("To")), status_code=200, media_type="application/xml")
+
         if recepcionista and recepcionista.debe_colgar(session_id):
             logger.info(f"[{call_sid}] Despedida: se cuelga la llamada")
             return Response(content=_twiml_despedida(respuesta), status_code=200, media_type="application/xml")
