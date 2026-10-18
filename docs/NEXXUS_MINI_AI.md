@@ -92,11 +92,31 @@ verificado; captura C con Audio Queue Services. No hay claves de proveedor en el
 cliente. El access token temporal de usuario es una credencial de sesión y se
 mantiene solo en memoria; no es una clave de servidor.
 
-Pendientes para una versión distribuible: transporte TLS para Intel/10.6 con
-CA y dependencias verificadas; build del capturador para i386; prueba física;
-flujo de inicio de sesión/vinculación y renovación fácil; servicio de
-transcripción autorizado, consentimiento para subir audio y sus límites;
-salida de voz. No se presenta la captura local como conversación por voz.
+El cliente permite acceso con correo/contraseña directamente a Supabase Auth,
+renovación del token en memoria y salida local. Configura solo URL y clave pública
+anon/publishable. No guarda contraseña ni refresh token en disco. No se añade un
+proxy de contraseñas al backend. OAuth/MFA/CAPTCHA no están implementados.
+
+La lectura opcional usa `/usr/bin/say`, con texto por stdin y sin shell, con la
+voz instalada en el Mac. Se puede detener. La captura del micrófono sigue siendo
+local, sin transcripción ni escucha continua.
+
+`clients/package_mini.py` crea una app/ZIP con archivos permitidos y hashes,
+excluyendo configuración privada. Por defecto es un paquete de desarrollo.
+Para incluir binarios exige un informe positivo de `diagnose.py --online` en
+10.6.8, hashes coincidentes y licencias. El POST público `/api/mini-ai/health`
+solo verifica transporte, sin BD ni proveedor: no significa que Mini AI esté
+habilitado ni prueba la conversación.
+
+Pendientes: transporte TLS para Intel/10.6 con CA y dependencias verificadas;
+build del capturador para i386; prueba física; transcripción autorizada con
+consentimiento y límites. No se presenta la captura local como conversación.
+
+El host de esta continuación es Apple Silicon, sin SDK 10.6. No se ha creado ni
+certificado un ejecutable Intel para Snow Leopard. Tampoco hay acceso al mini
+para verificar TLS, Python 2.6/Tk, entrada USB y voces. Estos bloqueos impiden
+declarar lista la instalación, aunque pasen las pruebas de Python moderno con
+proveedor y transporte sustituidos.
 
 ## Verificación
 

@@ -21,6 +21,12 @@ actuales. No solicites claves ni contraseñas. No tienes memoria fuera del conte
 que acompaña esta consulta."""
 
 
+@router.post('/health')
+async def health():
+    # Transport-only check: no credentials, provider, database, or feature activation.
+    return JSONResponse({'status': 'ok'}, headers={'Cache-Control': 'no-store'})
+
+
 class Message(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     role: str = Field(pattern="^(user|assistant)$")

@@ -39,6 +39,18 @@ def post(client, payload=None, token='session'):
                        json=payload or {'messages': [{'role': 'user', 'content': 'Hola'}]})
 
 
+def test_transport_health_does_not_use_provider_or_database(setup, monkeypatch):
+    c, db, provider = setup
+    monkeypatch.setenv('MINI_AI_ENABLED', 'false')
+    def unexpected():
+        raise AssertionError('Health must not access database')
+    monkeypatch.setattr(api, 'database', unexpected)
+    response = c.post('/api/mini-ai/health', json={})
+    assert response.status_code == 200 and response.json() == {'status': 'ok'}
+    assert response.headers['cache-control'] == 'no-store'
+    provider.assert_not_awaited()
+
+
 def test_chat_is_isolated_and_consumes_quota(setup):
     c, db, provider = setup
     r = post(c)

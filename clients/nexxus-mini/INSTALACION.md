@@ -1,6 +1,6 @@
 # Nexxus Mini AI — instalación de desarrollo por USB
 
-Estado: prototipo de texto y grabación local. No es todavía un instalador listo
+Estado: cliente de texto, acceso con contraseña, lectura de respuestas y grabación local. No es todavía un instalador listo
 para un usuario final. No requiere Safari, App Store, Electron ni una IA local.
 La API de texto es nueva; no reutiliza rutas de Claudia. No se ha desplegado.
 
@@ -49,16 +49,24 @@ La API de texto es nueva; no reutiliza rutas de Claudia. No se ha desplegado.
    La disponibilidad real de Tk debe comprobarse en ese equipo; no se instala
    un Python actual sobre 10.6 como solución automática.
 3. Verificar la fecha y hora del Mac. Abrir `Nexxus.command` con doble clic.
-4. Para esta versión de desarrollo, iniciar sesión en el portal existente de
-   Nexxus desde un equipo moderno y obtener, mediante un procedimiento de
-   administrador, un **access token temporal del usuario Supabase autorizado**.
-   Pegar ese token en el campo de sesión oculto. No usar anon key, refresh token
-   ni service-role como token. No compartirlo por chat ni guardarlo en archivos.
-   No hay aún un flujo cómodo de vinculación entre dispositivos o renovación:
-   al caducar, hay que pegar uno nuevo. Ese flujo queda pendiente para la versión final.
+4. El administrador añade a `config.json` el `supabase_url` y una
+   `supabase_public_key` **publishable o anon pública** del mismo proyecto que
+   usa Railway. Nunca usar service-role ni `sb_secret_`: el cliente los rechaza.
+   Pulsar **Iniciar sesión** y escribir correo y contraseña de una cuenta
+   Supabase autorizada. Van directamente a Supabase por HTTPS, sin guardarse en
+   disco. La sesión se renueva antes de caducar y la contraseña se quita del
+   campo al enviarla. Este acceso requiere una cuenta con contraseña; OAuth,
+   MFA y proyectos que exijan CAPTCHA necesitan otro flujo aún no implementado.
+   El token temporal manual queda como alternativa de desarrollo sin renovación.
+   **Cerrar sesión** borra la sesión y conversación locales; no revoca sesiones
+   en otros dispositivos.
 5. Escribir y pulsar Enviar. Se transmiten la pregunta y hasta cuatro intercambios
    previos a Railway y Anthropic. El historial vive solo en memoria del cliente;
    «Nueva conversación» lo borra. Cambiar de token reinicia el contexto al enviar.
+
+Activar **Leer respuestas** para usar la voz predeterminada del Mac sin enviar
+texto a otro servicio de voz. **Silenciar** detiene la lectura. El idioma y la
+calidad dependen de las voces instaladas. No es reconocimiento de voz.
 
 ## Micrófono USB
 
@@ -72,11 +80,10 @@ WAV PCM mono de 16 bits a 16 kHz mediante Audio Queue Services. Usa la entrada
 predeterminada; si el dispositivo no acepta la configuración, mostrará error.
 No sobrescribe archivos existentes. El archivo se crea con permisos de usuario.
 No hay grabación de fondo ni activación por palabra clave. No se envía el audio.
-Si se cierra la ventana mientras graba, el proceso termina al cumplir los diez segundos.
+La ventana espera a que termine la grabación antes de cerrarse.
 
 Falta probar volumen, ruido, duración y formato en el Mac real con el micrófono
-comprado. La transcripción automática y las respuestas habladas **no están
-implementadas**: Anthropic se reutiliza para texto, y no se ha supuesto una API
+comprado. La transcripción automática **no está implementada**: Anthropic se reutiliza para texto, y no se ha supuesto una API
 de reconocimiento de voz inexistente en el repositorio. Por ahora, grabar sirve
 para comprobar la entrada; para conversar hay que escribir.
 
@@ -97,3 +104,38 @@ el uso del equipo a este cliente y evitar guardar información sensible en él.
 Referencias: [Audio Queue Services de Apple](https://developer.apple.com/documentation/audiotoolbox/audio-queue-services),
 [AudioQueueNewInput](https://developer.apple.com/documentation/audiotoolbox/audioqueuenewinput(_:_:_:_:_:_:_:)),
 [opciones TLS y límites de curl](https://curl.se/docs/manpage.html).
+
+## Diagnóstico y empaquetado
+
+`Diagnostico.command` comprueba Python/Tk, archivos, curl y HTTPS sin credenciales
+contra `/api/mini-ai/health`. La ruta debe estar desplegada en el entorno aprobado.
+No llama al proveedor ni prueba permisos, cuota o conversación. El informe solo
+contiene plataforma, resultados y hashes, sin credenciales ni mensajes.
+
+En el mini, desde la carpeta cliente:
+
+```sh
+/usr/bin/python diagnose.py --online > informe-mini.json
+```
+
+En desarrollo, crear un ZIP con una app de doble clic:
+
+```sh
+python3 clients/package_mini.py --output dist/NexxusMiniAI-development.zip
+```
+
+El ZIP de desarrollo omite los binarios ausentes y marca que no está listo para
+conversar. El empaquetador usa una lista explícita de archivos; no copia `.env`,
+bases de datos, configuración privada ni tokens. Preparar por separado
+`Nexxus Mini AI.app/Contents/Resources/client/config.json`, o usar la carpeta
+cliente y `Nexxus.command`.
+
+Para incluir binarios, añadir `transport/NOTICE.txt` con procedencia, versiones
+y licencias y pasar `--evidence /ruta/informe-mini.json`. Se exige un informe
+positivo de HTTPS en 10.6.8 y hashes coincidentes de curl, CA y capturador. Es un
+registro de pruebas, no una firma de confianza. Aún se necesita validar chat,
+sesión, grabación y voz en el equipo real. No se empaqueta Python/Tk del sistema.
+La app no está firmada ni notarizada.
+
+Fuentes de sesión: [Supabase Auth](https://supabase.github.io/auth/) y
+[claves públicas](https://supabase.com/docs/guides/getting-started/api-keys).

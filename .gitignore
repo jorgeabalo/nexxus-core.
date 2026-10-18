@@ -11,3 +11,4 @@ clients/nexxus-mini/record-audio
 clients/nexxus-mini/transport/
 
 node_modules/
+dist/
