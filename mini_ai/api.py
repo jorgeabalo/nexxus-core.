@@ -114,3 +114,79 @@ async def chat(request: Request):
         raise HTTPException(502, "provider_unavailable") from None
     return JSONResponse({"assistant": "Nexxus Mini AI", "reply": response},
                         headers={"Cache-Control": "no-store"})
+
+
+class SessionInput(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=1024)
+
+
+# Dedicated service runs one worker; Supabase also applies its own Auth limits.
+# This bounded gate prevents forwarding more than ten password attempts/minute.
+import threading
+import time
+from collections import deque
+_session_attempts = deque()
+_session_lock = threading.Lock()
+
+
+def login_slot():
+    now = time.monotonic()
+    with _session_lock:
+        while _session_attempts and _session_attempts[0] <= now - 60:
+            _session_attempts.popleft()
+        if len(_session_attempts) >= 10:
+            return False
+        _session_attempts.append(now)
+        return True
+
+
+@router.post('/session')
+async def session(request: Request):
+    if os.getenv('MINI_AI_ENABLED', '').lower() != 'true':
+        raise HTTPException(503, 'mini_ai_disabled')
+    expected = os.getenv('MINI_AI_EMAIL', '').strip().casefold()
+    allowed = {x.strip() for x in os.getenv('MINI_AI_USER_IDS', '').split(',') if x.strip()}
+    if not expected or not allowed:
+        raise HTTPException(503, 'auth_unconfigured')
+    if not login_slot():
+        raise HTTPException(429, 'login_limit', headers={'Retry-After': '60'})
+    if request.headers.get('content-type', '').split(';')[0].strip() != 'application/json':
+        raise HTTPException(415, 'json_required')
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > 4096:
+            raise HTTPException(413, 'request_too_large')
+    try:
+        data = SessionInput.model_validate(json.loads(body))
+    except (ValueError, UnicodeError):
+        raise HTTPException(422, 'invalid_request') from None
+    if data.email.strip().casefold() != expected:
+        raise HTTPException(401, 'invalid_credentials')
+    db = database()
+    try:
+        status, result = await run_in_threadpool(
+            db.auth, 'POST', '/token', params={'grant_type': 'password'}, anon=True,
+            json={'email': data.email.strip(), 'password': data.password})
+        if status in (429,):
+            raise HTTPException(429, 'login_limit', headers={'Retry-After': '60'})
+        if status != 200 or not isinstance(result, dict) or not result.get('access_token'):
+            raise HTTPException(401 if 400 <= status < 500 else 503, 'invalid_credentials')
+        token = result['access_token']
+        if not isinstance(token, str) or not 1 <= len(token) <= 8192:
+            raise HTTPException(503, 'auth_unavailable')
+        user = await run_in_threadpool(db.user_from_jwt, token)
+        if not user or user.get('id') not in allowed or str(user.get('email', '')).casefold() != expected:
+            raise HTTPException(401, 'invalid_credentials')
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(503, 'auth_unavailable') from None
+    # Never return refresh tokens, provider identities or upstream error bodies.
+    expires = result.get('expires_in', 3600)
+    if not isinstance(expires, int) or not 0 < expires <= 86400:
+        expires = 3600
+    return JSONResponse({'access_token': token, 'expires_in': expires},
+                        headers={'Cache-Control': 'no-store'})

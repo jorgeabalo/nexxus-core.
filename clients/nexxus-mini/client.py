@@ -37,17 +37,17 @@ def curl_quote(value):
     return '"' + value.replace('\\', '\\\\').replace('"', '\\"').replace('\r', '\\r').replace('\n', '\\n') + '"'
 
 
-def request(settings, token, messages):
-    if not token or any(ord(c) < 33 or ord(c) > 126 for c in token):
+def transport(settings, path, data, token=None):
+    if token is not None and (not token or any(ord(c) < 33 or ord(c) > 126 for c in token)):
         raise ValueError('Pega un token de sesion valido, sin espacios ni saltos de linea.')
     binary = os.path.join(ROOT, 'transport', 'curl')
     ca = os.path.join(ROOT, 'transport', 'cacert.pem')
     if not os.path.isfile(binary) or not os.path.isfile(ca):
         raise ValueError('Falta el transporte TLS verificado. Consulta INSTALACION.md.')
-    payload = json.dumps({'messages': messages}, ensure_ascii=True)
+    payload = json.dumps(data, ensure_ascii=True)
     options = '\n'.join([
-        'url = ' + curl_quote(settings['server'].rstrip('/') + '/api/mini-ai/chat'),
-        'header = ' + curl_quote('Authorization: Bearer ' + token),
+        'url = ' + curl_quote(settings['server'].rstrip('/') + path),
+        ('header = ' + curl_quote('Authorization: Bearer ' + token)) if token else '',
         'header = "Content-Type: application/json"',
         'data-binary = ' + curl_quote(payload),
     ])
@@ -70,17 +70,30 @@ def request(settings, token, messages):
         raise ValueError('No se pudo conectar con TLS seguro. Comprueba fecha, red y transporte.')
     body, code = output.rsplit(b'\n', 1)
     if code != b'200':
-        errors = {b'401': 'La sesion ha caducado. Pega un token nuevo.',
+        errors = {b'401': 'Acceso no valido. Revisa tus datos y pulsa Conectar.',
                   b'403': 'Tu usuario no tiene acceso a Mini AI.',
                   b'429': 'Limite de uso alcanzado. Intentalo mas tarde.',
                   b'503': 'Mini AI necesita configuracion en el servidor.',
                   b'502': 'El proveedor no pudo responder. Intentalo mas tarde.'}
         raise ValueError(errors.get(code, 'El servidor rechazo la consulta.'))
     result = json.loads(body.decode('utf-8'))
+    return result
+
+
+def request(settings, token, messages):
+    result = transport(settings, '/api/mini-ai/chat', {'messages': messages}, token)
     reply = result.get('reply')
     if not isinstance(reply, type('')) or not reply.strip() or len(reply) > 2000:
         raise ValueError('Respuesta inesperada del servidor.')
     return reply
+
+
+def login(settings, email, password):
+    result = transport(settings, '/api/mini-ai/session', {'email': email, 'password': password})
+    token = result.get('access_token')
+    if not isinstance(token, type('')) or not 1 <= len(token) <= 8192:
+        raise ValueError('Respuesta de acceso inesperada.')
+    return token
 
 
 class Client(object):
@@ -89,12 +102,18 @@ class Client(object):
         self.messages, self.events = [], queue.Queue()
         self.busy = False
         root.title('Nexxus Mini AI')
-        root.geometry('720x560')
+        root.geometry('720x650')
         tk.Label(root, text='Nexxus Mini AI', font=('Helvetica', 20)).pack(pady=8)
         tk.Label(root, text='El texto y contexto se envian a Anthropic a traves de tu servidor.').pack()
-        tk.Label(root, text='Sesion Supabase temporal (no se guarda):').pack(anchor='w')
-        self.token = tk.Entry(root, show='*', width=90)
-        self.token.pack(fill='x', padx=12)
+        self.session_token = ''
+        tk.Label(root, text='Tu correo de Nexxus:').pack(anchor='w', padx=12)
+        self.email = tk.Entry(root, width=90)
+        self.email.pack(fill='x', padx=12)
+        tk.Label(root, text='Contrasena (no se guarda):').pack(anchor='w', padx=12)
+        self.password = tk.Entry(root, show='*', width=90)
+        self.password.pack(fill='x', padx=12)
+        self.connect_button = tk.Button(root, text='Conectar a Nexxus', command=self.connect)
+        self.connect_button.pack(pady=4)
         self.log = tk.Text(root, wrap='word', height=18, state='disabled')
         self.log.pack(fill='both', expand=True, padx=12, pady=8)
         self.entry = tk.Entry(root, width=90)
@@ -110,6 +129,19 @@ class Client(object):
         self.status = tk.Label(root, text='El microfono graba localmente; la transcripcion esta pendiente.')
         self.status.pack(pady=4)
         root.after(100, self.poll)
+
+    def connect(self):
+        if self.busy:
+            return
+        email, password = self.email.get().strip(), self.password.get()
+        self.password.delete(0, 'end')
+        self.session_token = ''
+        self.clear()
+        if not email or not password:
+            self.status.configure(text='Introduce tu correo y contrasena de Nexxus.')
+            return
+        self.status.configure(text='Conectando de forma segura...')
+        self.work(lambda: login(self.settings, email, password), 'session')
 
     def append(self, text):
         self.log.configure(state='normal')
@@ -127,6 +159,7 @@ class Client(object):
 
     def work(self, job, kind):
         self.busy = True
+        self.connect_button.configure(state='disabled')
         self.send_button.configure(state='disabled')
         self.mic_button.configure(state='disabled')
         def run():
@@ -145,7 +178,10 @@ class Client(object):
         if not text or len(text) > 2000:
             self.status.configure(text='Escribe entre 1 y 2000 caracteres.')
             return
-        token = self.token.get().strip()
+        token = self.session_token
+        if not token:
+            self.status.configure(text='Pulsa Conectar a Nexxus antes de enviar.')
+            return
         # Four complete exchanges plus this question. Never share history with another user.
         if getattr(self, 'last_token', token) != token:
             self.clear()
@@ -185,10 +221,14 @@ class Client(object):
             self.root.after(100, self.poll)
             return
         self.busy = False
+        self.connect_button.configure(state='normal')
         self.send_button.configure(state='normal')
         self.mic_button.configure(state='normal')
         if error:
             self.status.configure(text=error)
+        elif kind == 'session':
+            self.session_token = value
+            self.status.configure(text='Conectado a Nexxus. Ya puedes escribir.')
         elif kind == 'chat':
             self.messages = self.pending + [{'role': 'assistant', 'content': value}]
             self.append('Tu: ' + self.pending[-1]['content'])

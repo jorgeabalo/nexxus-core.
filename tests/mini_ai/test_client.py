@@ -129,3 +129,17 @@ def test_package_manifest_detects_changed_files(tmp_path):
     (tmp_path / 'MANIFEST.json').write_text(json.dumps(manifest))
     with pytest.raises(ValueError, match='Ruta'):
         diagnose.verify_manifest(str(tmp_path))
+
+
+def test_password_transport_never_uses_command_line(monkeypatch):
+    monkeypatch.setattr(client.os.path, 'isfile', lambda p: True)
+    proc = Mock(returncode=0)
+    proc.communicate.return_value = (b'{"access_token":"session","expires_in":3600}\n200', b'')
+    popen = Mock(return_value=proc)
+    monkeypatch.setattr(client.subprocess, 'Popen', popen)
+    assert client.login({'server': 'https://example.test'}, 'owner@example.test', 'private-password') == 'session'
+    args = popen.call_args.args[0]
+    assert 'private-password' not in ' '.join(args)
+    payload = proc.communicate.call_args.args[0].decode()
+    assert 'private-password' in payload and '/api/mini-ai/session' in payload
+    assert 'Authorization:' not in payload

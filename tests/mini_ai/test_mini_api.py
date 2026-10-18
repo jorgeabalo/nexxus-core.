@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import FastAPI
@@ -174,3 +174,83 @@ def test_provider_adapter_uses_separate_identity(monkeypatch):
     assert kwargs['max_tokens'] == 500
     assert 'tools' not in kwargs
     assert calls['config']['max_retries'] == 0
+
+
+@pytest.fixture
+def login_setup(setup, monkeypatch):
+    c, db, provider = setup
+    monkeypatch.setenv('MINI_AI_EMAIL', 'owner@example.test')
+    api._session_attempts.clear()
+    db.auth = Mock(return_value=(200, {'access_token': 'session', 'expires_in': 3600,
+                                     'refresh_token': 'never-return-this'}))
+    db.user_from_jwt = Mock(return_value={'id': USER, 'email': 'owner@example.test'})
+    yield c, db, provider
+    api._session_attempts.clear()
+
+
+def login_post(c, **extra):
+    return c.post('/api/mini-ai/session', json={'email': 'owner@example.test', 'password': 'test-password', **extra})
+
+
+def test_login_issues_only_short_lived_access_token(login_setup):
+    c, db, provider = login_setup
+    r = login_post(c)
+    assert r.status_code == 200
+    assert r.json() == {'access_token': 'session', 'expires_in': 3600}
+    assert r.headers['cache-control'] == 'no-store'
+    assert 'never-return-this' not in r.text
+    assert db.auth.call_args.kwargs['anon'] is True
+    provider.assert_not_called()
+
+
+def test_login_rejects_other_account_before_upstream(login_setup):
+    c, db, _ = login_setup
+    assert login_post(c, email='other@example.test').status_code == 401
+    db.auth.assert_not_called()
+
+
+def test_login_checks_authorized_uuid(login_setup):
+    c, db, _ = login_setup
+    db.user_from_jwt.return_value = {'id': 'other-user', 'email': 'owner@example.test'}
+    assert login_post(c).status_code == 401
+
+
+def test_login_limited_before_forwarding(login_setup):
+    c, db, _ = login_setup
+    db.auth.return_value = (400, {'error': 'wrong-password'})
+    for _ in range(10):
+        assert login_post(c).status_code == 401
+    assert login_post(c).status_code == 429
+    assert db.auth.call_count == 10
+    assert len(api._session_attempts) == 10
+
+
+def test_login_errors_are_generic(login_setup):
+    c, db, _ = login_setup
+    db.auth.side_effect = RuntimeError('test-password service-key')
+    r = login_post(c)
+    assert r.status_code == 503
+    assert 'test-password' not in r.text and 'service-key' not in r.text
+
+
+def test_login_validation_hides_password(login_setup):
+    c, db, _ = login_setup
+    r = login_post(c, password='sensitive' * 150)
+    assert r.status_code == 422
+    assert 'sensitive' not in r.text
+    db.auth.assert_not_called()
+
+
+def test_login_disabled_without_owner_configuration(login_setup, monkeypatch):
+    c, db, _ = login_setup
+    monkeypatch.delenv('MINI_AI_EMAIL')
+    assert login_post(c).status_code == 503
+    db.auth.assert_not_called()
+
+
+def test_standalone_has_no_business_routes():
+    from mini_ai.app import app
+    c = TestClient(app)
+    assert c.get('/health').json() == {'status': 'ok', 'service': 'nexxus-mini-ai'}
+    assert c.get('/manager').status_code == 404
+    assert c.post('/webhooks/twilio/voice').status_code == 404
