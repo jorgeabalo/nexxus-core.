@@ -38,7 +38,7 @@ def test_sitemap_lists_canonical_home(client):
 def test_landing_head_has_spanish_title_description_and_canonical(client):
     html = _html(client)
     title = re.search(r"<title>(.*?)</title>", html).group(1)
-    assert "Houston" in title and "adultos mayores" in title
+    assert "Houston" in title and "longevidad" in title and "cardiometabólica" in title
     desc = re.search(r'<meta name="description" content="(.*?)"', html).group(1)
     assert 50 <= len(desc) <= 160
     assert '<link rel="canonical" href="https://goldenagefit.com/">' in html
@@ -61,3 +61,26 @@ def test_landing_json_ld_matches_public_business_data(client):
     assert data["address"]["postalCode"] == "77080"
     days = data["openingHoursSpecification"]
     assert any("Friday" in d["dayOfWeek"] for d in days)
+
+
+def test_json_ld_hours_match_visible_hours(client):
+    """El horario del JSON-LD debe coincidir con el que se muestra en la página."""
+    html = _html(client)
+    assert "6:00 AM – 9:00 PM" in html and "8:00 AM – 2:00 PM" in html
+    data = json.loads(re.search(r'<script type="application/ld\+json">(.*?)</script>', html, re.S).group(1))
+    specs = {tuple(d["dayOfWeek"]) if isinstance(d["dayOfWeek"], list) else (d["dayOfWeek"],): d
+             for d in data["openingHoursSpecification"]}
+    weekday = next(v for k, v in specs.items() if "Monday" in k)
+    saturday = next(v for k, v in specs.items() if "Saturday" in k)
+    assert (weekday["opens"], weekday["closes"]) == ("06:00", "21:00")
+    assert (saturday["opens"], saturday["closes"]) == ("08:00", "14:00")
+
+
+def test_existing_routes_unchanged_by_seo_endpoints(client):
+    """robots.txt y sitemap.xml no deben sombrear rutas existentes."""
+    paths = {getattr(r, "path", None) for r in client.app.routes}
+    assert "/robots.txt" in paths and "/sitemap.xml" in paths
+    for legacy in ("/", "/m/q/{token}", "/manager", "/m"):
+        assert legacy in paths, legacy
+    # /manager y /m no deben devolver el robots ni el sitemap
+    assert client.get("/manager").text.strip() != client.get("/robots.txt").text.strip()
