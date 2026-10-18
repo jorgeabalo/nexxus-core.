@@ -101,34 +101,83 @@ class Client(object):
         self.root, self.settings = root, settings
         self.messages, self.events = [], queue.Queue()
         self.busy = False
-        root.title('Nexxus Mini AI')
-        root.geometry('720x650')
-        tk.Label(root, text='Nexxus Mini AI', font=('Helvetica', 20)).pack(pady=8)
-        tk.Label(root, text='El texto y contexto se envian a Anthropic a traves de tu servidor.').pack()
+        bg, panel, ink, muted = '#030409', '#161422', '#eeeafc', '#b6a1ff'
+        root.title('AITA - Nexxus Mini AI')
+        root.geometry('720x680')
+        root.minsize(660, 580)
+        root.configure(background=bg)
+        root.option_add('*Font', ('Helvetica', 14))
+        header = tk.Frame(root, bg=bg)
+        header.pack(fill='x', padx=22, pady=14)
+        # Existing AITA typographic mark and Domus palette; no invented emblem.
+        tk.Label(header, text='AITA', font=('Helvetica', 28, 'bold'), bg=bg,
+                 fg=muted).pack(side='left')
+        tk.Label(header, text='Nexxus Mini AI', font=('Helvetica', 17), bg=bg,
+                 fg=ink).pack(side='left', padx=16)
         self.session_token = ''
-        tk.Label(root, text='Tu correo de Nexxus:').pack(anchor='w', padx=12)
-        self.email = tk.Entry(root, width=90)
-        self.email.pack(fill='x', padx=12)
-        tk.Label(root, text='Contrasena (no se guarda):').pack(anchor='w', padx=12)
-        self.password = tk.Entry(root, show='*', width=90)
-        self.password.pack(fill='x', padx=12)
-        self.connect_button = tk.Button(root, text='Conectar a Nexxus', command=self.connect)
-        self.connect_button.pack(pady=4)
-        self.log = tk.Text(root, wrap='word', height=18, state='disabled')
-        self.log.pack(fill='both', expand=True, padx=12, pady=8)
-        self.entry = tk.Entry(root, width=90)
-        self.entry.pack(fill='x', padx=12)
+        self.login_frame = tk.Frame(root, bg=panel, padx=18, pady=14)
+        self.login_frame.pack(fill='x', padx=22, pady=6)
+        tk.Label(self.login_frame, text='1. Conecta con tu cuenta de Nexxus',
+                 bg=panel, fg=ink).pack(anchor='w', pady=(0, 10))
+        tk.Label(self.login_frame, text='Correo', bg=panel, fg=ink).pack(anchor='w')
+        self.email = tk.Entry(self.login_frame, bg='#080a12', fg=ink,
+                              insertbackground=ink, relief='flat')
+        self.email.pack(fill='x', ipady=7, pady=(4, 10))
+        self.email.insert(0, settings.get('email', ''))
+        tk.Label(self.login_frame, text='Contrasena de Nexxus Manager', bg=panel,
+                 fg=ink).pack(anchor='w')
+        self.password = tk.Entry(self.login_frame, show='*', bg='#080a12', fg=ink,
+                                 insertbackground=ink, relief='flat')
+        self.password.pack(fill='x', ipady=7, pady=4)
+        self.password.bind('<Return>', lambda event: self.connect())
+        self.connect_button = tk.Button(self.login_frame, text='Conectar',
+                                        command=self.connect, fg='#20152f',
+                                        highlightbackground=panel, width=18)
+        self.connect_button.pack(pady=(10, 0))
+        self.chat_frame = tk.Frame(root, bg=bg)
+        self.chat_frame.pack(fill='both', expand=True, padx=22, pady=8)
+        self.connection_row = tk.Frame(self.chat_frame, bg=bg)
+        self.connection_row.pack(fill='x')
+        self.connection_label = tk.Label(self.connection_row, text='2. Escribe tu pregunta',
+                                         bg=bg, fg=ink)
+        self.connection_label.pack(side='left')
+        self.account_button = tk.Button(self.connection_row, text='Volver a conectar',
+                                        command=self.show_login, fg='#20152f',
+                                        highlightbackground=bg)
+        self.log = tk.Text(self.chat_frame, wrap='word', height=10, state='disabled',
+                           bg=panel, fg=ink, relief='flat', padx=14, pady=12)
+        self.log.pack(fill='both', expand=True, pady=10)
+        self.entry = tk.Entry(self.chat_frame, bg='#080a12', fg=ink,
+                              insertbackground=ink, state='disabled', relief='flat')
+        self.entry.pack(fill='x', ipady=10)
         self.entry.bind('<Return>', self.send)
-        row = tk.Frame(root)
-        row.pack(pady=8)
-        self.send_button = tk.Button(row, text='Enviar', command=self.send)
-        self.send_button.pack(side='left', padx=4)
-        self.mic_button = tk.Button(row, text='Microfono: grabar 10 s', command=self.record)
+        row = tk.Frame(self.chat_frame, bg=bg)
+        row.pack(fill='x', pady=10)
+        self.send_button = tk.Button(row, text='Enviar', command=self.send,
+                                     state='disabled', fg='#20152f', highlightbackground=bg,
+                                     width=12)
+        self.send_button.pack(side='left', padx=(0, 8))
+        self.mic_button = tk.Button(row, text='Grabar audio (10 s)', command=self.record,
+                                    fg='#20152f', highlightbackground=bg)
         self.mic_button.pack(side='left', padx=4)
-        tk.Button(row, text='Nueva conversacion', command=self.clear).pack(side='left', padx=4)
-        self.status = tk.Label(root, text='El microfono graba localmente; la transcripcion esta pendiente.')
-        self.status.pack(pady=4)
+        tk.Button(row, text='Borrar charla', command=self.clear, fg='#20152f',
+                  highlightbackground=bg).pack(side='right')
+        self.status = tk.Label(root, text='Tu correo esta preparado. Escribe tu contrasena y pulsa Conectar.',
+                               bg=bg, fg=muted, wraplength=650)
+        self.status.pack(padx=18, pady=5)
+        tk.Label(root, text='El texto se envia a la IA. El audio solo se guarda en este Mac.',
+                 font=('Helvetica', 11), bg=bg, fg='#a9a5ba').pack(pady=(0, 12))
+        if self.email.get():
+            self.password.focus_set()
+        else:
+            self.email.focus_set()
         root.after(100, self.poll)
+
+    def show_login(self):
+        if self.busy:
+            return
+        self.login_frame.pack(fill='x', padx=22, pady=6, before=self.chat_frame)
+        self.password.focus_set()
 
     def connect(self):
         if self.busy:
@@ -136,10 +185,13 @@ class Client(object):
         email, password = self.email.get().strip(), self.password.get()
         self.password.delete(0, 'end')
         self.session_token = ''
+        self.entry.configure(state='disabled')
+        self.send_button.configure(state='disabled')
         self.clear()
         if not email or not password:
             self.status.configure(text='Introduce tu correo y contrasena de Nexxus.')
             return
+        self.connection_label.configure(text='Conectando...')
         self.status.configure(text='Conectando de forma segura...')
         self.work(lambda: login(self.settings, email, password), 'session')
 
@@ -222,13 +274,21 @@ class Client(object):
             return
         self.busy = False
         self.connect_button.configure(state='normal')
-        self.send_button.configure(state='normal')
+        self.send_button.configure(state=('normal' if self.session_token else 'disabled'))
         self.mic_button.configure(state='normal')
         if error:
+            if kind == 'session':
+                self.connection_label.configure(text='Sin conexion')
             self.status.configure(text=error)
         elif kind == 'session':
             self.session_token = value
-            self.status.configure(text='Conectado a Nexxus. Ya puedes escribir.')
+            self.login_frame.pack_forget()
+            self.account_button.pack(side='right')
+            self.connection_label.configure(text='Conectado a Nexxus')
+            self.entry.configure(state='normal')
+            self.send_button.configure(state='normal')
+            self.entry.focus_set()
+            self.status.configure(text='Escribe tu pregunta y pulsa Enviar o Intro.')
         elif kind == 'chat':
             self.messages = self.pending + [{'role': 'assistant', 'content': value}]
             self.append('Tu: ' + self.pending[-1]['content'])

@@ -17,9 +17,9 @@ from fetch import fetch
 from source_bundle import sources
 
 
-def finish(root, output, server, archive_name='Nexxus-Mini-AI-USB-evaluacion.zip'):
+def finish(root, output, server, archive_name='Nexxus-Mini-AI-USB-evaluacion.zip', email=''):
     package = root / 'Nexxus-Mini-AI'
-    (package / 'config.json').write_text(json.dumps({'server': server}, indent=2) + '\n')
+    (package / 'config.json').write_text(json.dumps({'server': server, 'email': email}, indent=2) + '\n')
     shutil.copy2(DEFINITIONS / 'macports-pubkey.pem', package / 'MACPORTS-PUBLIC-KEY.pem')
     shutil.copy2(DEFINITIONS / 'LEEME.txt', package / 'LEEME.txt')
     shutil.copytree(DEFINITIONS, package / 'SOURCES' / 'packaging',
@@ -48,6 +48,7 @@ def main():
     parser.add_argument('--work', type=Path, required=True, help='Fresh work directory')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--server', required=True, help='Approved HTTPS origin, no path')
+    parser.add_argument('--email', default='', help='Optional email prefill; never a password')
     parser.add_argument('--archive-name', default='Nexxus-Mini-AI-USB-evaluacion.zip')
     parser.add_argument('--finish-only', action='store_true', help='Reuse already audited staging files')
     args = parser.parse_args()
@@ -68,7 +69,7 @@ def main():
                         '-o', str(root / 'record-audio-intel')], check=True)
         subprocess.run([sys.executable, str(DEFINITIONS / 'assemble.py'), str(root)], check=True)
         sources(root, DEFINITIONS)
-    finish(root, args.output.resolve(), args.server, args.archive_name)
+    finish(root, args.output.resolve(), args.server, args.archive_name, args.email)
 
 
 if __name__ == '__main__':

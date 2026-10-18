@@ -7,7 +7,7 @@ No se ha ejecutado todavía en ese equipo físico. La conexión de esta entrega 
 
 ## Copiar y abrir
 
-1. Descomprimir `Nexxus-Mini-AI-USB-evaluacion.zip` en el Mac moderno y copiar la
+1. Descomprimir el ZIP actualizado de AITA Nexxus Mini AI en el Mac moderno y copiar la
    carpeta `Nexxus-Mini-AI` al USB. Copiarla después a Documentos del Mac mini.
 2. Abrir `Comprobar.command` con doble clic. Comprueba hashes de los archivos,
    arquitectura, inicio de curl/OpenSSL y disponibilidad de Tk. **No conecta a
@@ -118,3 +118,15 @@ Fuentes: [paquetes oficiales MacPorts](https://packages.macports.org/curl/),
 [compilación de curl](https://curl.se/docs/install.html),
 [verificación de certificados](https://curl.se/docs/sslcerts.html),
 [Audio Queue Services de Apple](https://developer.apple.com/documentation/audiotoolbox/audio-queue-services).
+
+## Pantalla AITA simplificada
+
+Esta edición usa la marca tipográfica AITA y la paleta violeta del panel Domus.
+El paquete personal lleva únicamente tu correo preparado en config.json: no
+contiene contraseña ni token. Escribe la contraseña y pulsa Conectar o Intro.
+Al conectar, el formulario se oculta y queda el chat con letras más grandes.
+«Volver a conectar» muestra de nuevo el acceso cuando lo necesites.
+«Grabar audio» sigue guardando solo diez segundos localmente.
+
+La comprobacion visual de esta pantalla sigue pendiente en el Mac mini; el
+entorno de esta sesion no permitio iniciar Tk para una vista previa local.
