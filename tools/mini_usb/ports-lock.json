@@ -1,0 +1,104 @@
+[
+  {
+    "name": "curl",
+    "requested": null,
+    "url": "https://packages.macports.org/curl/curl-8.23.0_0+brotli+http2+idn+psl+ssl+zstd.darwin_10.i386.tbz2",
+    "sha256": "6f034a0d2ac5547bf4e7dbe2cf28b4ab9ba9a0301b440f0456bee649da268778"
+  },
+  {
+    "name": "zlib",
+    "requested": "zlib-1.3.2_0",
+    "url": "https://packages.macports.org/zlib/zlib-1.3.2_0.darwin_10.i386.tbz2",
+    "sha256": "7f76009a0683352818730c11dbd4b085cf343752515793aea7e2895b57ecaa06"
+  },
+  {
+    "name": "brotli",
+    "requested": "brotli-1.2.0_0",
+    "url": "https://packages.macports.org/brotli/brotli-1.2.0_0.darwin_10.i386.tbz2",
+    "sha256": "208f39295bd618e5123c79dd8749e2b76723f18ce22e0317303793214f912bf2"
+  },
+  {
+    "name": "libcxx",
+    "requested": "libcxx-5.0.1_5",
+    "url": "https://packages.macports.org/libcxx/libcxx-5.0.1_5.any_any.noarch.tbz2",
+    "sha256": "c0bb9d0c1a0bf19c1e57724608ded3387794a847178ba1f6267444e2fe568e93"
+  },
+  {
+    "name": "nghttp2",
+    "requested": "nghttp2-1.70.0_0",
+    "url": "https://packages.macports.org/nghttp2/nghttp2-1.70.0_0.darwin_10.i386.tbz2",
+    "sha256": "fdc89b0ccc0385ead6f9fe7b9a448079e9b0c64a365cc8f171395766c276489a"
+  },
+  {
+    "name": "legacy-support",
+    "requested": "legacy-support-1.5.2_0",
+    "url": "https://packages.macports.org/legacy-support/legacy-support-1.5.2_0.darwin_10.i386.tbz2",
+    "sha256": "b2424fb9aae85831c5de0fab5871c4868b19ae01462a0a1439693e6708b2b1f2"
+  },
+  {
+    "name": "libidn2",
+    "requested": "libidn2-2.3.8_0",
+    "url": "https://packages.macports.org/libidn2/libidn2-2.3.8_0.darwin_10.i386.tbz2",
+    "sha256": "b2c5ef9c0c019341f62db5508c5668484b3098a55ae6fcb9c2564b464cb02bc6"
+  },
+  {
+    "name": "gettext-runtime",
+    "requested": "gettext-runtime-0.22.5_0",
+    "url": "https://packages.macports.org/gettext-runtime/gettext-runtime-1.0_0.darwin_10.i386.tbz2",
+    "sha256": "e5e18aa37a60c1759e800fd27489ad9f8a5a7d241ac992351266438864a634d0"
+  },
+  {
+    "name": "libiconv",
+    "requested": "libiconv-1.18_0",
+    "url": "https://packages.macports.org/libiconv/libiconv-1.18_0.darwin_10.i386.tbz2",
+    "sha256": "78497f3a5f7aea6893140aef027778f7a7c2229251e842302c5ad530ad354754"
+  },
+  {
+    "name": "libunistring",
+    "requested": "libunistring-1.3_0",
+    "url": "https://packages.macports.org/libunistring/libunistring-1.4.2_0.darwin_10.i386.tbz2",
+    "sha256": "b02838171f70071df087b4c6b56190d7c8137f8d4cbd9ff425b83a6312e5b02e"
+  },
+  {
+    "name": "libpsl",
+    "requested": "libpsl-0.23.3_0",
+    "url": "https://packages.macports.org/libpsl/libpsl-0.23.3_0.darwin_10.i386.tbz2",
+    "sha256": "f2b0e0ce57da8681925fdf958c6e74398706b1aea7a4a72074f975004e4aac1f"
+  },
+  {
+    "name": "openssl",
+    "requested": "openssl-3_33",
+    "url": "https://packages.macports.org/openssl/openssl-3_33.darwin_10.i386.tbz2",
+    "sha256": "8c21d0285fb93630f4f98cb3397d2f27a9b2a7e087bebf4a578a8ff494d4b3ef"
+  },
+  {
+    "name": "openssl3",
+    "requested": "openssl3-3.6.5_0",
+    "url": "https://packages.macports.org/openssl3/openssl3-3.6.5_0.darwin_10.i386.tbz2",
+    "sha256": "f03b6d8a7ff44d043c7a4e876690342a853ef348146a5b26c9d242c07a879ebe"
+  },
+  {
+    "name": "curl-ca-bundle",
+    "requested": "curl-ca-bundle-8.23.0_0",
+    "url": "https://packages.macports.org/curl-ca-bundle/curl-ca-bundle-8.23.0_0.any_any.noarch.tbz2",
+    "sha256": "405c252ca054dd979d0a411b8897155e3fb06e391fa6cb350d3eca0f68aa69c2"
+  },
+  {
+    "name": "zstd",
+    "requested": "zstd-1.5.7_0",
+    "url": "https://packages.macports.org/zstd/zstd-1.5.7_0.darwin_10.i386.tbz2",
+    "sha256": "f2e5c50c900618aa512f46aa8308e259cadddfba5238bc86cbab69bde382ce7a"
+  },
+  {
+    "name": "lz4",
+    "requested": "lz4-1.10.0_0",
+    "url": "https://packages.macports.org/lz4/lz4-1.10.0_0.darwin_10.i386.tbz2",
+    "sha256": "950657b00cbe55af63c30bc7b19ec113d40f85cc7c469a1a063f4edd50f188d2"
+  },
+  {
+    "name": "xz",
+    "requested": "xz-5.8.1_0",
+    "url": "https://packages.macports.org/xz/xz-5.8.2_0.darwin_10.i386.tbz2",
+    "sha256": "9491961822d19ddc60c509279bd8a55979e600c0223bc7931b4ef9d68e9ac886"
+  }
+]

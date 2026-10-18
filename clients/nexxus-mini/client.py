@@ -56,6 +56,8 @@ def request(settings, token, messages):
     for key in list(env):
         if key.lower().endswith('_proxy') or key in ('CURL_CA_BUNDLE', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'SSLKEYLOGFILE'):
             del env[key]
+    env['OPENSSL_CONF'] = os.devnull
+    env['OPENSSL_MODULES'] = os.path.join(ROOT, 'transport', 'modules')
     proc = subprocess.Popen([binary, '-q', '--config', '-', '--silent',
                              '--proto', '=https', '--tlsv1.2', '--cacert', ca,
                              '--connect-timeout', '10', '--max-time', '40',

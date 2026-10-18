@@ -1,99 +1,120 @@
-# Nexxus Mini AI — instalación de desarrollo por USB
+# Nexxus Mini AI — paquete USB de evaluación
 
-Estado: prototipo de texto y grabación local. No es todavía un instalador listo
-para un usuario final. No requiere Safari, App Store, Electron ni una IA local.
-La API de texto es nueva; no reutiliza rutas de Claudia. No se ha desplegado.
+Este paquete prepara la prueba en un **Mac mini Intel Core 2 Duo de 2007 con
+Snow Leopard 10.6.8**. Incluye cliente de texto, transporte TLS y grabación local.
+No se ha ejecutado todavía en ese equipo físico. El servidor nuevo sigue sin
+desplegar y requiere autorización antes de activarlo.
 
-## Preparación en un Mac moderno
+## Copiar y abrir
 
-1. Revisar `docs/NEXXUS_MINI_AI.md` y configurar un entorno de pruebas del servidor.
-   No cambiar la rama de producción de Railway ni aplicar migraciones sin autorización.
-2. Copiar esta carpeta completa al USB. Renombrar `config.example.json` como
-   `config.json` y poner el **origen HTTPS real del entorno aprobado**, sin ruta,
-   contraseña, token ni claves. No se presupone que el endpoint nuevo esté desplegado.
-3. Preparar `transport/curl` y `transport/cacert.pem`. Hace falta un curl con TLS
-   moderno, compatible con Intel y con **Mac OS X 10.6.8**, más sus dependencias
-   y un almacén de CA actualizado. Debe soportar `--proto`, `--tlsv1.2`,
-   `--cacert`, `--noproxy` y el límite de tamaño durante transferencias sin
-   Content-Length (curl 8.4.0 o posterior). No basta con copiar `/usr/bin/curl`
-   desde un Mac moderno: su arquitectura y dependencias pueden ser incompatibles.
-   Esta entrega NO incluye ni certifica ese binario. Falta construirlo, revisar
-   sus licencias, fijar versiones y hashes, y probarlo en Snow Leopard.
-4. Compilar `record-audio.c` usando un SDK y compilador de Apple compatibles con
-   10.6 (por ejemplo un entorno Xcode legado legalmente obtenido). Desde esa carpeta:
+1. Descomprimir `Nexxus-Mini-AI-USB-evaluacion.zip` en el Mac moderno y copiar la
+   carpeta `Nexxus-Mini-AI` al USB. Copiarla después a Documentos del Mac mini.
+2. Abrir `Comprobar.command` con doble clic. Comprueba hashes de los archivos,
+   arquitectura, inicio de curl/OpenSSL y disponibilidad de Tk. **No conecta a
+   internet, no lee tokens ni activa el micrófono**. Conservar su resultado.
+3. Abrir `Nexxus.command`. Usa `/usr/bin/python` y Tk del sistema, sin Safari,
+   App Store, Electron ni instalación global de MacPorts. Si Tk no está presente,
+   el diagnóstico lo señalará. No instalar un Python moderno sobre 10.6 como
+   solución automática.
+4. Comprobar fecha y hora del Mac antes de usar HTTPS.
 
-   ```sh
-   gcc -std=c99 -arch i386 -mmacosx-version-min=10.6 \
-     -framework AudioToolbox -framework CoreFoundation \
-     record-audio.c -o record-audio
-   chmod +x record-audio Nexxus.command transport/curl
-   ```
+El ZIP conserva permisos de ejecución. Si el USB o el descompresor los pierde,
+abrir Terminal dentro de la carpeta y ejecutar:
 
-   `i386` es el objetivo conservador para el Intel antiguo. Un compilador moderno
-   puede compilar la fuente para el Mac actual, pero eso NO crea ni valida un
-   ejecutable para 10.6. Comprobar arquitectura con `file`, dependencias con
-   `otool -L` y hashes con `shasum -a 256`; guardar un manifiesto junto al paquete.
-5. No poner `.env`, claves de Anthropic, claves service-role de Supabase,
-   contraseñas ni tokens de sesión en el USB. Transferir solo la carpeta cliente.
+```sh
+chmod +x Nexxus.command Comprobar.command record-audio transport/curl
+```
 
-## En el Mac mini 2007, Snow Leopard 10.6.8
+El archivo `config.json` contiene solo el origen HTTPS real de Railway. Se puede
+editar para apuntar a otro entorno aprobado; no debe contener claves ni tokens.
+Se excluye del manifiesto para permitir esa edición. El archivo `.sha256` junto
+al ZIP permite comprobar la copia completa con `shasum -a 256` en el Mac moderno.
+Los hashes detectan corrupción; no constituyen una firma digital del paquete final.
 
-1. Copiar la carpeta del USB a Documentos. Mantener juntos sus archivos.
-2. Comprobar que el Python del sistema y Tk abren una ventana:
+## Qué se incluye para TLS
 
-   ```sh
-   /usr/bin/python -c 'import Tkinter; r=Tkinter.Tk(); r.mainloop()'
-   ```
+- curl **8.23.0**, compilación oficial MacPorts `darwin_10.i386`, con OpenSSL.
+- OpenSSL **3.6.5** y sus bibliotecas necesarias, junto a curl, en `transport/lib`.
+- CA de Mozilla distribuida por `curl-ca-bundle` **8.23.0**.
+- Procedencia, hashes de archivos originales y revisión de dependencias en
+  `PROVENANCE.json`; fuentes, licencias y metadatos de compilación en `SOURCES`.
 
-   El cliente se escribió con sintaxis de Python 2.6 y usa su módulo `json`.
-   La disponibilidad real de Tk debe comprobarse en ese equipo; no se instala
-   un Python actual sobre 10.6 como solución automática.
-3. Verificar la fecha y hora del Mac. Abrir `Nexxus.command` con doble clic.
-4. Para esta versión de desarrollo, iniciar sesión en el portal existente de
-   Nexxus desde un equipo moderno y obtener, mediante un procedimiento de
-   administrador, un **access token temporal del usuario Supabase autorizado**.
-   Pegar ese token en el campo de sesión oculto. No usar anon key, refresh token
-   ni service-role como token. No compartirlo por chat ni guardarlo en archivos.
-   No hay aún un flujo cómodo de vinculación entre dispositivos o renovación:
-   al caducar, hay que pegar uno nuevo. Ese flujo queda pendiente para la versión final.
-5. Escribir y pulsar Enviar. Se transmiten la pregunta y hasta cuatro intercambios
-   previos a Railway y Anthropic. El historial vive solo en memoria del cliente;
-   «Nueva conversación» lo borra. Cambiar de token reinicia el contexto al enviar.
+Se verificaron las firmas RSA/RIPEMD160 de los paquetes originales con la clave
+pública de MacPorts, antes de extraerlos. Se adaptaron las rutas Mach-O para
+cargar las bibliotecas desde esta carpeta; por ello los archivos adaptados tienen
+hashes nuevos. No hace falta `/opt/local`. Se comprobaron dependencias, símbolos
+importados y versiones mínimas declaradas. Algunas bibliotecas antiguas no
+declaran mínimo en Mach-O: su procedencia es el paquete firmado para Darwin 10.
+Las versiones actuales de gettext-runtime y libunistring sustituyen dependencias
+antiguas que ya no estaban en el espejo; conservan los nombres de biblioteca
+requeridos y todos los símbolos importados comprobados. Aun necesitan la prueba
+real de carga en el Mac mini.
+
+El cliente exige TLS 1.2 como mínimo, verifica certificado y nombre del servidor
+con CA explícitas, y no sigue redirecciones. No usa `--insecure`, HTTP público,
+proxies del entorno ni configuración personal de curl/OpenSSL. El token se pasa
+por entrada estándar, sin shell y sin exponerlo en los argumentos del proceso.
+Las pruebas locales con TLS 1.2 comprobaron conexión válida, CA incorrecta y nombre
+incorrecto; en los dos últimos casos no se transmitió Authorization. Esas pruebas
+usan el curl del host moderno: no sustituyen la ejecución del curl Intel incluido.
+
+## Activación del chat, todavía pendiente
+
+La URL de Railway es real, pero **la ruta nueva `/api/mini-ai/chat` no está
+desplegada**. Este paquete no despliega, no aplica migraciones ni modifica Railway.
+Para conversar faltan un despliegue autorizado, la migración de cuota,
+`MINI_AI_ENABLED=true` y los UUID permitidos en `MINI_AI_USER_IDS`.
+
+Esta versión de evaluación usa un **access token temporal de usuario Supabase**,
+obtenido por el administrador desde una sesión del portal en un equipo moderno.
+Se pega en el campo oculto del cliente y vive solo en memoria. No se debe usar
+una anon key, refresh token, service-role o clave de Anthropic. No compartir tokens
+por chat ni guardarlos en el USB. Falta una vinculación y renovación más cómoda.
+
+Una vez habilitado el servidor, se envían la pregunta y hasta cuatro intercambios
+anteriores a Railway y Anthropic. «Nueva conversación» borra el contexto; cambiar
+de token lo reinicia al enviar. No se escriben conversaciones en disco.
 
 ## Micrófono USB
 
 Seleccionar el USB en Preferencias del Sistema → Sonido → Entrada y comprobar
-que se mueve el indicador al hablar. Comprar únicamente un modelo cuya
-compatibilidad con **10.6.8** esté documentada o que se haya probado en ese Mac;
-que diga «USB» o «compatible con Mac» no es una garantía suficiente.
+que se mueve el indicador al hablar. El modelo debe tener compatibilidad con
+10.6.8 documentada o comprobada en ese Mac: «compatible con Mac» no basta.
 
-El botón «Micrófono: grabar 10 s» pide un nombre nuevo y graba diez segundos de
-WAV PCM mono de 16 bits a 16 kHz mediante Audio Queue Services. Usa la entrada
-predeterminada; si el dispositivo no acepta la configuración, mostrará error.
-No sobrescribe archivos existentes. El archivo se crea con permisos de usuario.
-No hay grabación de fondo ni activación por palabra clave. No se envía el audio.
-Si se cierra la ventana mientras graba, el proceso termina al cumplir los diez segundos.
+El botón «Micrófono: grabar 10 s» pide un nombre nuevo y graba WAV PCM mono de
+16 bits a 16 kHz con Audio Queue Services. Usa la entrada predeterminada y no
+sobrescribe archivos. El archivo queda en el Mac, con permisos de usuario.
+No se envía audio ni se activa grabación de fondo. Al cerrar la ventana durante
+una grabación, el capturador termina cuando se cumplen los diez segundos.
 
-Falta probar volumen, ruido, duración y formato en el Mac real con el micrófono
-comprado. La transcripción automática y las respuestas habladas **no están
-implementadas**: Anthropic se reutiliza para texto, y no se ha supuesto una API
-de reconocimiento de voz inexistente en el repositorio. Por ahora, grabar sirve
-para comprobar la entrada; para conversar hay que escribir.
+Se incluye un capturador **x86_64** construido con objetivo mínimo **10.6** y SDK
+moderno. Solo importa funciones presentes en esa versión; necesita probarse con
+el sistema y dispositivo reales. El transporte curl es i386, ejecutable en 10.6;
+el capturador requiere Core 2 Duo y no está destinado a un Core Duo de 32 bits.
 
-## TLS y límites de compatibilidad
+**La transcripción y las respuestas habladas siguen pendientes.** El botón sirve
+para comprobar y guardar audio. Para conversar, por ahora hay que escribir.
 
-El cliente no usa el TLS del Python 2.6 ni el Safari de Snow Leopard. Invoca el
-curl preparado, verifica certificado y nombre del servidor con CA explícitas,
-exige TLS 1.2 como mínimo y no sigue redirecciones. No usa `--insecure`, HTTP
-público, proxies del entorno ni configuración personal de curl. Los tokens viajan
-por la entrada estándar del proceso, no como argumentos visibles en la lista de procesos.
+## Reconstrucción en un Mac moderno
 
-Si no hay un transporte verificado compatible con el equipo, la conexión queda
-bloqueada. No se ha demostrado aún compatibilidad de extremo a extremo en 10.6.
-La compilación actual del capturador solo verifica la fuente en el host moderno.
-El sistema operativo y Python legados no reciben mantenimiento moderno; limitar
-el uso del equipo a este cliente y evitar guardar información sensible en él.
+Los binarios no se guardan en Git. El repositorio contiene el empaquetador y
+listas de descargas con versiones y hashes fijados. Requiere Python 3.12 o
+posterior, herramientas de Apple (clang, otool, nm, install_name_tool), curl y
+OpenSSL con verificación RIPEMD160:
 
-Referencias: [Audio Queue Services de Apple](https://developer.apple.com/documentation/audiotoolbox/audio-queue-services),
-[AudioQueueNewInput](https://developer.apple.com/documentation/audiotoolbox/audioqueuenewinput(_:_:_:_:_:_:_:)),
-[opciones TLS y límites de curl](https://curl.se/docs/manpage.html).
+```sh
+python3 tools/build_mini_usb.py \
+  --work /ruta/nueva/de/trabajo \
+  --output /ruta/de/salida \
+  --server https://nexxus-core-production.up.railway.app
+```
+
+No ejecutar el empaquetador en Snow Leopard. No descarga claves de servidor, no
+instala archivos de sistema y no solicita despliegues. `--finish-only` sirve solo
+para volver a comprimir una carpeta de preparación ya auditada, no para generar
+una auditoría nueva.
+
+Fuentes: [paquetes oficiales MacPorts](https://packages.macports.org/curl/),
+[compilación de curl](https://curl.se/docs/install.html),
+[verificación de certificados](https://curl.se/docs/sslcerts.html),
+[Audio Queue Services de Apple](https://developer.apple.com/documentation/audiotoolbox/audio-queue-services).

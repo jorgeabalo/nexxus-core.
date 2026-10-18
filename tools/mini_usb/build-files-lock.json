@@ -1,0 +1,662 @@
+[
+  {
+    "path": "_resources/port1.0/group/R-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/R-1.0.tcl",
+    "sha256": "e18e1f6e1e90b21368471ee15d47af28ce642ff99afe0f2f04ba795c97a521da"
+  },
+  {
+    "path": "_resources/port1.0/group/active_variants-1.1.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/active_variants-1.1.tcl",
+    "sha256": "9c37e270533301951e57ba6ecd32f0f1721c906270ab14170a252997c2e31148"
+  },
+  {
+    "path": "_resources/port1.0/group/apache2-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/apache2-1.0.tcl",
+    "sha256": "04fec6e7cf2c6054aa7f7bebbdd5838324c2ef7adb7dff7fcd07865958cbb123"
+  },
+  {
+    "path": "_resources/port1.0/group/app-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/app-1.0.tcl",
+    "sha256": "17c3ee45b01825af4f53d39967331b2158b1401404d794fe0f4ae1240e680e7a"
+  },
+  {
+    "path": "_resources/port1.0/group/app-1.1.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/app-1.1.tcl",
+    "sha256": "5d294bd2b9f2bbf2aa99462f08d133bf0e3f614a1d22142cdda2413667deab62"
+  },
+  {
+    "path": "_resources/port1.0/group/aspelldict-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/aspelldict-1.0.tcl",
+    "sha256": "418d8ffd23a4ffbf04a635d148250fdce8668046b2e1166531f4c32c6b0d34f4"
+  },
+  {
+    "path": "_resources/port1.0/group/bazel-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/bazel-1.0.tcl",
+    "sha256": "b217c73788469d265a8072eae333740f8fc78c032046c2a881e1334390ace3eb"
+  },
+  {
+    "path": "_resources/port1.0/group/bitbucket-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/bitbucket-1.0.tcl",
+    "sha256": "b5222f60fa37e593b70176144bebd7ba60c7a7cc9fd0a2dfb434a436fceff569"
+  },
+  {
+    "path": "_resources/port1.0/group/boost-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/boost-1.0.tcl",
+    "sha256": "b7cdd93619cbe329bd8289322ba87640d3ba71fe0cf6e76ec3e3a4fbbb541189"
+  },
+  {
+    "path": "_resources/port1.0/group/buildjobs-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/buildjobs-1.0.tcl",
+    "sha256": "4b662aa13e827019d92fb41c9248bbddc6d70e1a8270a1c71acb8f6435082475"
+  },
+  {
+    "path": "_resources/port1.0/group/bun-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/bun-1.0.tcl",
+    "sha256": "1f9edd332ae7e63829d5a425b4c0cef43be5c53b326caa25aa0ac4b44887ac38"
+  },
+  {
+    "path": "_resources/port1.0/group/cargo-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/cargo-1.0.tcl",
+    "sha256": "b09e4c5477560e8bdeb820a3fc295fd8a49611a60b9836edb2d6cd755a97a94d"
+  },
+  {
+    "path": "_resources/port1.0/group/cargo_fetch-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/cargo_fetch-1.0.tcl",
+    "sha256": "35eae7b0982d8f5630466eaf1bfa715b06fbbacb6c6fb8d52abbdf94d48b2c6a"
+  },
+  {
+    "path": "_resources/port1.0/group/cgit-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/cgit-1.0.tcl",
+    "sha256": "ff5b3b51d6a8cd4d3acc56cf9e92d9a8e86c28e7597907aa7316e3a4097205e7"
+  },
+  {
+    "path": "_resources/port1.0/group/clang_dependency-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/clang_dependency-1.0.tcl",
+    "sha256": "404cb9505476c00936b4596fa5d5dbd8b0ed9a547b59ec1ce28a7f9b3b59fe21"
+  },
+  {
+    "path": "_resources/port1.0/group/cmake-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/cmake-1.0.tcl",
+    "sha256": "0bd0e4651b05b788958a36f13773a0ecadf94069b78e21682e4e43de3529ae59"
+  },
+  {
+    "path": "_resources/port1.0/group/cmake-1.1.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/cmake-1.1.tcl",
+    "sha256": "aaafcead0530d187b0117d88b84ea4fee7d4993f8a286bd5475db3697b2b9392"
+  },
+  {
+    "path": "_resources/port1.0/group/codeberg-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/codeberg-1.0.tcl",
+    "sha256": "0a8d1e81fe1d6a231cc153bdef8c2e038c9b1db5e417d315a0aadb2098aea00d"
+  },
+  {
+    "path": "_resources/port1.0/group/common_lisp-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/common_lisp-1.0.tcl",
+    "sha256": "e0d2b9665e76b03c6499255cf8c1a3223199a25a51f205839f76715acd479a03"
+  },
+  {
+    "path": "_resources/port1.0/group/compiler_wrapper-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/compiler_wrapper-1.0.tcl",
+    "sha256": "6497f6c1048bf7e0df071acccda3ab40dd17b0f027b2546b55cacb50b66e5036"
+  },
+  {
+    "path": "_resources/port1.0/group/compilers-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/compilers-1.0.tcl",
+    "sha256": "b1b3a46dcf7e4fb6c7e1c35f90bf0ee00f4b90094b0acf8e6933d155fbcda3b2"
+  },
+  {
+    "path": "_resources/port1.0/group/conflicts_build-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/conflicts_build-1.0.tcl",
+    "sha256": "a78fa4bcaa6b62675f684dd0b58ff78b099dde61498fceb3ef9abf4aff84e390"
+  },
+  {
+    "path": "_resources/port1.0/group/crossbinutils-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/crossbinutils-1.0.tcl",
+    "sha256": "c6497d4f1d2959c1989f85face9cc7171d091c52abc8a37079597b9ed9cb088b"
+  },
+  {
+    "path": "_resources/port1.0/group/crossgcc-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/crossgcc-1.0.tcl",
+    "sha256": "2fb4bc53761b1412228921a57db277549b4c7ab425f889a6a1d124ac2c4b11ff"
+  },
+  {
+    "path": "_resources/port1.0/group/crossgdb-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/crossgdb-1.0.tcl",
+    "sha256": "f35ef8a6160770ac82289969126bbeb3a065422ac06b57c56bf7bb65a6a6b226"
+  },
+  {
+    "path": "_resources/port1.0/group/dart-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/dart-1.0.tcl",
+    "sha256": "35d56865d56992c25ce1a4628743b3b4b6713906105f734a731eb8bfd2190ac7"
+  },
+  {
+    "path": "_resources/port1.0/group/debug-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/debug-1.0.tcl",
+    "sha256": "fc76c8d29bf356f38b9dbc2e05ebf5282d7c4a6e04a454e3461b2905033be334"
+  },
+  {
+    "path": "_resources/port1.0/group/deprecated-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/deprecated-1.0.tcl",
+    "sha256": "61c9d85f52d89a876da6801bd8db12f2554e10f68dec0bcef72ce01566ecfe5f"
+  },
+  {
+    "path": "_resources/port1.0/group/developerversion-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/developerversion-1.0.tcl",
+    "sha256": "8cb5c4da77796e760c03abfcb3355661b035019e6f6728b1b7fb02532f9a2dbb"
+  },
+  {
+    "path": "_resources/port1.0/group/elisp-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/elisp-1.0.tcl",
+    "sha256": "f7ce97d3aca68fa33e63480d84034a3d95704b34a2b1e93b5f23341916ea82d8"
+  },
+  {
+    "path": "_resources/port1.0/group/ffmpeg-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/ffmpeg-1.0.tcl",
+    "sha256": "92392c27b96113fe14a1573d9c11b66622faef3c858abee72e56f34c39a0f49a"
+  },
+  {
+    "path": "_resources/port1.0/group/fortran-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/fortran-1.0.tcl",
+    "sha256": "363fc5047802a138728ffded8d9660494f5eeb3098bf159b3d34ab836109b90a"
+  },
+  {
+    "path": "_resources/port1.0/group/fuse-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/fuse-1.0.tcl",
+    "sha256": "df8347d3222161d149ba34cf2ec3945259c04188429de238d8643ed77548145a"
+  },
+  {
+    "path": "_resources/port1.0/group/gitea-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/gitea-1.0.tcl",
+    "sha256": "3d0fd617a882fa23dd892a981df6793756daa7b827a0ccb8e5ae0077281a5475"
+  },
+  {
+    "path": "_resources/port1.0/group/github-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/github-1.0.tcl",
+    "sha256": "12898d72ce609baeb4e3a5c4d76c505ba4238d037cde1e6cd9be1fe6a7d8bcfe"
+  },
+  {
+    "path": "_resources/port1.0/group/gitlab-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/gitlab-1.0.tcl",
+    "sha256": "87c347d31f8f1babdf400f7be6b0b482706393e5709feefb7892fb85dba3d7ec"
+  },
+  {
+    "path": "_resources/port1.0/group/gnu_info-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/gnu_info-1.0.tcl",
+    "sha256": "ac9c161109d49546feb3672a4f86db08575bf0262fa123df09290cfbe7c7f866"
+  },
+  {
+    "path": "_resources/port1.0/group/gnulib-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/gnulib-1.0.tcl",
+    "sha256": "988020e547b17c3328e507911a96cc8f5739aebf5d3d53aa8b31b7c9a5b482b7"
+  },
+  {
+    "path": "_resources/port1.0/group/gnuradio-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/gnuradio-1.0.tcl",
+    "sha256": "de9b8f65c17093c2163f4bd6db1a1810d3bc99f2fdcf0b1e5093198fa00e2bd4"
+  },
+  {
+    "path": "_resources/port1.0/group/gnustep-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/gnustep-1.0.tcl",
+    "sha256": "3641f7987a6bec7867849226621704d3d3a679a298a885649bd6bcc5d0631e2c"
+  },
+  {
+    "path": "_resources/port1.0/group/go_toolchain-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/go_toolchain-1.0.tcl",
+    "sha256": "96a08ee65aac3a0752ddd769691097530b51f1ebbe385e42d605ba9ca0a9466a"
+  },
+  {
+    "path": "_resources/port1.0/group/gobject_introspection-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/gobject_introspection-1.0.tcl",
+    "sha256": "93ddff628154b0de0fe3f5943bacc95307c73889069e5165479c648a7c517a78"
+  },
+  {
+    "path": "_resources/port1.0/group/golang-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/golang-1.0.tcl",
+    "sha256": "1b9eccf1de020b532f97734ea877a878d4183f07eeb85eeea60b29eea5678833"
+  },
+  {
+    "path": "_resources/port1.0/group/gpg_verify-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/gpg_verify-1.0.tcl",
+    "sha256": "c5322d4c54d52c6d5fd01f75ca447e1885637c36f6106df06795adc208ff0507"
+  },
+  {
+    "path": "_resources/port1.0/group/haskell_cabal-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/haskell_cabal-1.0.tcl",
+    "sha256": "3bc8b1de4ad03c05ab0b38423745b0e5d3dc3780e1b3a971c4cbc121e6654656"
+  },
+  {
+    "path": "_resources/port1.0/group/haskell_stack-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/haskell_stack-1.0.tcl",
+    "sha256": "b15b8420133b43bab2eff5096939785facacbd4df3914a7672fa818b54d26239"
+  },
+  {
+    "path": "_resources/port1.0/group/hunspelldict-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/hunspelldict-1.0.tcl",
+    "sha256": "3106d5325c1f23fbb3d93f36f0a8121dca40cadbad8b1a570c3bf784ddc0a9b2"
+  },
+  {
+    "path": "_resources/port1.0/group/janet-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/janet-1.0.tcl",
+    "sha256": "8b387ca51157acbbdaf75da733c1ce99d251539462f5c33949e840e5981d6443"
+  },
+  {
+    "path": "_resources/port1.0/group/java-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/java-1.0.tcl",
+    "sha256": "5b0b6aadbc5979445c8bb082aa9ca143e3de7263a4acd0a1af26cde4cfd5078d"
+  },
+  {
+    "path": "_resources/port1.0/group/kde4-1.1.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/kde4-1.1.tcl",
+    "sha256": "96e165f973a3bcf037a625f3f760181e33a9900a767f173af0349e563eb652be"
+  },
+  {
+    "path": "_resources/port1.0/group/legacysupport-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/legacysupport-1.0.tcl",
+    "sha256": "39919078297997406e589aae8779c76e54db1809d04d9bd28e5964c43b40e9e6"
+  },
+  {
+    "path": "_resources/port1.0/group/legacysupport-1.1.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/legacysupport-1.1.tcl",
+    "sha256": "56c14117b5cb9e6552e020ff8cb11a9f88548e7059f974ffe6942fab6a17db3d"
+  },
+  {
+    "path": "_resources/port1.0/group/limit_flags-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/limit_flags-1.0.tcl",
+    "sha256": "8a8eb5be2707b2c2834407a6594298fe8accb0673bf4a2c27e5630695353b470"
+  },
+  {
+    "path": "_resources/port1.0/group/linear_algebra-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/linear_algebra-1.0.tcl",
+    "sha256": "0fbf2df690fe5d51a320e9e813b2c4d59683057d91c28a4cb29a21b3a2f6813f"
+  },
+  {
+    "path": "_resources/port1.0/group/love-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/love-1.0.tcl",
+    "sha256": "4bbca948cc6878bddeb133e21d82a68db611668aa1b86c9833ec5bacc2b0f22d"
+  },
+  {
+    "path": "_resources/port1.0/group/lua-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/lua-1.0.tcl",
+    "sha256": "545c217b60f8ebb8f826d7616968e8627084db84fcb86e9ba50539d24cbcae56"
+  },
+  {
+    "path": "_resources/port1.0/group/luarocks-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/luarocks-1.0.tcl",
+    "sha256": "b5d9fd1b786f1af6e5d1f8c73bc3565f0dd8cc477a2ff8cc560a1d2e4e51c6c3"
+  },
+  {
+    "path": "_resources/port1.0/group/luarocks-1.1.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/luarocks-1.1.tcl",
+    "sha256": "bc34fb9cbdb934dac152a32287d9c6534d162dfb9083a286f9e08c7aee8fec80"
+  },
+  {
+    "path": "_resources/port1.0/group/luarocks_org-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/luarocks_org-1.0.tcl",
+    "sha256": "647403c37e59d6ddfa04e1b9eb78d6c15386eed892df966bc84f86c579a3e321"
+  },
+  {
+    "path": "_resources/port1.0/group/makefile-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/makefile-1.0.tcl",
+    "sha256": "e245d0600f3ac3e16e4160cf7eee8f1cc308d696a9f9d84b16ff71c1eede8ee1"
+  },
+  {
+    "path": "_resources/port1.0/group/maven-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/maven-1.0.tcl",
+    "sha256": "1fbf4a888b9f9f3d467f5ca4192696c48d7c6e34fc4f765197c8f75bdf276ff3"
+  },
+  {
+    "path": "_resources/port1.0/group/meson-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/meson-1.0.tcl",
+    "sha256": "da6fa2a4ad1b33dd98b26fabf49f4c4106158d48e96a87d7bc211fae8a0bcc88"
+  },
+  {
+    "path": "_resources/port1.0/group/metal-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/metal-1.0.tcl",
+    "sha256": "b29eab1230c4505e4669115efd7197e8501e939355b89d16f8d6d80d1bb836eb"
+  },
+  {
+    "path": "_resources/port1.0/group/mpi-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/mpi-1.0.tcl",
+    "sha256": "a82e3765b06a8c948cd5941ca3fcadba13075974666e1fdc83fb949ed7c0689f"
+  },
+  {
+    "path": "_resources/port1.0/group/mpiutil-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/mpiutil-1.0.tcl",
+    "sha256": "987192b513961be841a254f686baef77b6cb1dd949c7c8d9c3e0da6aeefbfbe6"
+  },
+  {
+    "path": "_resources/port1.0/group/muniversal-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/muniversal-1.0.tcl",
+    "sha256": "8f7a3d111a6e9e47a6e0918a8de72fd72226845952be3cb7ca283baace93c116"
+  },
+  {
+    "path": "_resources/port1.0/group/muniversal-1.1.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/muniversal-1.1.tcl",
+    "sha256": "c2750e78de279bdb1e85f190b5866e91e874621ac1232b596d004ee1fe386805"
+  },
+  {
+    "path": "_resources/port1.0/group/notabug-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/notabug-1.0.tcl",
+    "sha256": "e8d09a4491a66dac0738734668199981262cf6848a527ad87d7affc49a7bb54d"
+  },
+  {
+    "path": "_resources/port1.0/group/npm-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/npm-1.0.tcl",
+    "sha256": "5226c384da228495440d74baa4baf8add99c64b4586a109ed576fe24f40e9ec2"
+  },
+  {
+    "path": "_resources/port1.0/group/obsolete-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/obsolete-1.0.tcl",
+    "sha256": "0136e5a723e856cd86ca1915a6584e7e43fdadf386047b2f7997a3ef02f44e62"
+  },
+  {
+    "path": "_resources/port1.0/group/ocaml-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/ocaml-1.0.tcl",
+    "sha256": "971cfd3164586b6385cea414b0bab7ce14db2c8d9a8562abe6bcdcb75b4ce95c"
+  },
+  {
+    "path": "_resources/port1.0/group/ocaml-1.1.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/ocaml-1.1.tcl",
+    "sha256": "ece943f0aefb4688fda7fa2a06024ecd21a69c1ba36839069c0e2ff581618e88"
+  },
+  {
+    "path": "_resources/port1.0/group/octave-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/octave-1.0.tcl",
+    "sha256": "49ec1bd139dee1f2bc9dda02a39d6b78c3ee6e5ad5a7684def1e0b43b50b4c33"
+  },
+  {
+    "path": "_resources/port1.0/group/openssl-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/openssl-1.0.tcl",
+    "sha256": "ffc51e3dea41468576a5aa5c995996c98c21568f74095dc518d340b833e3ab63"
+  },
+  {
+    "path": "_resources/port1.0/group/perl5-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/perl5-1.0.tcl",
+    "sha256": "bfe646ec571e5fd41c5057f78a0303e9d4fb008ea437d26b34ad16e7d2fa48bc"
+  },
+  {
+    "path": "_resources/port1.0/group/php-1.1.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/php-1.1.tcl",
+    "sha256": "276291d7210da577967dcbed02fb479cd3b38d80ffca25352d32a8f3468fb460"
+  },
+  {
+    "path": "_resources/port1.0/group/pub-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/pub-1.0.tcl",
+    "sha256": "15f91767b76ae39afbda11d7a55a2f40bb5f6c97267aa00eb5978a2b42b33813"
+  },
+  {
+    "path": "_resources/port1.0/group/pure-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/pure-1.0.tcl",
+    "sha256": "d93fecfae1f162da3ffef40a72c1edb19edb41f2d544324cbbc0794e357b0c15"
+  },
+  {
+    "path": "_resources/port1.0/group/python-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/python-1.0.tcl",
+    "sha256": "d8e715b6145834bc66059db354cabeeb48d409e60831587a00124afcb9906fb7"
+  },
+  {
+    "path": "_resources/port1.0/group/qmake-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/qmake-1.0.tcl",
+    "sha256": "68bea34e11fa4d39b4484754964c3026b287922afa1bdbd5a6f3515c68eb7efc"
+  },
+  {
+    "path": "_resources/port1.0/group/qmake5-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/qmake5-1.0.tcl",
+    "sha256": "76c070c0d8e77f87e85079aebc7dddedf6ca5c530fbdbbd236673851a9a585ec"
+  },
+  {
+    "path": "_resources/port1.0/group/qmake6-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/qmake6-1.0.tcl",
+    "sha256": "11ab60b942d3110214ccf99baa48fecbe024f5cfbc558dcb3c375d237ba55408"
+  },
+  {
+    "path": "_resources/port1.0/group/qt4-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/qt4-1.0.tcl",
+    "sha256": "36de6eaff3420719c7c63eed3f58f2cea3f57fe5bbdb2a8e1fe17784701efcf0"
+  },
+  {
+    "path": "_resources/port1.0/group/qt5-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/qt5-1.0.tcl",
+    "sha256": "3b01baeb8dc09ab491e265988354603816320f0238763f6d61654486e5179b8b"
+  },
+  {
+    "path": "_resources/port1.0/group/qt5_variables-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/qt5_variables-1.0.tcl",
+    "sha256": "af7ae336aa5bbdd6477fc93af99551e8d46c795a8b63faad9bb2cf732bb6a2ca"
+  },
+  {
+    "path": "_resources/port1.0/group/qt5_version_info-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/qt5_version_info-1.0.tcl",
+    "sha256": "61a24e57bb621b11bf3c71856733f53e7f6010c1c2256bd84a1430e79428ae24"
+  },
+  {
+    "path": "_resources/port1.0/group/qt6-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/qt6-1.0.tcl",
+    "sha256": "4ab38f365de34f1e34342b96cf9dfbe71d92c25bdf9496bce5532cf1b665e4ac"
+  },
+  {
+    "path": "_resources/port1.0/group/qt6_info-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/qt6_info-1.0.tcl",
+    "sha256": "1fbca94d859775e945796ea5a9dc8d3797fe04db1c2bad0f050c29dafcb90ba5"
+  },
+  {
+    "path": "_resources/port1.0/group/ruby-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/ruby-1.0.tcl",
+    "sha256": "222f707a433ac574d3f5725b560792e1ee3d4a6f7672c116550bcdb4bf8daaea"
+  },
+  {
+    "path": "_resources/port1.0/group/rust-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/rust-1.0.tcl",
+    "sha256": "7dd6a79d5dd4de1d9aaf841dba757db24cec067f24dc75cb60003c35ee0af6a2"
+  },
+  {
+    "path": "_resources/port1.0/group/rust_build-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/rust_build-1.0.tcl",
+    "sha256": "983dd88acaff9a9e54063ac5247e74dff261ca8a9da4f35ceddd99ec9b6c311b"
+  },
+  {
+    "path": "_resources/port1.0/group/select-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/select-1.0.tcl",
+    "sha256": "e51f56c3f91389a8c0ad0435b8302eb4d783a9db66ac93600dc8c6b268b06b78"
+  },
+  {
+    "path": "_resources/port1.0/group/sourcehut-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/sourcehut-1.0.tcl",
+    "sha256": "2bdf619f1cb22f3a2bd7f932e130103b1d75a5144396fa88888657cdc082b427"
+  },
+  {
+    "path": "_resources/port1.0/group/stub-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/stub-1.0.tcl",
+    "sha256": "e0488f6cbf7d65c0bb0c0292ee655c7922394f4d142ea7fb472515246ec0b3d6"
+  },
+  {
+    "path": "_resources/port1.0/group/tests/ruby-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/tests/ruby-1.0.tcl",
+    "sha256": "f9814672942646f6f162d9234362e5d0a19c4baaffbf1a5339e616fca60c3de4"
+  },
+  {
+    "path": "_resources/port1.0/group/texlive-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/texlive-1.0.tcl",
+    "sha256": "18f68e3efa5c697125e5971948a8af8747bdbc47e46d8bf0c53f23eaaea650da"
+  },
+  {
+    "path": "_resources/port1.0/group/tree_sitter-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/tree_sitter-1.0.tcl",
+    "sha256": "ddaf064d87197570abbaa0b00d058dcf64df5031fc6cd8491af346c22ff3df3c"
+  },
+  {
+    "path": "_resources/port1.0/group/waf-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/waf-1.0.tcl",
+    "sha256": "6fbc5c9756e38efa09a4620585b794622fca1b67cb48b8de430a4a3b3b867b33"
+  },
+  {
+    "path": "_resources/port1.0/group/wxWidgets-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/wxWidgets-1.0.tcl",
+    "sha256": "7c650a5671c1c95ec9143fa0e5062ea5c64767e6696291ff81c9da22fccc7058"
+  },
+  {
+    "path": "_resources/port1.0/group/x11font-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/x11font-1.0.tcl",
+    "sha256": "c3f6d18f973819258481b9cfad20e72471d8e4f3ba0af4268e1262d29d639a31"
+  },
+  {
+    "path": "_resources/port1.0/group/xcode-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/xcode-1.0.tcl",
+    "sha256": "b9144e69eef4cbf9b6db61010710077a9e339b5ec86abbd8fd191c750126e1b6"
+  },
+  {
+    "path": "_resources/port1.0/group/xcode_workaround-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/xcode_workaround-1.0.tcl",
+    "sha256": "a455b628c0aa2c2030f49cce84963c18023f2a9a80a86470c679e08f159f7d74"
+  },
+  {
+    "path": "_resources/port1.0/group/xcodeversion-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/xcodeversion-1.0.tcl",
+    "sha256": "d6839cdfde35cc7f5a10ee358f05fee719aee6568fda3bf78f76121f1c522909"
+  },
+  {
+    "path": "_resources/port1.0/group/xmlcatalog-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/xmlcatalog-1.0.tcl",
+    "sha256": "ac0bdc4ff0d4d4fa665d3794c2d6600fbfb2c71ef4cbecdc07a60064c2ae09e0"
+  },
+  {
+    "path": "_resources/port1.0/group/yelp-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/yelp-1.0.tcl",
+    "sha256": "e771a25b1a592146f4c95e710f30aab2226e3b5400de39c7b35a9b30ab9ef7bf"
+  },
+  {
+    "path": "_resources/port1.0/group/zig_toolchain-1.0.tcl",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/_resources/port1.0/group/zig_toolchain-1.0.tcl",
+    "sha256": "2009b3610d4584dbe95369426a981004acfb345ce9159dfeaef57ab46f83743b"
+  },
+  {
+    "path": "archivers/brotli/Portfile",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/archivers/brotli/Portfile",
+    "sha256": "60b53abf5204a319726e9b5445f57efd89335c4e628086f12fff44e4ae43c361"
+  },
+  {
+    "path": "archivers/brotli/files/c89.patch",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/archivers/brotli/files/c89.patch",
+    "sha256": "f4e42f15718f3f6c35405bdf84a97407f25f23d0d0277c23f3ac29d025fdec0e"
+  },
+  {
+    "path": "archivers/brotli/files/patch-disable-cmake-ver-check-CmakeLists.txt.diff",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/archivers/brotli/files/patch-disable-cmake-ver-check-CmakeLists.txt.diff",
+    "sha256": "820fd1160459559bde980474b1577d015459913bb0d51cba25d0b567a71a8172"
+  },
+  {
+    "path": "archivers/zlib/Portfile",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/archivers/zlib/Portfile",
+    "sha256": "2a9737714f695baaf2df48239a2804412d52cb393f028c4fffc8c9b930349203"
+  },
+  {
+    "path": "archivers/zlib/files/install-ints.h.patch",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/archivers/zlib/files/install-ints.h.patch",
+    "sha256": "98cecf742ae5ecfc56ca65c65022faef43fb8dad9023cac7a31e6150e8c98391"
+  },
+  {
+    "path": "archivers/zstd/Portfile",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/archivers/zstd/Portfile",
+    "sha256": "71b0e2bc72e4e1ea524e2b3276ff09de7cc7a81164f1f6bcb57699fb8a2d747f"
+  },
+  {
+    "path": "archivers/zstd/files/flags.patch",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/archivers/zstd/files/flags.patch",
+    "sha256": "2ef6d477ba8d685a962a6bcdcb49281754fd714b83ff179f841f892c3cf74fb0"
+  },
+  {
+    "path": "archivers/zstd/files/patch-zstd-tiger-no-backtrace.diff",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/archivers/zstd/files/patch-zstd-tiger-no-backtrace.diff",
+    "sha256": "155f55c8471fb15346252cbce97ca2e4ff3997cb7ef670ff62ac726b9a792ea9"
+  },
+  {
+    "path": "devel/legacy-support/Portfile",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/devel/legacy-support/Portfile",
+    "sha256": "ea3ebd7bad1eccd49ccc5af75568ef9d05372c708533f4fa6c02920270cfae0e"
+  },
+  {
+    "path": "devel/openssl3/Portfile",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/devel/openssl3/Portfile",
+    "sha256": "c2b31a9b6711605a596f7efe80e6c1c0b75ff6cb7bb0075a55194d9941f59d08"
+  },
+  {
+    "path": "devel/openssl3/files/legacy.cnf",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/devel/openssl3/files/legacy.cnf",
+    "sha256": "c44b2613601ae4daaa8a8fa239239a6c7e7e6586c0e1685aee583629d12e467d"
+  },
+  {
+    "path": "mail/libidn2/Portfile",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/mail/libidn2/Portfile",
+    "sha256": "0b6e557da76096cea151713093e3a2ec2b65e0f55016ef2d9699afb003371cd4"
+  },
+  {
+    "path": "net/curl/Portfile",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/net/curl/Portfile",
+    "sha256": "372b21c38996241164bcedf182800f7dc1992f846991e28812dd144e24c3da3b"
+  },
+  {
+    "path": "net/libpsl/Portfile",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/net/libpsl/Portfile",
+    "sha256": "c3a45741d04c0c1b5e3b07688377cda80689c00f027e034ee62e200ccbe96921"
+  },
+  {
+    "path": "textproc/libunistring/Portfile",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/textproc/libunistring/Portfile",
+    "sha256": "a63c807c15ae2886ee5f228530fce85eed57272384e2de3e0359aae64d50dc3c"
+  },
+  {
+    "path": "textproc/libunistring/files/0700-multiarch-libc.patch",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/textproc/libunistring/files/0700-multiarch-libc.patch",
+    "sha256": "f3cd22af90bbc3e9248c300609f8f8c104641c9a3aabf10ef3735695e871748e"
+  },
+  {
+    "path": "www/nghttp2/Portfile",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/www/nghttp2/Portfile",
+    "sha256": "f4327242f528296fcdaac58be1dd10c276e6116e06c1e427399eb9f96fe92d7b"
+  },
+  {
+    "path": "www/nghttp2/files/patch-src-shrpx_client_handler.cc.diff",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/www/nghttp2/files/patch-src-shrpx_client_handler.cc.diff",
+    "sha256": "50d7453f221bd67b944c83ea8246a792bb3d576716a814bfc102a7a98517b9df"
+  },
+  {
+    "path": "www/nghttp2/files/patch-src-shrpx_downstream_connection_pool.cc.diff",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/www/nghttp2/files/patch-src-shrpx_downstream_connection_pool.cc.diff",
+    "sha256": "e8a10b33b19526443317d1f676164ddabadca23dcaa06c0d4ed9fe442ad09a3d"
+  },
+  {
+    "path": "www/nghttp2/files/src-shrpx_config.diff",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/www/nghttp2/files/src-shrpx_config.diff",
+    "sha256": "eff2c34361b38f5f51ade5ce9eb09277f41251d7615db0916208887b154f4be9"
+  },
+  {
+    "path": "textproc/libiconv/Portfile",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/a393aeeb96eec86beba798192d9058a55a135111/textproc/libiconv/Portfile",
+    "sha256": "1254f2bbec73639240d30770d07ff0d39babcbd13b71b3a8e1a58ce4fa49a48b"
+  },
+  {
+    "path": "textproc/libiconv/files/patch-Makefile.devel",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/a393aeeb96eec86beba798192d9058a55a135111/textproc/libiconv/files/patch-Makefile.devel",
+    "sha256": "569950c90c43f9fe29ee5d7082312910a1d497fef560452db585fe6603efd455"
+  },
+  {
+    "path": "textproc/libiconv/files/patch-src-Makefile.in-darwin.diff",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/a393aeeb96eec86beba798192d9058a55a135111/textproc/libiconv/files/patch-src-Makefile.in-darwin.diff",
+    "sha256": "f81478c2bc923bb7ec309d790feade2359c1680b534f7dbbdf5d2a64fee0740a"
+  },
+  {
+    "path": "textproc/libiconv/files/patch-utf8mac.diff",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/a393aeeb96eec86beba798192d9058a55a135111/textproc/libiconv/files/patch-utf8mac.diff",
+    "sha256": "6aaa130c8ba72a758b1cf8b37566d4e9e0836576a3dacf86270b60e92a737e2a"
+  },
+  {
+    "path": "devel/gettext/Portfile",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/9b6d4088b4f7d78b4d6dd7083f045ec3548e9956/devel/gettext/Portfile",
+    "sha256": "3e0938dc5a2640a04beab670f28628f36e0444a0096cc02c87b5615cd88b409e"
+  },
+  {
+    "path": "LICENSE",
+    "url": "https://raw.githubusercontent.com/macports/macports-ports/c7a846b3ea2560ed069ba55e0d52a8d746f13d54/LICENSE",
+    "sha256": "bb0767557b1a9392a6e31d19dced1651f729c103e4cc0b7945f9b5b8a36ebe22"
+  }
+]

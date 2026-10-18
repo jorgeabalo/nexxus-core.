@@ -47,3 +47,85 @@ def test_config_rejects_unsafe_origin(monkeypatch, tmp_path, url):
     monkeypatch.setattr(client, 'ROOT', str(tmp_path))
     with pytest.raises(ValueError):
         client.config()
+
+
+@pytest.fixture
+def local_tls(tmp_path):
+    import http.server
+    import shutil
+    import ssl
+    import subprocess
+    import threading
+    transport = tmp_path / 'transport'
+    transport.mkdir()
+    (transport / 'curl').symlink_to('/usr/bin/curl')
+    for name in ('trusted', 'other'):
+        subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
+                        '-keyout', str(tmp_path / (name + '.key')),
+                        '-out', str(tmp_path / (name + '.pem')), '-days', '1',
+                        '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1'],
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    requests = []
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            requests.append(self.headers.get('Authorization'))
+            body = b'{"reply":"TLS verificado"}'
+            self.rfile.read(int(self.headers['Content-Length']))
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        def log_message(self, *args):
+            pass
+    server = http.server.HTTPServer(('127.0.0.1', 0), Handler)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.maximum_version = ssl.TLSVersion.TLSv1_2
+    context.load_cert_chain(str(tmp_path / 'trusted.pem'), str(tmp_path / 'trusted.key'))
+    server.socket = context.wrap_socket(server.socket, server_side=True)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield tmp_path, server.server_address[1], requests
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
+
+
+@pytest.mark.parametrize('mode', ['trusted', 'wrong-ca', 'wrong-hostname'])
+def test_real_tls_verifies_ca_and_hostname(local_tls, monkeypatch, mode):
+    import shutil
+    root, port, requests = local_tls
+    monkeypatch.setattr(client, 'ROOT', str(root))
+    shutil.copy(root / ('other.pem' if mode == 'wrong-ca' else 'trusted.pem'),
+                root / 'transport/cacert.pem')
+    hostname = 'localhost' if mode == 'wrong-hostname' else '127.0.0.1'
+    settings = {'server': 'https://%s:%d' % (hostname, port)}
+    if mode == 'trusted':
+        assert client.request(settings, 'test-session', []) == 'TLS verificado'
+        assert requests == ['Bearer test-session']
+    else:
+        with pytest.raises(ValueError, match='TLS'):
+            client.request(settings, 'test-session', [])
+        assert not requests, 'Authorization must not cross an invalid TLS connection'
+
+
+def test_package_manifest_detects_changed_files(tmp_path):
+    import hashlib
+    spec = importlib.util.spec_from_file_location('mini_diagnose',
+        Path(__file__).parents[2] / 'clients/nexxus-mini/diagnose.py')
+    diagnose = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(diagnose)
+    (tmp_path / 'client.py').write_bytes(b'original')
+    manifest = {'files': [{'path': 'client.py', 'sha256': hashlib.sha256(b'original').hexdigest()}]}
+    (tmp_path / 'MANIFEST.json').write_text(json.dumps(manifest))
+    assert diagnose.verify_manifest(str(tmp_path)) == 1
+    (tmp_path / 'client.py').write_bytes(b'changed')
+    with pytest.raises(ValueError, match='modificado'):
+        diagnose.verify_manifest(str(tmp_path))
+    manifest['files'][0]['path'] = '../outside'
+    (tmp_path / 'MANIFEST.json').write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match='Ruta'):
+        diagnose.verify_manifest(str(tmp_path))

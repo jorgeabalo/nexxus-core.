@@ -1,0 +1,36 @@
+NEXXUS MINI AI — PAQUETE USB DE EVALUACION
+
+1. Copia la carpeta Nexxus-Mini-AI a Documentos del Mac mini.
+2. Abre Comprobar.command y conserva su resultado.
+3. Abre Nexxus.command. Puedes probar el boton de microfono cuando tengas el USB.
+
+Objetivo: Mac mini Intel Core 2 Duo (2007), Mac OS X 10.6.8.
+Incluye curl i386 de MacPorts con OpenSSL y bibliotecas portables, certificados
+CA y un capturador x86_64 construido con objetivo minimo 10.6. No instala nada
+en /opt/local, no requiere privilegios de administrador y no modifica el sistema.
+
+IMPORTANTE: el servidor NUEVO de chat NO esta desplegado. El origen Railway
+configurado es el real, pero /api/mini-ai/chat requiere un despliegue futuro
+AUTORIZADO, la migracion de cuota y la lista de usuarios permitidos. Este paquete
+no realiza ese despliegue. El token de sesion se pega en el cliente; nunca se
+guarda. No pegues claves de Anthropic ni de administracion de Supabase.
+
+El microfono graba diez segundos de WAV local. Aun no transcribe ni habla.
+Selecciona el microfono en Preferencias del Sistema > Sonido > Entrada.
+
+Se revisaron firmas de los paquetes originales, hashes, dependencias, simbolos
+importados y objetivos de sistema. Las rutas de bibliotecas se adaptaron para
+que todo quede en esta carpeta: los binarios adaptados tienen hashes propios.
+El manifiesto detecta copias corruptas; no es una firma digital de este paquete.
+
+NO se ha ejecutado este paquete Intel en Snow Leopard. El equipo de preparacion
+es Apple Silicon y no ejecuta programas i386. La captura, el inicio de Tk y la
+conexion TLS del binario incluido necesitan probarse en el Mac real.
+
+Consulta INSTALACION.md para detalles y PROVENANCE.json para procedencia.
+SOURCES contiene fuentes exactas, licencias y metadatos de compilacion de
+MacPorts de los componentes redistribuidos. Se permite sustituir las bibliotecas
+por versiones compatibles bajo sus respectivas licencias. No hay DRM ni firmas
+que impidan esa sustitucion. Las bibliotecas originales se enlazan dinamicamente;
+las adaptaciones solo cambian rutas de carga. El codigo del cliente y capturador
+se incluye junto a los ejecutables.

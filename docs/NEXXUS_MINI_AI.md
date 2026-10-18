@@ -92,8 +92,8 @@ verificado; captura C con Audio Queue Services. No hay claves de proveedor en el
 cliente. El access token temporal de usuario es una credencial de sesión y se
 mantiene solo en memoria; no es una clave de servidor.
 
-Pendientes para una versión distribuible: transporte TLS para Intel/10.6 con
-CA y dependencias verificadas; build del capturador para i386; prueba física;
+Pendientes para una versión final: prueba física del transporte TLS Intel y
+del capturador x86_64 incluidos en el ZIP de evaluación;
 flujo de inicio de sesión/vinculación y renovación fácil; servicio de
 transcripción autorizado, consentimiento para subir audio y sus límites;
 salida de voz. No se presenta la captura local como conversación por voz.
@@ -145,3 +145,20 @@ sigue `feature/aita-car-prototype`. Staging: `miraculous-analysis` sigue
 rama. No se cambió configuración ni se solicitó despliegue. Se publica solo
 la rama de GitHub; no se abre PR para evitar activar posibles entornos de
 vista previa cuya configuración no se ha verificado.
+
+## Segunda entrega: paquete USB de evaluación
+
+`tools/build_mini_usb.py` crea un ZIP autocontenido con transporte Intel de
+MacPorts, bibliotecas relocadas, CA, capturador x86_64 con mínimo declarado 10.6,
+diagnóstico local, procedencia, fuentes y licencias. Versiones y hashes se fijan
+en `tools/mini_usb/*-lock.json`. No se añaden binarios al repositorio.
+Esta entrega sustituye la limitación inicial de «transporte no incluido» en el
+ZIP de evaluación. Sigue pendiente ejecutarlo en el Mac real, así como desplegar
+la API con autorización y completar vinculación/transcripción/salida de voz.
+Las pruebas TLS locales verifican CA y hostname, sin transmitir el token cuando
+falla la verificación. No se han enviado solicitudes de IA ni audio reales.
+
+Validación de la segunda entrega: 35 pruebas Python pasan, además de las pruebas
+SQL. Cliente y diagnóstico pasan el análisis con la gramática oficial de Python
+2.6.9; esto comprueba sintaxis, no el funcionamiento de Tk o del sistema legado.
+El ZIP se comprobó con CRC, hashes de todos sus archivos y permisos ejecutables.
