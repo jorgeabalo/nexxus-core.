@@ -7,6 +7,8 @@ import os
 import subprocess
 import threading
 import time
+import math
+import calendar
 try:
     import Tkinter as tk
     import tkMessageBox as messagebox
@@ -164,6 +166,11 @@ class Client(object):
         self.send_button.pack(side='left', padx=(0, 8))
         tk.Button(row, text='Ver metricas', command=self.show_metrics,
                   fg='#20152f', highlightbackground=bg).pack(side='left', padx=4)
+        tk.Button(row, text='Nexxus', command=self.show_companion,
+                  fg='#20152f', highlightbackground=bg).pack(side='left', padx=4)
+        self.companion = None
+        self.companion_timer = None
+        self.companion_frame = 0
         tk.Button(row, text='Borrar charla', command=self.clear, fg='#20152f',
                   highlightbackground=bg).pack(side='right')
         self.status = tk.Label(root, text='Tu correo esta preparado. Escribe tu contrasena y pulsa Conectar.',
@@ -176,6 +183,70 @@ class Client(object):
         else:
             self.email.focus_set()
         root.after(100, self.poll)
+
+    def show_companion(self):
+        if self.companion is not None:
+            self.companion.lift()
+            return
+        window = tk.Toplevel(self.root)
+        self.companion = window
+        window.title('Nexxus - Tu espacio')
+        window.geometry('360x590')
+        window.configure(bg='#030409')
+        self.companion_float = tk.IntVar(value=1)
+        self.companion_motion = tk.IntVar(value=1)
+        def floating():
+            window.attributes('-topmost', bool(self.companion_float.get()))
+        floating()
+        tk.Checkbutton(window, text='Mantener flotante', variable=self.companion_float,
+                       command=floating, bg='#030409', fg='#b6a1ff').pack()
+        tk.Checkbutton(window, text='Animacion suave', variable=self.companion_motion,
+                       bg='#030409', fg='#b6a1ff').pack()
+        self.nebula_canvas = tk.Canvas(window, width=330, height=190,
+                                       bg='#030409', highlightthickness=0)
+        self.nebula_canvas.pack()
+        self.companion_clock = tk.Label(window, bg='#030409', fg='#eeeafc',
+                                        font=('Helvetica', 21))
+        self.companion_clock.pack(pady=5)
+        tk.Label(window, text='Calendario del mes', bg='#030409', fg='#b6a1ff').pack()
+        self.companion_calendar = tk.Label(window, bg='#030409', fg='#eeeafc',
+                                           font=('Courier', 13), justify='left')
+        self.companion_calendar.pack(pady=6)
+        tk.Label(window, text='Tiempo: ciudad pendiente de configurar.\nCitas personales: calendario pendiente de conectar.',
+                 bg='#030409', fg='#a9a5ba', font=('Helvetica', 11), wraplength=330).pack(pady=8)
+        window.protocol('WM_DELETE_WINDOW', self.close_companion)
+        self.animate_companion()
+
+    def close_companion(self):
+        if self.companion_timer is not None:
+            self.root.after_cancel(self.companion_timer)
+            self.companion_timer = None
+        self.companion.destroy()
+        self.companion = None
+
+    def animate_companion(self):
+        if self.companion is None:
+            return
+        self.companion_clock.configure(text=time.strftime('%d/%m/%Y   %H:%M'))
+        now = time.localtime()
+        self.companion_calendar.configure(text=calendar.month(now.tm_year, now.tm_mon))
+        canvas = self.nebula_canvas
+        canvas.delete('all')
+        phase = self.companion_frame / 12.0 if self.companion_motion.get() else 0
+        # Small fixed particle count, no GPU, transparency, browser or images required.
+        colors = ['#392653', '#554480', '#8753cb', '#b693ee', '#e0d2fb']
+        for i in range(56):
+            angle = i * 2.39996
+            radius = 12 + (i % 19) * 3.8
+            x = 165 + math.cos(angle + phase * .07) * radius * 1.7
+            y = 89 + math.sin(angle + phase * .07) * radius * .65 + math.sin(phase) * 7
+            size = 2 + (i % 3)
+            canvas.create_rectangle(x-size, y-size, x+size, y+size,
+                                    fill=colors[i % len(colors)], outline='')
+        canvas.create_text(165, 170, text='N E X X U S', fill='#e0d2fb', font=('Helvetica', 13))
+        self.companion_frame += 1
+        self.companion_timer = self.root.after(250 if self.companion_motion.get() else 1000,
+                                               self.animate_companion)
 
     def show_login(self):
         if self.busy:

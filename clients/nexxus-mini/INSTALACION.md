@@ -129,3 +129,14 @@ Al conectar, el formulario se oculta y queda el chat con letras más grandes.
 
 La comprobacion visual de esta pantalla sigue pendiente en el Mac mini; el
 entorno de esta sesion no permitio iniciar Tk para una vista previa local.
+
+## Nexxus flotante
+
+El botón Nexxus abre una ventana movible con una nebulosa violeta inspirada en
+el panel Domus, reloj local y calendario del mes. Mantener flotante permite
+verla sobre otras ventanas; Animacion suave permite detener el movimiento.
+La animación dibuja 56 partículas cuatro veces por segundo sin navegador ni GPU.
+Cierra esa ventana para detener el temporizador. No representa actividad real
+de la IA. La ciudad y el proveedor del calendario personal siguen pendientes
+de confirmar; todavía no hay previsión del tiempo ni eventos personales.
+El calendario visible usa la fecha y zona horaria configuradas en el Mac.
