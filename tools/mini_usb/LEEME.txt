@@ -9,15 +9,11 @@ Incluye curl i386 de MacPorts con OpenSSL y bibliotecas portables, certificados
 CA y un lector de metricas x86_64 construido con objetivo minimo 10.6. No instala nada
 en /opt/local, no requiere privilegios de administrador y no modifica el sistema.
 
-CONEXION A NEXXUS
-El paquete apunta a https://nexxus-mini-ai-production.up.railway.app.
-Es un servicio independiente de Claudia. Abre Nexxus.command, introduce tu
-correo y contrasena de Nexxus Manager y pulsa Conectar a Nexxus. Tu usuario
-debe estar autorizado en el servidor. No hay que copiar tokens ni claves.
-
-La contrasena se envia por HTTPS a tu servidor y Supabase Auth. No se guarda
-en disco y el campo se borra al conectar. La sesion vive solo en memoria.
-Cuando caduque, introduce de nuevo la contrasena y pulsa Conectar.
+PRIMERA VERSION SIN CUENTA
+Abre Nexxus.command. No pide usuario ni contrasena. Abre la nebulosa flotante,
+reloj y calendario del mes. Ver metricas muestra CPU, RAM, disco y tiempo encendido.
+El chat y los datos privados de Domus quedan pendientes de una vinculacion segura
+sin contrasena. Esta entrega no incluye credenciales ni acceso privado automatico.
 
 No graba audio. Las metricas del mini se quedan en el equipo. Domus muestra
 registros y estados guardados, no telemetria en vivo. La nueva consulta Domus

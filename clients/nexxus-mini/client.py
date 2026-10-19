@@ -119,11 +119,10 @@ class Client(object):
         # Existing AITA typographic mark and Domus palette; no invented emblem.
         tk.Label(header, text='AITA', font=('Helvetica', 28, 'bold'), bg=bg,
                  fg=muted).pack(side='left')
-        tk.Label(header, text='Nexxus Mini AI', font=('Helvetica', 17), bg=bg,
+        tk.Label(header, text='Nexxus Domus', font=('Helvetica', 17), bg=bg,
                  fg=ink).pack(side='left', padx=16)
         self.session_token = ''
         self.login_frame = tk.Frame(root, bg=panel, padx=18, pady=14)
-        self.login_frame.pack(fill='x', padx=22, pady=6)
         tk.Label(self.login_frame, text='1. Conecta con tu cuenta de Nexxus',
                  bg=panel, fg=ink).pack(anchor='w', pady=(0, 10))
         tk.Label(self.login_frame, text='Correo', bg=panel, fg=ink).pack(anchor='w')
@@ -145,7 +144,7 @@ class Client(object):
         self.chat_frame.pack(fill='both', expand=True, padx=22, pady=8)
         self.connection_row = tk.Frame(self.chat_frame, bg=bg)
         self.connection_row.pack(fill='x')
-        self.connection_label = tk.Label(self.connection_row, text='2. Escribe tu pregunta',
+        self.connection_label = tk.Label(self.connection_row, text='Nexxus Domus - Acceso directo',
                                          bg=bg, fg=ink)
         self.connection_label.pack(side='left')
         self.account_button = tk.Button(self.connection_row, text='Volver a conectar',
@@ -173,16 +172,14 @@ class Client(object):
         self.companion_frame = 0
         tk.Button(row, text='Borrar charla', command=self.clear, fg='#20152f',
                   highlightbackground=bg).pack(side='right')
-        self.status = tk.Label(root, text='Tu correo esta preparado. Escribe tu contrasena y pulsa Conectar.',
+        self.status = tk.Label(root, text='Sin usuario ni contrasena. Chat y datos privados pendientes de vinculacion segura.',
                                bg=bg, fg=muted, wraplength=650)
         self.status.pack(padx=18, pady=5)
         tk.Label(root, text='Las metricas del mini se quedan en este equipo. Solo el chat se envia a la IA.',
                  font=('Helvetica', 11), bg=bg, fg='#a9a5ba').pack(pady=(0, 12))
-        if self.email.get():
-            self.password.focus_set()
-        else:
-            self.email.focus_set()
         root.after(100, self.poll)
+        root.after(200, self.show_companion)
+        self.append('Bienvenido a Nexxus Domus. Abre Ver metricas para ver el mini.\nEl chat y los datos privados requieren una futura vinculacion segura sin contrasena.')
 
     def show_companion(self):
         if self.companion is not None:
@@ -249,10 +246,7 @@ class Client(object):
                                                self.animate_companion)
 
     def show_login(self):
-        if self.busy:
-            return
-        self.login_frame.pack(fill='x', padx=22, pady=6, before=self.chat_frame)
-        self.password.focus_set()
+        self.status.configure(text='Esta primera version abre sin cuenta. Vinculacion privada pendiente.')
 
     def connect(self):
         if self.busy:
@@ -261,7 +255,7 @@ class Client(object):
         self.password.delete(0, 'end')
         self.session_token = ''
         if self.metrics_window is not None:
-            self.domus_metrics.configure(text='Conecta tu cuenta para ver Domus.')
+            self.domus_metrics.configure(text='Datos privados de Domus: vinculacion segura pendiente.')
         self.entry.configure(state='disabled')
         self.send_button.configure(state='disabled')
         self.clear()
@@ -334,7 +328,7 @@ class Client(object):
         self.local_metrics.pack(anchor='w', padx=22, pady=8)
         tk.Label(window, text='Nexxus Domus', font=('Helvetica', 22, 'bold'),
                  bg='#030409', fg='#b6a1ff').pack(anchor='w', padx=22, pady=(16, 8))
-        self.domus_metrics = tk.Label(window, text='Conecta tu cuenta para ver Domus.',
+        self.domus_metrics = tk.Label(window, text='Datos privados de Domus: vinculacion segura pendiente.',
                                       justify='left', wraplength=610,
                                       bg='#030409', fg='#eeeafc', font=('Helvetica', 14))
         self.domus_metrics.pack(anchor='w', padx=22, pady=8)
@@ -385,7 +379,7 @@ class Client(object):
         if self.metrics_window is None:
             return
         if not self.session_token:
-            self.domus_metrics.configure(text='Conecta tu cuenta para ver Domus.')
+            self.domus_metrics.configure(text='Datos privados de Domus: vinculacion segura pendiente.')
             return
         token = self.session_token
         self.last_domus = time.time()

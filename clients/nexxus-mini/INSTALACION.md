@@ -58,22 +58,16 @@ Las pruebas locales con TLS 1.2 comprobaron conexión válida, CA incorrecta y n
 incorrecto; en los dos últimos casos no se transmitió Authorization. Esas pruebas
 usan el curl del host moderno: no sustituyen la ejecución del curl Intel incluido.
 
-## Conectar a Nexxus
+## Primera versión sin usuario ni contraseña
 
-1. Abrir **Nexxus.command**.
-2. Escribir el correo de tu cuenta existente de Nexxus Manager y su contraseña.
-3. Pulsar **Conectar a Nexxus**. Cuando indique «Conectado», escribir una pregunta
-   y pulsar Enviar.
+Abre Nexxus.command: aparece directamente Nexxus Domus y su ventana flotante.
+No hay formulario de acceso. Puedes ver reloj, calendario del mes y métricas
+locales. El paquete no incluye correo, contraseña, token ni claves privadas.
 
-Se autoriza únicamente el UUID configurado en el servidor. No hay que copiar
-tokens ni claves. La contraseña se envía por HTTPS al servicio propio de Mini AI
-y de ahí a Supabase Auth; el campo se borra al conectar y no se guarda en disco.
-La sesión vive solo en memoria. Al caducar, volver a introducir la contraseña y
-pulsar Conectar. No se crean cuentas, guardan contraseñas ni cambian las existentes.
-
-Se envían la pregunta y hasta cuatro intercambios anteriores a Railway y Anthropic.
-«Nueva conversación» borra el contexto. No se escriben conversaciones en disco.
-El servicio independiente no tiene herramientas ni acceso a datos de Claudia.
+El chat y los datos privados de Domus quedan pendientes de vinculación segura
+sin contraseña. No se ha abierto el servidor a consultas anónimas ni se han
+incluido credenciales dentro del USB. La autenticación del servicio existente
+se conserva. Esta edición local no conecta automáticamente a una cuenta.
 
 ## Métricas del mini y Domus
 
@@ -83,7 +77,7 @@ El lector nativo x86_64 usa funciones de Mach y sysctl con objetivo mínimo 10.6
 Requiere Core 2 Duo; la comprobación física en Snow Leopard sigue pendiente.
 No se incluye grabación de audio ni se accede al micrófono.
 
-Domus se consulta cada minuto, o con **Actualizar Domus**, tras iniciar sesión.
+Domus se consulta cada minuto, o con **Actualizar Domus**, cuando exista vinculación segura.
 Muestra hogares, habitaciones, dispositivos y asistentes registrados, estados
 **guardados** de conexión y cuota de chat del día UTC. No mide consumo eléctrico,
 temperaturas, ni confirma en vivo que un aparato funcione. Un fallo de lectura
@@ -121,10 +115,7 @@ Fuentes: [paquetes oficiales MacPorts](https://packages.macports.org/curl/),
 ## Pantalla AITA simplificada
 
 Esta edición usa la marca tipográfica AITA y la paleta violeta del panel Domus.
-El paquete personal lleva únicamente tu correo preparado en config.json: no
-contiene contraseña ni token. Escribe la contraseña y pulsa Conectar o Intro.
-Al conectar, el formulario se oculta y queda el chat con letras más grandes.
-«Volver a conectar» muestra de nuevo el acceso cuando lo necesites.
+Esta primera versión abre directamente sin formulario ni correo preparado.
 «Ver metricas» abre el estado del mini y los contadores de Domus.
 
 La comprobacion visual de esta pantalla sigue pendiente en el Mac mini; el
