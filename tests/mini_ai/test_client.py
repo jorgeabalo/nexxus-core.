@@ -143,3 +143,15 @@ def test_password_transport_never_uses_command_line(monkeypatch):
     payload = proc.communicate.call_args.args[0].decode()
     assert 'private-password' in payload and '/api/mini-ai/session' in payload
     assert 'Authorization:' not in payload
+
+
+def test_metrics_transport_is_authenticated_get(monkeypatch):
+    monkeypatch.setattr(client.os.path, 'isfile', lambda p: True)
+    proc = Mock(returncode=0)
+    proc.communicate.return_value = (b'{"domus":{}}\n200', b'')
+    monkeypatch.setattr(client.subprocess, 'Popen', Mock(return_value=proc))
+    assert client.transport({'server': 'https://example.test'}, '/api/mini-ai/metrics', token='session') == {'domus': {}}
+    config = proc.communicate.call_args.args[0].decode()
+    assert 'data-binary' not in config
+    assert 'Authorization: Bearer session' in config
+    assert '/api/mini-ai/metrics' in config

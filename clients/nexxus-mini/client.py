@@ -6,15 +6,15 @@ import json
 import os
 import subprocess
 import threading
+import time
 try:
     import Tkinter as tk
     import tkMessageBox as messagebox
-    import tkFileDialog as filedialog
     import Queue as queue
     from urlparse import urlsplit
 except ImportError:
     import tkinter as tk
-    from tkinter import messagebox, filedialog
+    from tkinter import messagebox
     import queue
     from urllib.parse import urlsplit
 
@@ -37,7 +37,7 @@ def curl_quote(value):
     return '"' + value.replace('\\', '\\\\').replace('"', '\\"').replace('\r', '\\r').replace('\n', '\\n') + '"'
 
 
-def transport(settings, path, data, token=None):
+def transport(settings, path, data=None, token=None):
     if token is not None and (not token or any(ord(c) < 33 or ord(c) > 126 for c in token)):
         raise ValueError('Pega un token de sesion valido, sin espacios ni saltos de linea.')
     binary = os.path.join(ROOT, 'transport', 'curl')
@@ -49,7 +49,7 @@ def transport(settings, path, data, token=None):
         'url = ' + curl_quote(settings['server'].rstrip('/') + path),
         ('header = ' + curl_quote('Authorization: Bearer ' + token)) if token else '',
         'header = "Content-Type: application/json"',
-        'data-binary = ' + curl_quote(payload),
+        ('data-binary = ' + curl_quote(payload)) if data is not None else '',
     ])
     # -q must be first: do not load ~/.curlrc. No redirects, proxies or insecure mode.
     env = os.environ.copy()
@@ -101,6 +101,11 @@ class Client(object):
         self.root, self.settings = root, settings
         self.messages, self.events = [], queue.Queue()
         self.busy = False
+        self.metrics_window = None
+        self.metrics_timer = None
+        self.metric_events = queue.Queue()
+        self.metric_jobs = {}
+        self.last_domus = 0
         bg, panel, ink, muted = '#030409', '#161422', '#eeeafc', '#b6a1ff'
         root.title('AITA - Nexxus Mini AI')
         root.geometry('720x680')
@@ -157,15 +162,14 @@ class Client(object):
                                      state='disabled', fg='#20152f', highlightbackground=bg,
                                      width=12)
         self.send_button.pack(side='left', padx=(0, 8))
-        self.mic_button = tk.Button(row, text='Grabar audio (10 s)', command=self.record,
-                                    fg='#20152f', highlightbackground=bg)
-        self.mic_button.pack(side='left', padx=4)
+        tk.Button(row, text='Ver metricas', command=self.show_metrics,
+                  fg='#20152f', highlightbackground=bg).pack(side='left', padx=4)
         tk.Button(row, text='Borrar charla', command=self.clear, fg='#20152f',
                   highlightbackground=bg).pack(side='right')
         self.status = tk.Label(root, text='Tu correo esta preparado. Escribe tu contrasena y pulsa Conectar.',
                                bg=bg, fg=muted, wraplength=650)
         self.status.pack(padx=18, pady=5)
-        tk.Label(root, text='El texto se envia a la IA. El audio solo se guarda en este Mac.',
+        tk.Label(root, text='Las metricas del mini se quedan en este equipo. Solo el chat se envia a la IA.',
                  font=('Helvetica', 11), bg=bg, fg='#a9a5ba').pack(pady=(0, 12))
         if self.email.get():
             self.password.focus_set()
@@ -185,6 +189,8 @@ class Client(object):
         email, password = self.email.get().strip(), self.password.get()
         self.password.delete(0, 'end')
         self.session_token = ''
+        if self.metrics_window is not None:
+            self.domus_metrics.configure(text='Conecta tu cuenta para ver Domus.')
         self.entry.configure(state='disabled')
         self.send_button.configure(state='disabled')
         self.clear()
@@ -213,10 +219,9 @@ class Client(object):
         self.busy = True
         self.connect_button.configure(state='disabled')
         self.send_button.configure(state='disabled')
-        self.mic_button.configure(state='disabled')
         def run():
             try:
-                self.events.put((kind, job(), None))
+                self.events.put((kind, job(), None, session))
             except Exception as exc:
                 self.events.put((kind, None, str(exc)))
         thread = threading.Thread(target=run)
@@ -242,31 +247,114 @@ class Client(object):
         self.status.configure(text='Consultando a Nexxus...')
         self.work(lambda: request(self.settings, token, self.pending), 'chat')
 
-    def record(self):
-        if self.busy:
+    def show_metrics(self):
+        if self.metrics_window is not None and self.metrics_window.winfo_exists():
+            self.metrics_window.lift()
             return
-        helper = os.path.join(ROOT, 'record-audio')
-        if not os.path.isfile(helper):
-            messagebox.showinfo('Microfono', 'Falta compilar record-audio. Consulta INSTALACION.md.')
+        window = tk.Toplevel(self.root)
+        self.metrics_window = window
+        window.title('AITA - Mi mini y Nexxus Domus')
+        window.geometry('660x520')
+        window.configure(bg='#030409')
+        tk.Label(window, text='Mi Mac mini', font=('Helvetica', 22, 'bold'),
+                 bg='#030409', fg='#b6a1ff').pack(anchor='w', padx=22, pady=(18, 8))
+        self.local_metrics = tk.Label(window, text='Leyendo el mini...', justify='left',
+                                      bg='#030409', fg='#eeeafc', font=('Helvetica', 15))
+        self.local_metrics.pack(anchor='w', padx=22, pady=8)
+        tk.Label(window, text='Nexxus Domus', font=('Helvetica', 22, 'bold'),
+                 bg='#030409', fg='#b6a1ff').pack(anchor='w', padx=22, pady=(16, 8))
+        self.domus_metrics = tk.Label(window, text='Conecta tu cuenta para ver Domus.',
+                                      justify='left', wraplength=610,
+                                      bg='#030409', fg='#eeeafc', font=('Helvetica', 14))
+        self.domus_metrics.pack(anchor='w', padx=22, pady=8)
+        tk.Button(window, text='Actualizar Domus', command=self.refresh_domus).pack(pady=8)
+        tk.Label(window, text='Mini: cada 5 s. Domus: cada minuto. Dispositivos: estado registrado, no telemetria en vivo.',
+                 wraplength=610, bg='#030409', fg='#a9a5ba', font=('Helvetica', 11)).pack(padx=22, pady=12)
+        window.protocol('WM_DELETE_WINDOW', self.close_metrics)
+        self.last_domus = 0
+        self.refresh_metrics()
+
+    def close_metrics(self):
+        if self.metrics_timer is not None:
+            self.root.after_cancel(self.metrics_timer)
+            self.metrics_timer = None
+        self.metrics_window.destroy()
+        self.metrics_window = None
+
+    def metric_job(self, kind, job):
+        if self.metric_jobs.get(kind):
             return
-        path = filedialog.asksaveasfilename(title='Guardar grabacion local',
-                                            defaultextension='.wav', filetypes=[('Audio WAV', '*.wav')])
-        if not path:
+        self.metric_jobs[kind] = True
+        session = self.session_token
+        def run():
+            try:
+                self.metric_events.put((kind, job(), None, session))
+            except Exception:
+                self.metric_events.put((kind, None, 'No disponible. Comprueba tu conexion o vuelve a conectar.', session))
+        thread = threading.Thread(target=run)
+        thread.setDaemon(True)
+        thread.start()
+
+    def refresh_metrics(self):
+        if self.metrics_window is None:
             return
-        # Existing files are never overwritten by the helper.
-        if os.path.exists(path):
-            messagebox.showerror('Microfono', 'Elige un nombre nuevo para la grabacion.')
-            return
-        self.status.configure(text='Grabando 10 segundos. El audio permanece en este Mac.')
-        def capture():
-            proc = subprocess.Popen([helper, path, '10'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            proc.communicate()
+        def local():
+            proc = subprocess.Popen([os.path.join(ROOT, 'system-metrics')],
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            data, unused = proc.communicate()
             if proc.returncode:
-                raise ValueError('No se pudo grabar. Revisa el microfono en Preferencias del Sistema > Sonido.')
-            return path
-        self.work(capture, 'audio')
+                raise ValueError('metrics unavailable')
+            return json.loads(data.decode('utf-8'))
+        self.metric_job('local', local)
+        if time.time() - self.last_domus >= 60:
+            self.refresh_domus()
+        self.metrics_timer = self.root.after(5000, self.refresh_metrics)
+
+    def refresh_domus(self):
+        if self.metrics_window is None:
+            return
+        if not self.session_token:
+            self.domus_metrics.configure(text='Conecta tu cuenta para ver Domus.')
+            return
+        token = self.session_token
+        self.last_domus = time.time()
+        self.metric_job('domus', lambda: transport(self.settings, '/api/mini-ai/metrics', token=token))
+
+    def poll_metrics(self):
+        try:
+            while True:
+                kind, data, error, session = self.metric_events.get_nowait()
+                self.metric_jobs[kind] = False
+                if self.metrics_window is None or (kind == 'domus' and session != self.session_token):
+                    continue
+                label = self.local_metrics if kind == 'local' else self.domus_metrics
+                if error:
+                    label.configure(text=error)
+                elif kind == 'local':
+                    gb = float(1024 ** 3)
+                    label.configure(text=('CPU: %.1f %%\nRAM ocupada: %.2f / %.2f GiB (incluye cache)\n'
+                        'Disco del sistema libre: %.1f / %.1f GiB\nTiempo encendido: %.1f horas') %
+                        (data['cpu_percent'], data['ram_occupied']/gb, data['ram_total']/gb,
+                         data['disk_free']/gb, data['disk_total']/gb, data['uptime_seconds']/3600.0))
+                else:
+                    counts = data.get('domus', {})
+                    def number(name):
+                        value = counts.get(name)
+                        return str(value) if value is not None else 'No disponible'
+                    text = ('Hogares: %s   Habitaciones: %s\nDispositivos registrados: %s\n'
+                            'Marcados conectados: %s   Pendientes: %s   Atencion: %s\nAsistentes registrados: %s') % tuple(
+                        number(k) for k in ('homes','rooms','devices','marked_connected','pending','attention','assistants'))
+                    quota = data.get('nexxus')
+                    if quota is not None:
+                        text += '\nIntentos de chat hoy (UTC): %s / %s. Restantes: %s' % (
+                            quota['attempts_today'],quota['daily_limit'],quota['remaining'])
+                    text += '\nActualizado: ' + time.strftime('%H:%M:%S')
+                    label.configure(text=text)
+        except queue.Empty:
+            pass
 
     def poll(self):
+        self.poll_metrics()
         try:
             kind, value, error = self.events.get_nowait()
         except queue.Empty:
@@ -275,7 +363,6 @@ class Client(object):
         self.busy = False
         self.connect_button.configure(state='normal')
         self.send_button.configure(state=('normal' if self.session_token else 'disabled'))
-        self.mic_button.configure(state='normal')
         if error:
             if kind == 'session':
                 self.connection_label.configure(text='Sin conexion')
@@ -289,14 +376,14 @@ class Client(object):
             self.send_button.configure(state='normal')
             self.entry.focus_set()
             self.status.configure(text='Escribe tu pregunta y pulsa Enviar o Intro.')
+            if self.metrics_window is not None:
+                self.refresh_domus()
         elif kind == 'chat':
             self.messages = self.pending + [{'role': 'assistant', 'content': value}]
             self.append('Tu: ' + self.pending[-1]['content'])
             self.append('Nexxus: ' + value)
             self.entry.delete(0, 'end')
             self.status.configure(text='Respuesta recibida.')
-        else:
-            self.status.configure(text='Audio guardado localmente. Transcripcion automatica pendiente.')
         self.root.after(100, self.poll)
 
 

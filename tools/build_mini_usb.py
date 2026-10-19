@@ -65,8 +65,8 @@ def main():
         subprocess.run(['clang', '-arch', 'x86_64', '-mmacosx-version-min=10.6',
                         '-Wall', '-Wextra', '-Werror', '-Wl,-no_fixup_chains',
                         '-framework', 'AudioToolbox', '-framework', 'CoreFoundation',
-                        str(PROJECT / 'clients/nexxus-mini/record-audio.c'),
-                        '-o', str(root / 'record-audio-intel')], check=True)
+                        str(PROJECT / 'clients/nexxus-mini/system-metrics.c'),
+                        '-o', str(root / 'system-metrics-intel')], check=True)
         subprocess.run([sys.executable, str(DEFINITIONS / 'assemble.py'), str(root)], check=True)
         sources(root, DEFINITIONS)
     finish(root, args.output.resolve(), args.server, args.archive_name, args.email)

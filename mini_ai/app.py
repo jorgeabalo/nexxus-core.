@@ -4,6 +4,8 @@ from mini_ai.api import router
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 app.include_router(router)
+from mini_ai.metrics import router as metrics_router
+app.include_router(metrics_router)
 
 
 @app.middleware('http')

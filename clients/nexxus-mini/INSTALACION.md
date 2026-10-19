@@ -1,7 +1,7 @@
 # Nexxus Mini AI — paquete USB de evaluación
 
 Este paquete prepara la prueba en un **Mac mini Intel Core 2 Duo de 2007 con
-Snow Leopard 10.6.8**. Incluye cliente de texto, transporte TLS y grabación local.
+Snow Leopard 10.6.8**. Incluye cliente de texto, transporte TLS y métricas del equipo.
 No se ha ejecutado todavía en ese equipo físico. La conexión de esta entrega apunta al servicio independiente
 `https://nexxus-mini-ai-production.up.railway.app`, autorizado para tu cuenta.
 
@@ -22,7 +22,7 @@ El ZIP conserva permisos de ejecución. Si el USB o el descompresor los pierde,
 abrir Terminal dentro de la carpeta y ejecutar:
 
 ```sh
-chmod +x Nexxus.command Comprobar.command record-audio transport/curl
+chmod +x Nexxus.command Comprobar.command system-metrics transport/curl
 ```
 
 El archivo `config.json` contiene solo el origen HTTPS real de Railway. Se puede
@@ -75,25 +75,25 @@ Se envían la pregunta y hasta cuatro intercambios anteriores a Railway y Anthro
 «Nueva conversación» borra el contexto. No se escriben conversaciones en disco.
 El servicio independiente no tiene herramientas ni acceso a datos de Claudia.
 
-## Micrófono USB
+## Métricas del mini y Domus
 
-Seleccionar el USB en Preferencias del Sistema → Sonido → Entrada y comprobar
-que se mueve el indicador al hablar. El modelo debe tener compatibilidad con
-10.6.8 documentada o comprobada en ese Mac: «compatible con Mac» no basta.
+Pulsa **Ver metricas**. CPU, RAM ocupada (incluye caché), disco del sistema libre
+y tiempo encendido se actualizan cada cinco segundos y permanecen en el Mac.
+El lector nativo x86_64 usa funciones de Mach y sysctl con objetivo mínimo 10.6.
+Requiere Core 2 Duo; la comprobación física en Snow Leopard sigue pendiente.
+No se incluye grabación de audio ni se accede al micrófono.
 
-El botón «Micrófono: grabar 10 s» pide un nombre nuevo y graba WAV PCM mono de
-16 bits a 16 kHz con Audio Queue Services. Usa la entrada predeterminada y no
-sobrescribe archivos. El archivo queda en el Mac, con permisos de usuario.
-No se envía audio ni se activa grabación de fondo. Al cerrar la ventana durante
-una grabación, el capturador termina cuando se cumplen los diez segundos.
+Domus se consulta cada minuto, o con **Actualizar Domus**, tras iniciar sesión.
+Muestra hogares, habitaciones, dispositivos y asistentes registrados, estados
+**guardados** de conexión y cuota de chat del día UTC. No mide consumo eléctrico,
+temperaturas, ni confirma en vivo que un aparato funcione. Un fallo de lectura
+se muestra como «No disponible», nunca como cero.
 
-Se incluye un capturador **x86_64** construido con objetivo mínimo **10.6** y SDK
-moderno. Solo importa funciones presentes en esa versión; necesita probarse con
-el sistema y dispositivo reales. El transporte curl es i386, ejecutable en 10.6;
-el capturador requiere Core 2 Duo y no está destinado a un Core Duo de 32 bits.
-
-**La transcripción y las respuestas habladas siguen pendientes.** El botón sirve
-para comprobar y guardar audio. Para conversar, por ahora hay que escribir.
+El endpoint nuevo `GET /api/mini-ai/metrics` requiere activar esta versión del
+servicio Mini AI. Hasta autorizar y completar esa actualización, las métricas
+locales funcionan y Domus puede mostrar «No disponible». Lee las tablas Domus
+con tu sesión y la clave pública bajo RLS; las claves privadas quedan en servidor.
+Solo muestra los hogares a los que tu usuario tiene acceso. No crea registros.
 
 ## Reconstrucción en un Mac moderno
 
@@ -116,8 +116,7 @@ una auditoría nueva.
 
 Fuentes: [paquetes oficiales MacPorts](https://packages.macports.org/curl/),
 [compilación de curl](https://curl.se/docs/install.html),
-[verificación de certificados](https://curl.se/docs/sslcerts.html),
-[Audio Queue Services de Apple](https://developer.apple.com/documentation/audiotoolbox/audio-queue-services).
+[verificación de certificados](https://curl.se/docs/sslcerts.html).
 
 ## Pantalla AITA simplificada
 
@@ -126,7 +125,7 @@ El paquete personal lleva únicamente tu correo preparado en config.json: no
 contiene contraseña ni token. Escribe la contraseña y pulsa Conectar o Intro.
 Al conectar, el formulario se oculta y queda el chat con letras más grandes.
 «Volver a conectar» muestra de nuevo el acceso cuando lo necesites.
-«Grabar audio» sigue guardando solo diez segundos localmente.
+«Ver metricas» abre el estado del mini y los contadores de Domus.
 
 La comprobacion visual de esta pantalla sigue pendiente en el Mac mini; el
 entorno de esta sesion no permitio iniciar Tk para una vista previa local.

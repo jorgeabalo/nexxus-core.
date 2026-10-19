@@ -3,10 +3,12 @@ root=pathlib.Path(sys.argv[1]).resolve()
 prefix=root/'ports'; dest=root/'Nexxus-Mini-AI'; dest.mkdir(exist_ok=True)
 transport=dest/'transport';(transport/'lib').mkdir(parents=True,exist_ok=True)
 project=pathlib.Path(__file__).resolve().parents[2]
-for name in ['client.py','diagnose.py','Comprobar.command','Nexxus.command','INSTALACION.md','config.example.json','record-audio.c']:
+for name in ['client.py','diagnose.py','Comprobar.command','Nexxus.command','INSTALACION.md','config.example.json','system-metrics.c']:
  p=project/'clients/nexxus-mini'/name
  shutil.copy2(p,dest/p.name)
-shutil.copy2(root/'record-audio-intel',dest/'record-audio')
+shutil.copy2(root/'system-metrics-intel',dest/'system-metrics')
+for obsolete in ['record-audio','record-audio.c']:
+ if (dest/obsolete).exists():(dest/obsolete).unlink()
 files={};report=[]
 def output(*cmd):return subprocess.check_output(cmd,text=True)
 def deps(path):return [line.strip().split(' (compatibility')[0] for line in output('otool','-L',str(path)).splitlines()[1:] if line.strip()]
@@ -50,5 +52,5 @@ for original,target in files.items():
 ca=prefix/'opt/local/share/curl/curl-ca-bundle.crt'
 if not ca.exists():raise ValueError('CA bundle not found')
 shutil.copyfile(ca,transport/'cacert.pem')
-(dest/'PROVENANCE.json').write_text(json.dumps({'archives':json.loads((root/'ports-lock.json').read_text()),'audit':report,'target_tested':False,'capture':{'architecture':'x86_64','load_commands':output('otool','-l',str(dest/'record-audio')),'imports':output('nm','-u',str(dest/'record-audio'))},'macports_public_key_sha256':__import__('hashlib').sha256((project/'tools/mini_usb/macports-pubkey.pem').read_bytes()).hexdigest()},indent=2)+'\n')
+(dest/'PROVENANCE.json').write_text(json.dumps({'archives':json.loads((root/'ports-lock.json').read_text()),'audit':report,'target_tested':False,'local_metrics':{'architecture':'x86_64','load_commands':output('otool','-l',str(dest/'system-metrics')),'imports':output('nm','-u',str(dest/'system-metrics'))},'macports_public_key_sha256':__import__('hashlib').sha256((project/'tools/mini_usb/macports-pubkey.pem').read_bytes()).hexdigest()},indent=2)+'\n')
 print('Relocated and audited',len(files),'Mach-O files; imported external symbols resolved.')

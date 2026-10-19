@@ -49,9 +49,9 @@ def main():
         except ImportError:
             import tkinter
         print('Tk: disponible')
-        if not os.path.isfile(os.path.join(ROOT, 'record-audio')):
-            raise ValueError('Falta el capturador Intel.')
-        print('Capturador: incluido; la prueba del microfono se hace desde el cliente.')
+        if not os.path.isfile(os.path.join(ROOT, 'system-metrics')):
+            raise ValueError('Falta el lector de metricas Intel.')
+        print('Metricas: lector local incluido; sin acceso al microfono.')
         print('Comprobacion local completada. No se enviaron datos ni se probo el servidor.')
         return 0
     except Exception as exc:

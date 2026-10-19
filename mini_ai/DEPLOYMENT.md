@@ -50,3 +50,15 @@ sin sesión o con cuenta no configurada=401, con la CA del paquete USB.
 Las referencias de claves utilizan el UUID del servicio existente: las
 referencias por nombre con punto final no se resolvían. Ningún valor secreto
 se guardó en el cliente, repositorio o archivos locales.
+
+## Optional Mini / Domus metrics update
+
+The isolated app now registers authenticated `GET /api/mini-ai/metrics`. Deploy
+this commit to the Mini AI service only after authorization. No migration or
+new secret is needed. Domus HEAD counts use the existing anon key and verified
+user JWT under RLS; absent tables or unavailable reads return null. Quota reads
+are restricted to the verified allowlisted UUID. Responses inherit no-store.
+These are registered configuration counts, not live device telemetry. Local
+CPU/RAM/disk/uptime never leave the client. The USB package removes recording.
+Physical Snow Leopard execution and authenticated production metrics remain
+pending verification until the update is authorized and installed.
