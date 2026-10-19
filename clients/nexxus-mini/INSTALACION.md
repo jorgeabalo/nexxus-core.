@@ -126,8 +126,16 @@ entorno de esta sesion no permitio iniciar Tk para una vista previa local.
 El botón Nexxus abre una ventana movible con una nebulosa violeta inspirada en
 el panel Domus, reloj local y calendario del mes. Mantener flotante permite
 verla sobre otras ventanas; Animacion suave permite detener el movimiento.
-La animación dibuja 56 partículas cuatro veces por segundo sin navegador ni GPU.
+La animación reproduce los 620 píxeles del SVG original de Domus a cuatro cuadros
+por segundo, sin navegador. Se adaptan escala, transparencia y halo a Tk; no es
+una reproducción idéntica de los filtros y animaciones CSS del panel web.
 Cierra esa ventana para detener el temporizador. No representa actividad real
-de la IA. La ciudad y el proveedor del calendario personal siguen pendientes
-de confirmar; todavía no hay previsión del tiempo ni eventos personales.
+de la IA. El calendario es mensual, local y sin cuenta; no incluye eventos personales.
+Katy, Texas usa la previsión horaria pública de NWS, en Celsius y Fahrenheit.
+Se consulta al abrir y cada 15 minutos por HTTPS sin credenciales. Si falla o
+no hay una previsión válida para la hora actual, muestra No disponible.
+El estado meteorológico se recibe en inglés de NWS. No es una estación local
+ni una medición de temperatura observada. Solo se envían coordenadas fijas de
+Katy al servicio público, nunca la dirección del hogar ni datos de Domus.
+Fuente: https://www.weather.gov/documentation/services-web-api
 El calendario visible usa la fecha y zona horaria configuradas en el Mac.

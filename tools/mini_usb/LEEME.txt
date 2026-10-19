@@ -11,7 +11,8 @@ en /opt/local, no requiere privilegios de administrador y no modifica el sistema
 
 PRIMERA VERSION SIN CUENTA
 Abre Nexxus.command. No pide usuario ni contrasena. Abre la nebulosa flotante,
-reloj y calendario del mes. Ver metricas muestra CPU, RAM, disco y tiempo encendido.
+reloj, calendario del mes y prevision horaria de Katy, Texas (NWS).
+El tiempo necesita internet y no requiere cuenta. Ver metricas muestra CPU, RAM, disco y tiempo encendido.
 El chat y los datos privados de Domus quedan pendientes de una vinculacion segura
 sin contrasena. Esta entrega no incluye credenciales ni acceso privado automatico.
 

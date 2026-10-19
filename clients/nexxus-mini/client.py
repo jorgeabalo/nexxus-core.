@@ -51,6 +51,7 @@ def transport(settings, path, data=None, token=None):
         'url = ' + curl_quote(settings['server'].rstrip('/') + path),
         ('header = ' + curl_quote('Authorization: Bearer ' + token)) if token else '',
         'header = "Content-Type: application/json"',
+        'header = "User-Agent: Nexxus-Domus-Mini (github.com/jorgeabalo/nexxus-core.)"',
         ('data-binary = ' + curl_quote(payload)) if data is not None else '',
     ])
     # -q must be first: do not load ~/.curlrc. No redirects, proxies or insecure mode.
@@ -63,7 +64,7 @@ def transport(settings, path, data=None, token=None):
     proc = subprocess.Popen([binary, '-q', '--config', '-', '--silent',
                              '--proto', '=https', '--tlsv1.2', '--cacert', ca,
                              '--connect-timeout', '10', '--max-time', '40',
-                             '--max-filesize', '65536', '--noproxy', '*',
+                             '--max-filesize', '262144', '--noproxy', '*',
                              '--write-out', '\n%{http_code}'],
                             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, env=env)
@@ -98,6 +99,34 @@ def login(settings, email, password):
     return token
 
 
+def katy_weather():
+    settings = {'server': 'https://api.weather.gov'}
+    point = transport(settings, '/points/29.7858,-95.8245')
+    url = point['properties']['forecastHourly']
+    parts = urlsplit(url)
+    if parts.scheme != 'https' or parts.netloc != 'api.weather.gov' or not parts.path.startswith('/gridpoints/') or parts.query or parts.fragment:
+        raise ValueError('Unexpected weather endpoint')
+    forecast = transport(settings, parts.path)
+    periods = forecast['properties']['periods']
+    # Choose the current hour; never silently display an expired forecast.
+    now = time.time()
+    for period in periods:
+        def timestamp(value):
+            base = calendar.timegm(time.strptime(value[:19], '%Y-%m-%dT%H:%M:%S'))
+            offset = (int(value[20:22])*60 + int(value[23:25]))*60
+            return base - offset if value[19] == '+' else base + offset
+        if timestamp(period['startTime']) <= now < timestamp(period['endTime']):
+            temp = float(period['temperature'])
+            if period['temperatureUnit'] == 'F':
+                celsius, fahrenheit = (temp-32)*5/9.0, temp
+            elif period['temperatureUnit'] == 'C':
+                celsius, fahrenheit = temp, temp*9/5.0+32
+            else:
+                raise ValueError('Unknown temperature unit')
+            return 'Katy, Texas: %.0f C / %.0f F\nPrevision de esta hora (NWS)\n%s' % (celsius, fahrenheit, period['shortForecast'])
+    raise ValueError('No current forecast')
+
+
 class Client(object):
     def __init__(self, root, settings):
         self.root, self.settings = root, settings
@@ -108,6 +137,11 @@ class Client(object):
         self.metric_events = queue.Queue()
         self.metric_jobs = {}
         self.last_domus = 0
+        self.weather_events = queue.Queue()
+        self.weather_busy = False
+        self.last_weather = 0
+        with open(os.path.join(ROOT, 'nebula.json'), 'rb') as handle:
+            self.nebula_pixels = json.loads(handle.read().decode('utf-8'))['pixels']
         bg, panel, ink, muted = '#030409', '#161422', '#eeeafc', '#b6a1ff'
         root.title('AITA - Nexxus Mini AI')
         root.geometry('720x680')
@@ -209,10 +243,28 @@ class Client(object):
         self.companion_calendar = tk.Label(window, bg='#030409', fg='#eeeafc',
                                            font=('Courier', 13), justify='left')
         self.companion_calendar.pack(pady=6)
-        tk.Label(window, text='Tiempo: ciudad pendiente de configurar.\nCitas personales: calendario pendiente de conectar.',
-                 bg='#030409', fg='#a9a5ba', font=('Helvetica', 11), wraplength=330).pack(pady=8)
+        self.weather_label = tk.Label(window, text='Katy, Texas: consultando el tiempo...',
+                 bg='#030409', fg='#a9a5ba', font=('Helvetica', 11), wraplength=330)
+        self.weather_label.pack(pady=8)
+        self.refresh_weather()
         window.protocol('WM_DELETE_WINDOW', self.close_companion)
         self.animate_companion()
+
+    def refresh_weather(self):
+        if self.weather_busy:
+            return
+        self.weather_busy = True
+        self.last_weather = time.time()
+        def run():
+            try:
+                result = katy_weather()
+            except Exception:
+                result = 'Katy, Texas: tiempo no disponible.\nSe reintentara en 15 minutos.'
+            self.weather_events.put(result)
+            self.weather_busy = False
+        thread = threading.Thread(target=run)
+        thread.setDaemon(True)
+        thread.start()
 
     def close_companion(self):
         if self.companion_timer is not None:
@@ -230,17 +282,22 @@ class Client(object):
         canvas = self.nebula_canvas
         canvas.delete('all')
         phase = self.companion_frame / 12.0 if self.companion_motion.get() else 0
-        # Small fixed particle count, no GPU, transparency, browser or images required.
-        colors = ['#392653', '#554480', '#8753cb', '#b693ee', '#e0d2fb']
-        for i in range(56):
-            angle = i * 2.39996
-            radius = 12 + (i % 19) * 3.8
-            x = 165 + math.cos(angle + phase * .07) * radius * 1.7
-            y = 89 + math.sin(angle + phase * .07) * radius * .65 + math.sin(phase) * 7
-            size = 2 + (i % 3)
-            canvas.create_rectangle(x-size, y-size, x+size, y+size,
-                                    fill=colors[i % len(colors)], outline='')
+        # Original Domus pixel coordinates/colors, alpha blended onto the Tk background.
+        scale = .70 * (1 + .025 * math.sin(phase))
+        for px, py, width, height, color, opacity in self.nebula_pixels:
+            x, y = 165 + (px-220)*scale, 89 + (py-170)*scale + math.sin(phase)*5
+            bg = (3,4,9)
+            rgb = [int(color[i:i+2],16) for i in (1,3,5)]
+            fill = '#%02x%02x%02x' % tuple(int(rgb[i]*opacity+bg[i]*(1-opacity)) for i in range(3))
+            canvas.create_rectangle(x,y,x+width*scale,y+height*scale,fill=fill,outline='')
         canvas.create_text(165, 170, text='N E X X U S', fill='#e0d2fb', font=('Helvetica', 13))
+        try:
+            while True:
+                self.weather_label.configure(text=self.weather_events.get_nowait())
+        except queue.Empty:
+            pass
+        if time.time() - self.last_weather >= 900:
+            self.refresh_weather()
         self.companion_frame += 1
         self.companion_timer = self.root.after(250 if self.companion_motion.get() else 1000,
                                                self.animate_companion)
@@ -337,6 +394,11 @@ class Client(object):
                  wraplength=610, bg='#030409', fg='#a9a5ba', font=('Helvetica', 11)).pack(padx=22, pady=12)
         window.protocol('WM_DELETE_WINDOW', self.close_metrics)
         self.last_domus = 0
+        self.weather_events = queue.Queue()
+        self.weather_busy = False
+        self.last_weather = 0
+        with open(os.path.join(ROOT, 'nebula.json'), 'rb') as handle:
+            self.nebula_pixels = json.loads(handle.read().decode('utf-8'))['pixels']
         self.refresh_metrics()
 
     def close_metrics(self):

@@ -155,3 +155,38 @@ def test_metrics_transport_is_authenticated_get(monkeypatch):
     assert 'data-binary' not in config
     assert 'Authorization: Bearer session' in config
     assert '/api/mini-ai/metrics' in config
+
+
+def test_katy_weather_is_public_and_current(monkeypatch):
+    import time
+    stamp = time.time()
+    def iso(t):
+        return time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime(t)) + '+00:00'
+    calls = []
+    def fetch(settings, path, data=None, token=None):
+        calls.append((settings, path, token))
+        if path.startswith('/points/'):
+            return {'properties': {'forecastHourly': 'https://api.weather.gov/gridpoints/HGX/1,1/forecast/hourly'}}
+        return {'properties': {'periods': [{'startTime': iso(stamp-100), 'endTime': iso(stamp+3500),
+                   'temperature': 77, 'temperatureUnit': 'F', 'shortForecast': 'Sunny'}]}}
+    monkeypatch.setattr(client, 'transport', fetch)
+    assert '25 C / 77 F' in client.katy_weather()
+    assert all(token is None for _, _, token in calls)
+    assert calls[0][1] == '/points/29.7858,-95.8245'
+
+
+def test_weather_rejects_external_forecast_url(monkeypatch):
+    monkeypatch.setattr(client, 'transport', lambda *a: {'properties': {'forecastHourly': 'https://evil.test/gridpoints/x'}})
+    with pytest.raises(ValueError, match='Unexpected'):
+        client.katy_weather()
+
+
+def test_original_domus_nebula_matches_client_asset():
+    import xml.etree.ElementTree as ET
+    root = Path(__file__).parents[2]
+    text = (root / 'domus/panel/index.html').read_text()
+    start = text.index('<svg class="nebula"')
+    svg = ET.fromstring(text[start:text.index('</svg>', start)+6])
+    expected = [[float(e.get(k)) for k in ('x','y','width','height')] + [e.get('fill'),float(e.get('opacity','1'))]
+                for e in svg.iter('rect') if 'x' in e.attrib]
+    assert json.loads((root / 'clients/nexxus-mini/nebula.json').read_text())['pixels'] == expected

@@ -3,7 +3,7 @@ root=pathlib.Path(sys.argv[1]).resolve()
 prefix=root/'ports'; dest=root/'Nexxus-Mini-AI'; dest.mkdir(exist_ok=True)
 transport=dest/'transport';(transport/'lib').mkdir(parents=True,exist_ok=True)
 project=pathlib.Path(__file__).resolve().parents[2]
-for name in ['client.py','diagnose.py','Comprobar.command','Nexxus.command','INSTALACION.md','config.example.json','system-metrics.c']:
+for name in ['client.py','diagnose.py','Comprobar.command','Nexxus.command','INSTALACION.md','config.example.json','system-metrics.c','nebula.json']:
  p=project/'clients/nexxus-mini'/name
  shutil.copy2(p,dest/p.name)
 shutil.copy2(root/'system-metrics-intel',dest/'system-metrics')
