@@ -78,8 +78,9 @@ def test_not_configured(monkeypatch):
 def test_marketing_assets_served():
     c = TestClient(main.app)
     for name in ("marketing.js", "marketing-forms.js", "marketing-i18n.js", "marketing-state.js", "marketing-library.js",
-                 "marketing-studio.js", "marketing-studio-i18n.js", "marketing-studio-state.js"):
+                 "marketing-planner.js", "marketing-planner-i18n.js", "marketing-studio-i18n.js", "marketing-studio-state.js"):
         assert c.get(f"/manager/assets/js/modules/{name}").status_code == 200, name
+    assert c.get("/manager/assets/js/modules/marketing-studio.js").status_code == 404      # Estudio retirado
 
 
 def test_no_provider_secrets_or_brand_hardcoded_in_frontend():
@@ -98,9 +99,8 @@ def test_manager_assets_hide_aita_internal_budget_and_routing():
 
 
 def test_marketing_studio_assets_hide_provider_and_model_details():
-    paths = [ROOT / "manager/assets/js/modules/marketing-studio.js",
-             ROOT / "manager/assets/js/modules/marketing-studio-state.js",
-             ROOT / "manager/assets/js/modules/marketing-studio-i18n.js"]
+    paths = sorted((ROOT / "manager/assets/js/modules").glob("marketing*.js"))
+    assert len(paths) >= 10
     served = "\n".join(p.read_text(errors="ignore") for p in paths).lower()
     for phrase in ("demo_mode", "proveedor", "provider", "modelo", "model", "precio unitario", "unit price",
                    "cost category", "categoría del costo"):
@@ -108,9 +108,21 @@ def test_marketing_studio_assets_hide_provider_and_model_details():
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="Node.js no disponible")
+def test_every_manager_script_parses_as_an_es_module():
+    """El navegador carga los scripts como módulos ES: una llave de más rompe todo el panel."""
+    files = sorted((ROOT / "manager/assets/js").rglob("*.js"))
+    assert len(files) > 10
+    for f in files:
+        r = subprocess.run(["node", "--input-type=module", "--check"], stdin=f.open("rb"), capture_output=True, timeout=30)
+        assert r.returncode == 0, (f.relative_to(ROOT), r.stderr.decode()[-400:])
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="Node.js no disponible")
 def test_marketing_js():
     r = subprocess.run(["node", "--test", str(ROOT / "tests/js/marketing.test.mjs"),
-                        str(ROOT / "tests/js/marketing-studio.test.mjs")], capture_output=True, text=True, timeout=60)
+                        str(ROOT / "tests/js/marketing-studio.test.mjs"), str(ROOT / "tests/js/marketing-plan.test.mjs"),
+                        str(ROOT / "tests/js/marketing-autopilot.test.mjs")],
+                       capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
 
 
@@ -169,3 +181,19 @@ def test_marketing_worker_finalize_sql():
     r = subprocess.run(["node", str(ROOT / "tests/sql/marketing_worker_finalize.mjs")], capture_output=True, text=True,
                        timeout=180, env={**os.environ, "NODE_PATH": os.environ["PGLITE_NODE_PATH"]})
     assert r.returncode == 0 and "ALL MARKETING WORKER FINALIZE SQL TESTS PASSED" in r.stdout, r.stdout[-2000:] + r.stderr[-2000:]
+
+
+@pytest.mark.skipif(not (shutil.which("node") and os.getenv("PGLITE_NODE_PATH")),
+                    reason="PGlite no disponible (PGLITE_NODE_PATH=/ruta/node_modules)")
+def test_marketing_publication_addons_sql():
+    r = subprocess.run(["node", str(ROOT / "tests/sql/marketing_publication_addons.mjs")], capture_output=True, text=True,
+                       timeout=180, env={**os.environ, "NODE_PATH": os.environ["PGLITE_NODE_PATH"]})
+    assert r.returncode == 0 and "ALL MARKETING PUBLICATION ADDON SQL TESTS PASSED" in r.stdout, r.stdout[-2000:] + r.stderr[-2000:]
+
+
+@pytest.mark.skipif(not (shutil.which("node") and os.getenv("PGLITE_NODE_PATH")),
+                    reason="PGlite no disponible (PGLITE_NODE_PATH=/ruta/node_modules)")
+def test_marketing_autopilot_sql():
+    r = subprocess.run(["node", str(ROOT / "tests/sql/marketing_autopilot.mjs")], capture_output=True, text=True,
+                       timeout=180, env={**os.environ, "NODE_PATH": os.environ["PGLITE_NODE_PATH"]})
+    assert r.returncode == 0 and "ALL MARKETING AUTOPILOT SQL TESTS PASSED" in r.stdout, r.stdout[-2000:] + r.stderr[-2000:]

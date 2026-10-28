@@ -1,12 +1,12 @@
 // Formularios del módulo AITA Marketing: contenido, detalle con aprobación,
 // campañas y Brand Kit. Todo se guarda a través del backend, que valida rol,
 // tenant y reglas de estado.
-import { el, clear, openModal, field, input, select, toast, badge, fmtDateTime, loading, tz } from '../ui.js';
-import { errorNotice } from './marketing-ui.js';
+import { el, clear, openModal, field, input, select, toast, badge, loading, tz } from '../ui.js';
+import { errorNotice, when } from './marketing-ui.js';
 import { api } from '../api.js';
 import { tr } from '../i18n.js';
 import { t, errText } from './marketing-i18n.js';
-import { FORMATS, CHANNELS, LANGUAGES, EDITABLE, brandSwatches, localInput } from './marketing-state.js';
+import { FORMATS, CHANNELS, LANGUAGES, EDITABLE, brandSwatches, localInput, shownStatus } from './marketing-state.js';
 
 const M = api.marketing;
 
@@ -28,7 +28,14 @@ function checks(options, selected, labelOf) {
 }
 export const channelLabel = (c) => ({ x: 'X', google_business: 'Google Business', tiktok: 'TikTok', linkedin: 'LinkedIn', youtube: 'YouTube' }[c]
   || c.charAt(0).toUpperCase() + c.slice(1));
-export const statusBadge = (s) => el('span', { class: `badge mk-s-${s}` }, t(`s_${s}`));
+// Siempre el estado comercial (Borrador, Preparando, Listo para revisar, …), nunca el interno.
+export const statusBadge = (s) => { const v = shownStatus(s); return el('span', { class: `badge mk-s-${v}` }, t(`s_${v}`)); };
+const progressBar = (pct) => {
+  const fill = el('span');
+  fill.style.width = `${Math.max(0, Math.min(100, Number(pct) || 0))}%`;
+  return el('div', { class: 'mk-meter', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100',
+    'aria-valuenow': String(Number(pct) || 0), 'aria-label': t('preparingNote') }, fill);
+};
 
 // ---------- crear / editar contenido ----------
 export function contentModal(ctx, { existing = null, campaigns = [], defaults = {} }, reload) {
@@ -92,31 +99,41 @@ export async function contentDetail(ctx, id, { campaigns = [], reload }) {
   const when = input({ type: 'datetime-local', value: localInput(c.planned_at, tz()) });
   const err = el('p', { class: 'form-error', role: 'alert' });
 
+  // Desde «Listo para revisar», volver a borrador es «Solicitar cambios»: igual que rechazar, exige comentario.
+  const asksChanges = (to) => to === 'draft' && c.status === 'review';
   const act = async (to) => {
     err.textContent = '';
-    if (to === 'rejected' && !comment.value.trim()) { err.textContent = t('commentReq'); return; }
+    if ((to === 'rejected' || asksChanges(to)) && !comment.value.trim()) { err.textContent = t('commentReq'); return; }
     try {
       await M.transition(ctx.tenantId, c.id, to, { comment: comment.value.trim(), scheduledAt: to === 'scheduled' ? when.value : null });
     } catch (ex) { err.textContent = errText(ex); return; }
     toast(t('saved')); close(); reload();
   };
   const label = (to) => (c.status === 'scheduled' && to === 'approved' ? t('a_unschedule')
-    : c.status === 'archived' && to === 'draft' ? t('a_restore') : t(`a_${to}`));
+    : c.status === 'archived' && to === 'draft' ? t('a_restore') : asksChanges(to) ? t('a_changes') : t(`a_${to}`));
+  const retry = el('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: async (e) => {
+    e.target.disabled = true; err.textContent = '';
+    try { await M.retryContent(ctx.tenantId, c.id); } catch (ex) { err.textContent = errText(ex); e.target.disabled = false; return; }
+    toast(t('saved')); close(); reload();
+  } }, t('a_retry'));
   const buttons = data.allowed.map(to => el('button', {
     type: 'button', onclick: () => act(to),
     class: `btn btn-sm${to === 'approved' && c.status !== 'scheduled' ? ' btn-primary' : ''}${to === 'rejected' ? ' btn-danger' : ''}${to === 'scheduled' ? ' btn-accent' : ''}`,
   }, label(to)));
 
   clear(body).appendChild(el('div', { class: 'mk-detail' },
-    el('div', { class: 'mk-detail-head' }, el('h3', {}, c.title), statusBadge(c.status),
+    el('div', { class: 'mk-detail-head' }, el('h3', {}, c.title), statusBadge(c.display_status || c.status),
       EDITABLE.includes(c.status)
         ? el('button', { class: 'btn btn-sm', type: 'button', onclick: () => { close(); contentModal(ctx, { existing: c, campaigns }, reload); } }, t('edit'))
         : null),
+    c.display_status === 'preparing' ? el('div', { class: 'mk-usage' }, el('p', { class: 'hint' }, t('preparingNote')), progressBar(c.progress)) : null,
+    data.can_retry ? el('div', { class: 'mk-actions' }, el('p', { class: 'error-box', role: 'status' }, t('couldNotPrepare')),
+      el('div', { class: 'btn-row' }, retry), data.allowed.length ? null : err) : null,
     el('div', { class: 'mk-rows' },
       row(t('format'), t(`f_${c.format}`)), row(t('channels'), (c.channels || []).map(channelLabel).join(', ')),
       row(t('language'), t(`l_${c.language}`)), row(t('campaign'), camp ? camp.name : null),
-      row(t('planned'), c.planned_at ? fmtDateTime(c.planned_at) : null),
-      row(t('k_scheduled'), c.scheduled_at ? fmtDateTime(c.scheduled_at) : null),
+      row(t('planned'), c.planned_at ? when(c.planned_at) : null),
+      row(t('k_scheduled'), c.scheduled_at ? when(c.scheduled_at) : null),
       row(t('objective'), c.objective), row(t('topic'), c.topic),
       row(t('caption'), c.caption), row(t('script'), c.script), row(t('cta'), c.cta),
       row(t('hashtags'), (c.hashtags || []).join(' ')), row(t('notes'), c.notes)),
@@ -126,13 +143,13 @@ export async function contentDetail(ctx, id, { campaigns = [], reload }) {
       el('div', { class: 'btn-row' }, buttons), err) : null,
     el('h4', {}, t('history')),
     el('ol', { class: 'mk-history' }, data.history.map(h => el('li', {},
-      el('strong', {}, t(`ev_${h.action}`)), ' · ', fmtDateTime(h.created_at), ' · ',
-      h.actor_id === ctx.user.id ? t('you') : tr(`role_${h.actor_role}`),
-      h.from_status ? el('span', { class: 'muted' }, ` (${t(`s_${h.from_status}`)} → ${t(`s_${h.to_status}`)})`) : null,
+      el('strong', {}, t(`ev_${h.action}`)), ' · ', when(h.created_at), ' · ',
+      h.actor_role === 'system' ? t('bySystem') : h.actor_id === ctx.user.id ? t('you') : tr(`role_${h.actor_role}`),
+      h.from_status ? el('span', { class: 'muted' }, ` (${t(`s_${shownStatus(h.from_status)}`)} → ${t(`s_${shownStatus(h.to_status)}`)})`) : null,
       h.comment ? el('div', { class: 'mk-comment' }, `“${h.comment}”`) : null))),
     data.publications.length ? el('div', {}, el('h4', {}, t('publications')),
       el('ul', { class: 'mk-history' }, data.publications.map(p => el('li', {},
-        channelLabel(p.channel), ' · ', badge(p.status, t(`p_${p.status}`)), p.scheduled_at ? ` · ${fmtDateTime(p.scheduled_at)}` : '')))) : null));
+        channelLabel(p.channel), ' · ', badge(p.status, t(`p_${p.status}`)), p.scheduled_at ? ` · ${when(p.scheduled_at)}` : '')))) : null));
 }
 
 // ---------- campañas ----------

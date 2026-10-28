@@ -1,5 +1,7 @@
 """
-Rutas HTTP de la Fase 2 de AITA Marketing: Biblioteca, Estudio de Reels y trabajos de generación.
+Rutas HTTP de la Fase 2 de AITA Marketing: Biblioteca (archivos temporales, privacidad y reproducción).
+La preparación con IA no tiene rutas propias: se pide desde Contenido → Planear contenido
+(services/marketing_routes.py), que devuelve solo estados comerciales.
 Mismo patrón que services/marketing_routes.py: JWT de Supabase + tenant_id; la puerta de Marketing,
 el rol owner/manager y el tenant se comprueban en el servicio. Errores = solo un código.
 """
@@ -14,7 +16,6 @@ from starlette.concurrency import run_in_threadpool
 from services.marketing_domain import DomainError
 from services.marketing_library import LibraryService
 from services.marketing_media_stream import COOKIE, MediaStreamService, check_cookie_config, cookie_secure, stream_path
-from services.marketing_studio import StudioService, public_job
 from services.member_portal import PortalError
 
 logger = logging.getLogger(__name__)
@@ -33,9 +34,6 @@ def build_router(get_db: Callable) -> APIRouter:
 
     def lib() -> LibraryService:
         return LibraryService(_db())
-
-    def studio() -> StudioService:
-        return StudioService(_db())
 
     def streamer() -> MediaStreamService:
         return MediaStreamService(_db())
@@ -185,51 +183,5 @@ def build_router(get_db: Callable) -> APIRouter:
         b = await body(request)
         return await call(lambda: lib().review_derivative(bearer(request), tid(b), derivative_id,
                                                           b.get("approve") is True, b.get("confirm_reviewed") is True))
-
-    # ---------- Estudio de Reels ----------
-    @r.get(f"{P}/studio")
-    async def overview(request: Request, tenant_id: str = ""):
-        return await call(lambda: studio().overview(bearer(request), tenant_id))
-
-    @r.post(f"{P}/studio/mix-preview")
-    async def mix_preview(request: Request):
-        b = await body(request)
-        return await call(lambda: studio().preview_mix(bearer(request), tid(b), b))
-
-    @r.get(f"{P}/jobs")
-    async def jobs(request: Request, tenant_id: str = ""):
-        res = await call(lambda: studio().jobs(bearer(request), tenant_id))
-        return {"items": [public_job(j) for j in res["items"]]} if isinstance(res, dict) else res
-
-    @r.post(f"{P}/jobs")
-    async def create_job(request: Request):
-        b = await body(request)
-        res = await call(lambda: studio().create_job(bearer(request), tid(b), b))
-        return public_job(res) if isinstance(res, dict) else res
-
-    @r.get(f"{P}/jobs/{{job_id}}")
-    async def job(request: Request, job_id: str, tenant_id: str = ""):
-        res = await call(lambda: studio().job(bearer(request), tenant_id, job_id))
-        if not isinstance(res, dict):
-            return res
-        res.pop("usage", None)
-        return public_job(res)
-
-    @r.post(f"{P}/jobs/{{job_id}}/{{action}}")
-    async def job_action(request: Request, job_id: str, action: str):
-        b = await body(request)
-        t, jw = tid(b), bearer(request)
-        actions = {
-            "estimate": lambda s: s.estimate_job(jw, t, job_id),
-            "approve": lambda s: s.approve_job(jw, t, job_id, b.get("confirm") is True),
-            "reopen": lambda s: s.reopen_job(jw, t, job_id),
-            "cancel": lambda s: s.cancel_job(jw, t, job_id),
-            "process": lambda s: s.process_job(jw, t, job_id),
-            "send-to-approval": lambda s: s.send_to_approval(jw, t, job_id, str(b.get("title") or "")),
-        }
-        if action not in actions:
-            return JSONResponse({"error": "not_found"}, status_code=404)
-        res = await call(lambda: actions[action](studio()))
-        return public_job(res) if isinstance(res, dict) and "status" in res else res
 
     return r

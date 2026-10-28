@@ -18,7 +18,9 @@ from services.marketing_jobs_domain import PRODUCTION_PRIORITY
 from services.marketing_mix import plan_scenes
 from services.marketing_storage import estimated_output_bytes
 
-OBJECTIVES = ("new_members", "class_promo", "event", "offer", "brand", "education")
+# Objetivos orientados a resultados (los que ofrece la interfaz). Los anteriores se aceptan para trabajos existentes.
+OBJECTIVES = ("calls", "messages", "trial_visit", "memberships", "reactivation", "reviews")
+LEGACY_OBJECTIVES = ("new_members", "class_promo", "event", "offer", "brand", "education")
 AUDIENCES = ("general", "seniors_60_plus", "beginners", "athletes", "parents", "custom")
 STYLES = ("energetic", "calm", "professional", "cinematic", "educational")
 DURATIONS = (15, 30, 45, 60)
@@ -40,7 +42,7 @@ def _text(v: Any, n: int) -> str:
 
 
 def validate_brief(b: Dict[str, Any]) -> Dict[str, Any]:
-    if b.get("objective") not in OBJECTIVES:
+    if b.get("objective") not in OBJECTIVES + LEGACY_OBJECTIVES:
         raise DomainError("invalid_objective", 400)
     if b.get("audience") not in AUDIENCES:
         raise DomainError("invalid_audience", 400)

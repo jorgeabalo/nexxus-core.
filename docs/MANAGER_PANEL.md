@@ -359,14 +359,16 @@ se usa por referencia (misma validación que `safeLogoUrl`); el Brand Kit solo g
 -- Activar Marketing para un tenant con su plan (ejemplo: 8 publicaciones al mes)
 update public.marketing_settings
    set marketing_enabled = true, approval_required = true, plan_code = 'starter',
-       monthly_post_limit = 8, monthly_image_limit = null, monthly_reel_limit = 4,
+       monthly_post_limit = 8, monthly_image_limit = null, monthly_reel_limit = null,
        connected_channel_limit = 1, competitor_limit = 3
  where tenant_id = (select id from public.tenants where slug = 'TENANT_SLUG');
 -- y que aparezca en el menú si el tenant lo tenía apagado
 update public.tenants set modules = jsonb_set(modules, '{marketing}', 'true') where slug = 'TENANT_SLUG';
 ```
-`null` = sin límite; `0` = nada permitido. Cuentan las piezas `scheduled/publishing/published` del mes
-(zona horaria del tenant): imágenes = image + carousel; reels = reel + video.
+El tenant ve una sola cuota: cada pieza `scheduled/publishing/published` del mes cuenta como una publicación,
+sin importar si usa la Biblioteca o se genera completamente con IA. Las ampliaciones mensuales disponibles son
++1 por USD 6, +4 por USD 20 y +8 por USD 35; el panel combina los bloques para llegar al total exacto solicitado.
+La autorización queda registrada para facturación, pero este código todavía no ejecuta el cobro.
 
 Pruebas: `tests/test_marketing.py`, `tests/test_marketing_http.py`, `node --test tests/js/marketing.test.mjs`
 y `NODE_PATH=… node tests/sql/marketing.mjs` (RLS y triggers en PGlite).
