@@ -58,7 +58,7 @@ def test_not_estimable(bad):
 
 
 @pytest.mark.parametrize("avail,limit,level", [(20, 20, None), (5, 20, "low"), (2, 20, "critical"), (0, 20, "exhausted"),
-                                               (0, 0, "not_enabled"), (0, None, None)])
+                                               (0, 0, "not_enabled"), (0, None, "not_enabled")])
 def test_warning_levels(avail, limit, level):
     assert jd.warning_level(avail, limit) == level
 
@@ -85,7 +85,7 @@ def test_mock_jobs_cost_nothing_and_use_no_network(lib, studio, db, monkeypatch)
         j = approved_job(studio)
         studio.process_job(jwt(OWNER), T1, j["id"])
     b = studio.overview(jwt(OWNER), T1)["budget"]
-    assert b["consumed"] == 0 and b["reserved"] == 0 and b["available"] == 20 and b["warning"] is None
+    assert b["used"] == 0 and b["reserved"] == 0 and b["available"] == 20 and b["warning"] is None
 
 
 def test_cost_not_estimable_never_runs(lib, studio, db):
@@ -189,12 +189,16 @@ def test_http_never_exposes_internal_costs_or_providers(monkeypatch, db):
              c.get(f"/api/manager/marketing/jobs?tenant_id={T1}", headers=H).text,
              c.get(f"/api/manager/marketing/studio?tenant_id={T1}", headers=H).text]
     for t in texts:
-        for leak in ("mock-media-v1", "selected_provider", "provider_job_id", "price_source", "billing_unit", "model_id"):
+        for leak in ("mock-media-v1", "selected_provider", "selected_model", "provider_job_id", "price_source",
+                     "billing_unit", "model_id", "omniroute", "catalog_version", "production_methods", "subtasks",
+                     "unit_price", "margin", "global_budget", "global_aita_budget"):
             assert leak not in t, leak
     job = c.get(f"/api/manager/marketing/jobs/{jid}?tenant_id={T1}", headers=H).json()
-    assert job["cost"]["category"] == "marketing_ai_budget"
-    assert set(job["cost"]) == {"category", "currency", "estimated", "reserved", "actual"}
+    assert set(job["cost"]) == {"currency", "estimated", "reserved", "actual"}
     assert job["cost"]["reserved"] == 0 and job["cost"]["actual"] == 0
+    assert all(set(e) <= {"id", "action", "from_status", "to_status", "actor_role", "created_at"}
+               for e in job["events"])
+    assert all("storage_path" not in o and "metadata" not in o and "worker_id" not in o for o in job["outputs"])
     ov = c.get(f"/api/manager/marketing/studio?tenant_id={T1}", headers=H).json()
-    assert set(ov["budget"]) == {"scope", "limit", "consumed", "reserved", "available", "currency", "warning", "available_pct"}
-    assert ov["budget"]["scope"] == "marketing_ai_budget"                      # NO es el presupuesto global
+    assert set(ov["budget"]) == {"enabled", "currency", "assigned", "used", "reserved", "available", "warning", "available_pct"}
+    assert "providers" not in ov and "catalog" not in ov and "demo_mode" not in ov

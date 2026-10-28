@@ -37,29 +37,36 @@ JOB_COLS = ("id,tenant_id,content_id,created_by,task_type,status,real_media_perc
             "result_metadata,error_code,created_at,updated_at,approved_at,completed_at")
 
 
-COST_CATEGORY = "marketing_ai_budget"      # solo el presupuesto de IA de Marketing, NO el global de 80 USD del tenant
+INTERNAL_JOB_KEYS = ("selected_provider", "selected_model", "provider_job_id", "router_strategy", "usage",
+                     "lease_owner", "lease_expires_at", "heartbeat_at")
 
 
 def public_job(j: Dict[str, Any]) -> Dict[str, Any]:
-    """Lo que ve el manager: costo estimado, reservado y real y la categoría del costo. Proveedor, modelo,
-    costos unitarios y fuentes de precio son información interna y no se devuelven."""
+    """Contrato público: costo agregado y resultado funcional, sin datos internos de ejecución."""
     if not isinstance(j, dict):
         return j
-    out = {k: v for k, v in j.items() if k not in ("selected_provider", "selected_model", "provider_job_id")}
-    out["cost"] = {"category": COST_CATEGORY, "currency": j.get("currency") or "USD",
-                   "estimated": j.get("estimated_cost"), "reserved": j.get("reserved_cost"), "actual": j.get("actual_cost")}
+    out = {k: v for k, v in j.items() if k not in INTERNAL_JOB_KEYS}
+    out["cost"] = {"currency": j.get("currency") or "USD", "estimated": j.get("estimated_cost"),
+                   "reserved": j.get("reserved_cost"), "actual": j.get("actual_cost")}
     meta = dict(out.get("request_metadata") or {})
     est = meta.get("estimate")
     if isinstance(est, dict):
         meta["estimate"] = {"estimated_cost": est.get("estimated_cost"), "currency": est.get("currency"),
                             "plan": est.get("plan"), "full_ai": est.get("full_ai"),
-                            "production_methods": est.get("production_methods"),
-                            "catalog_version": est.get("catalog_version"),
-                            "generated_video_seconds": est.get("generated_video_seconds"),
-                            "subtasks": [{"task_type": t.get("task_type"), "external": t.get("external"),
-                                          "privacy_class": t.get("privacy_class"), "units": t.get("units")}
-                                         for t in est.get("subtasks") or []]}
+                            "generated_images": est.get("generated_images"),
+                            "generated_video_seconds": est.get("generated_video_seconds")}
     out["request_metadata"] = meta
+    result = out.get("result_metadata")
+    out["result_metadata"] = {"mock": result.get("mock") is True} if isinstance(result, dict) else {}
+    if isinstance(out.get("events"), list):
+        out["events"] = [{k: event.get(k) for k in
+                          ("id", "action", "from_status", "to_status", "actor_role", "created_at")}
+                         for event in out["events"]]
+    if isinstance(out.get("outputs"), list):
+        out["outputs"] = [{k: item.get(k) for k in
+                           ("id", "kind", "scene_index", "origin", "duration_ms", "mime_type",
+                            "review_status", "created_at")}
+                          for item in out["outputs"]]
     return out
 
 
@@ -123,13 +130,13 @@ class StudioService(StudioBase):
                                                    "limit": "1000"}) or []
         usable = sum(1 for m in media if pv.usable_media(m) is None and pv.original_class(m) in pv.EXTERNAL_OK)
         usage = self._gen_usage(c)
+        enabled = jd.generation_enabled(c.settings)
+        budget = jd.budget_summary(c.settings.get("monthly_ai_cost_limit"), usage, enabled)
         return {"limits": {k: c.settings.get(k) for k in ("ai_generation_enabled", *jd.GEN_LIMIT_KEYS)},
-                "budget": jd.budget_summary(c.settings.get("monthly_ai_cost_limit"), usage),
-                "generation_enabled": jd.generation_enabled(c.settings),
+                "budget": budget,
+                "generation_enabled": enabled,
                 "usage": usage, "suggestion": suggest_mix(len(media), usable),
-                "catalog": {"catalog_version": self.router.catalog.version}, "presets": [list(p) for p in ((100, 0), (75, 25), (50, 50),
-                                                                                      (25, 75), (0, 100))],
-                "providers": {"omniroute_enabled": bool(self.adapters["omniroute"].enabled()), "mock": True}}
+                "presets": [list(p) for p in ((100, 0), (75, 25), (50, 50), (25, 75), (0, 100))]}
 
     def preview_mix(self, jwt: str, tenant_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
         self.ctx(jwt, tenant_id)
@@ -239,9 +246,11 @@ class StudioService(StudioBase):
         j = self._job(c, job_id)
         if j["status"] != "awaiting_generation_approval":
             raise PortalError("invalid_transition", 409)
-        why = recheck_inputs(self.db, c.tenant_id, j["id"])
+        if jd.ai_budget(c.settings) <= 0:
+            raise PortalError("generation_disabled", 403)             # presupuesto 0 o desconocido: cerrado
+        why = recheck_inputs(self.db, c.tenant_id, j["id"], c.now)
         if why:
-            raise PortalError(why, 409)                      # p. ej. consentimiento retirado después de crear
+            raise PortalError(why, 410 if why == "media_expired" else 409)   # p. ej. consentimiento retirado
         est = (j["request_metadata"] or {}).get("estimate") or {}
         jd.check_generation_limits(c.settings, self._gen_usage(c), regeneration=bool(j.get("regeneration_of")),
                                    images=int(est.get("generated_images") or 0),
@@ -271,9 +280,15 @@ class StudioService(StudioBase):
         c = self.ctx(jwt, tenant_id)
         self._writable(c)
         j = self._job(c, job_id)
-        # Lo reservado y no gastado deja de contar al terminar el trabajo (consumo = costo real).
-        return self._move(c, j, "cancelled", "cancel", {"error_code": "cancelled_by_user",
-                                                        "completed_at": c.now.isoformat()})
+        jd.check_job_transition(j["status"], "cancelled", approved=bool(j.get("approved_at")))
+        # Cancelación externa: camino explícito de la base (también si un worker lo está procesando). Lo
+        # reservado y no gastado deja de contar al terminar el trabajo (consumo = costo real).
+        res = self.db.rpc("marketing_cancel_generation", {"p_tenant": c.tenant_id, "p_job": j["id"], "p_to": "cancelled",
+                                                          "p_error_code": "cancelled_by_user", "p_actor": c.user["id"],
+                                                          "p_role": c.role}) or {}
+        if res.get("status") != "cancelled":
+            raise PortalError("conflict", 409)
+        return res["job"]
 
     @_guard
     def process_job(self, jwt: str, tenant_id: str, job_id: str) -> Dict[str, Any]:
@@ -303,9 +318,9 @@ class StudioService(StudioBase):
             raise PortalError("job_not_succeeded", 409)
         if j.get("content_id"):
             raise PortalError("already_sent", 409)
-        why = recheck_inputs(self.db, c.tenant_id, j["id"])
+        why = recheck_inputs(self.db, c.tenant_id, j["id"], c.now)
         if why:
-            raise PortalError(why, 409)            # p. ej. consentimiento retirado: el resultado no se reutiliza
+            raise PortalError(why, 410 if why == "media_expired" else 409)   # el resultado no se reutiliza
         brief = (j["request_metadata"] or {}).get("brief") or {}
         script = brief.get("script") or {}
         item = self.create_content(jwt, c.tenant_id, {

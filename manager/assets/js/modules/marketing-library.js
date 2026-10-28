@@ -1,7 +1,8 @@
 // AITA Marketing (Fase 2) — Biblioteca multimedia privada.
 // Subir, ver (URL firmada de corta duración → blob en memoria), clasificar personas,
 // crear versiones anonimizadas (siempre con revisión humana) y archivar. Nunca se borra nada.
-import { el, clear, card, table, openModal, field, select, toast, badge, fmtDateTime, errorBox } from '../ui.js';
+import { el, clear, card, table, openModal, field, select, toast, badge, fmtDateTime } from '../ui.js';
+import { errorNotice } from './marketing-ui.js';
 import { api } from '../api.js';
 import { s, sErr } from './marketing-studio-i18n.js';
 import { ACCEPT, PEOPLE_POLICIES, ANON_METHODS, privacyClass, fmtBytes } from './marketing-studio-state.js';
@@ -43,12 +44,12 @@ async function showPreview(ctx, m) {
           media.load();
           media.addEventListener('loadedmetadata', () => { media.currentTime = at; if (playing) media.play().catch(() => {}); },
             { once: true });
-        } catch (e) { clear(holder).appendChild(errorBox({ message: sErr(e) })); }
+        } catch (e) { clear(holder).appendChild(errorNotice(sErr(e))); }
       });
     }
     clear(holder).appendChild(media);
   } catch (e) {
-    clear(holder).appendChild(errorBox({ message: sErr(e) }));
+    clear(holder).appendChild(errorNotice(sErr(e)));
   }
   const obs = new MutationObserver(() => {
     if (root.contains(holder)) return;
@@ -180,9 +181,16 @@ export async function libraryView(ctx, reload) {
       `${s('storage')}: ${fmtBytes(st.used_bytes)} / ${fmtBytes(st.limit_bytes)}`),
     unlimited: el('p', { class: 'hint', dataset: { state: 'unlimited' } }, `${s('storage')}: ${fmtBytes(st.used_bytes)} · ${s('noLimit')}`),
   }[st.state];
+  // Desglose: un archivo vencido es invisible e irrecuperable, pero ocupa espacio hasta la eliminación física.
+  const parts = st.state === 'disabled' && !st.used_bytes ? null : el('p', { class: 'hint', dataset: { storage: 'breakdown' } },
+    [`${s('stActive')}: ${fmtBytes(st.active_bytes || 0)}`, `${s('stExpired')}: ${fmtBytes(st.expired_pending_bytes || 0)}`,
+      `${s('stReserved')}: ${fmtBytes(st.reserved_bytes || 0)}`,
+      `${s('stAvailable')}: ${st.available_bytes == null ? s('noLimit') : fmtBytes(st.available_bytes)}`].join(' · '));
+  const expiredHint = st.expired_pending_bytes > 0
+    ? el('p', { class: 'mk-note', dataset: { storage: 'expired-hint' } }, s('stExpiredHint')) : null;
   const head = el('div', { class: 'mk-lib-head' },
     el('p', {}, s('libIntro')),
-    quota,
+    quota, parts, expiredHint,
     st.state === 'disabled' ? null : el('p', { class: 'hint' }, `${s('formats')} ${fmtBytes(st.max_upload_bytes)}.`),
     data.generation_enabled ? null : el('p', { class: 'hint', dataset: { state: 'generation-off' } }, `${s('genNotEnabled')}. ${s('libWorksAnyway')}`),
     el('p', { class: 'mk-note' }, s('scanNote')),
