@@ -14,6 +14,7 @@ import { libraryView } from './marketing-library.js';
 import { plannerModal } from './marketing-planner.js';
 import { controlCard } from './marketing-autopilot.js';
 import { planCard, addonSection, flowCard, resultsCard } from './marketing-addons.js';
+import { guideCard } from './marketing-onboarding.js';
 
 const M = api.marketing;
 const scope = createScope();
@@ -85,6 +86,9 @@ export async function render(root, ctx) {
       el('p', { class: 'hint' }, d.settings.approval_required ? `${t('approvalOn')} ` : '', t('noPublishing'))));
     const k = d.counts, plan = d.publication_plan;
     const recs = d.recommendations || [];
+    const toBrand = () => { st.brand = true; history.replaceState(null, '', '#/marketing/brand'); drawTabs(); draw(); };
+    const toLibrary = () => { st.tab = 'library'; st.brand = false; history.replaceState(null, '', '#/marketing/library'); drawTabs(); draw(); };
+    const guide = await guideCard(ctx, d, { brand: toBrand, library: toLibrary, create: plan, createDisabled: !enabled }).catch(() => null);
     const bar = (label, used, limit) => {
       const u = usageBar(used, limit);
       return el('div', { class: 'mk-usage' },
@@ -92,7 +96,7 @@ export async function render(root, ctx) {
           el('span', {}, u.limit === null ? `${used} · ${t('unlimited')}` : `${used} ${t('of')} ${u.limit}`)),
         u.pct === null ? null : meter(u));
     };
-    return el('div', {},
+    return el('div', {}, guide,
       el('div', { class: 'kpis mk-kpis' },
         kpi(t('k_used'), plan.total === null ? String(plan.used) : `${plan.used} ${t('of')} ${plan.total}`),
         kpi(t('k_upcoming'), String(d.upcoming.length)),

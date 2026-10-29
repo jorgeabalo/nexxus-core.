@@ -282,6 +282,9 @@ export const api = {
     autopilotPermission(tenantId, value) {
       return backend('PUT', '/api/manager/marketing/autopilot/permissions', { tenant_id: tenantId, managers_can_manage: value });
     },
+    writeCopy(tenantId, id, request) {
+      return backend('POST', `/api/manager/marketing/content/${encodeURIComponent(id)}/write`, { tenant_id: tenantId, request: request || null });
+    },
     retryContent(tenantId, id) { return backend('POST', `/api/manager/marketing/content/${encodeURIComponent(id)}/retry`, { tenant_id: tenantId }); },
     calendar(tenantId, start, end) { return backend('GET', `/api/manager/marketing/calendar?${qs({ tenant_id: tenantId, start, end })}`); },
     // Biblioteca privada (archivos temporales, privacidad y reproducción; todo por el backend).

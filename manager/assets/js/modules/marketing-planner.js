@@ -11,6 +11,8 @@ import { usableAsSource, newIdempotencyKey } from './marketing-studio-state.js';
 import { CHANNELS, PLAN_STEPS, PLAN_OBJECTIVES, PLAN_MODES, PLAN_FORMATS, TONES, planStepError, planBody, localInput }
   from './marketing-state.js';
 import { channelLabel, statusBadge } from './marketing-forms.js';
+import { variantsPanel, aiWriter } from './marketing-platforms.js';
+import { g } from './marketing-guide-i18n.js';
 
 const M = api.marketing;
 
@@ -66,13 +68,17 @@ export async function plannerModal(ctx, reload) {
       const row = (k, v) => (v ? [el('dt', {}, k), el('dd', {}, v)] : []);
       const state = c.display_status === 'preparing' ? el('p', { class: 'mk-note', role: 'status' }, pl('preparingLater'))
         : c.display_status === 'could_not_prepare' ? el('p', { class: 'error-box', role: 'status' }, pl('failed'))
-          : r.preparation === 'unavailable' ? el('p', { class: 'mk-note', role: 'status' }, pl('unavailable')) : null;
+          : w.wrote ? el('p', { class: 'mk-note', role: 'status' }, g('ai_done'))
+            : r.preparation === 'unavailable' ? el('p', { class: 'mk-note', role: 'status' }, w.aiOff ? g('ai_off') : pl('unavailable')) : null;
       return el('div', {}, el('p', {}, statusBadge(c.display_status), ' ', pl('proposalNote')), state,
         el('dl', { class: 'mk-summary' },
           ...row(pl('p_text'), c.caption), ...row(pl('p_cta'), c.cta), ...row(pl('p_format'), pl(`f_${c.format}`)),
           ...row(pl('p_visuals'), w.mode === 'library_ai' ? pl('visualsLib', w.media.length) : pl('visualsAi')),
           ...row(pl('p_platforms'), (c.channels || []).map(channelLabel).join(', ')),
-          ...row(pl('p_date'), c.planned_at ? when(c.planned_at) : null), ...row(pl('p_objective'), pl(`ob_${w.objective}`))));
+          ...row(pl('p_date'), c.planned_at ? when(c.planned_at) : null), ...row(pl('p_objective'), pl(`ob_${w.objective}`))),
+        c.script ? el('details', {}, el('summary', {}, t('script')), el('div', { class: 'mk-variant-text' }, c.script)) : null,
+        c.status === 'draft' ? aiWriter(ctx, c, nc => { w.result = { ...w.result, content: nc }; w.wrote = true; render(); }) : null,
+        variantsPanel(c));
     },
     review: () => {
       const c = w.result.content;
@@ -109,6 +115,23 @@ export async function plannerModal(ctx, reload) {
     btn.disabled = true; err.textContent = '';
     try {
       w.result = await M.planContent(ctx.tenantId, planBody(w, { objective: pl(`ob_${w.objective}`) }), w.key);
+      // Sin preparación completa (sin imágenes/vídeo con IA), la IA de texto escribe igualmente el mensaje
+      // y la versión de cada red. Queda en borrador para revisarlo.
+      if (w.result.content.status === 'draft') {
+        try {
+          w.result = { ...w.result, content: (await M.writeCopy(ctx.tenantId, w.result.content.id)).content };
+          w.wrote = true;
+        } catch (e) { w.aiOff = e?.code === 'text_ai_unavailable'; }
+      }
+      w.step += 1; render();
+    } catch (e) { err.textContent = errText(e); btn.disabled = false; }
+  }
+
+  async function submit(btn) {
+    btn.disabled = true; err.textContent = '';
+    try {
+      await M.transition(ctx.tenantId, w.result.content.id, 'review', {});
+      w.result = { ...w.result, content: (await M.content(ctx.tenantId, w.result.content.id)).content };
       w.step += 1; render();
     } catch (e) { err.textContent = errText(e); btn.disabled = false; }
   }
@@ -134,7 +157,10 @@ export async function plannerModal(ctx, reload) {
     else if (key === 'proposal') {
       const cd = w.result.content.display_status;
       nav.append(back, cd === 'could_not_prepare' ? next(pl('retry'), e => retry(e.target))
-        : cd === 'ready_for_review' ? next(pl('toReview'), () => { w.step += 1; render(); }) : next(pl('done'), done));
+        : cd === 'ready_for_review' ? next(pl('toReview'), () => { w.step += 1; render(); })
+          : w.result.content.status === 'draft' && w.result.content.caption ? el('span', { class: 'btn-row' },
+            el('button', { class: 'btn', type: 'button', onclick: done }, pl('done')), next(g('send_review'), e => submit(e.target)))
+            : next(pl('done'), done));
     } else if (key === 'review') nav.append(back, el('button', { class: 'btn', type: 'button', onclick: done }, pl('done')));
     else nav.append(back, next(pl('next'), forward));
     clear(body).append(

@@ -7,6 +7,7 @@ import { api } from '../api.js';
 import { tr } from '../i18n.js';
 import { t, errText } from './marketing-i18n.js';
 import { FORMATS, CHANNELS, LANGUAGES, EDITABLE, brandSwatches, localInput, shownStatus } from './marketing-state.js';
+import { variantsPanel, aiWriter } from './marketing-platforms.js';
 
 const M = api.marketing;
 
@@ -140,6 +141,8 @@ export async function contentDetail(ctx, id, { campaigns = [], reload }) {
       row(t('objective'), c.objective), row(t('topic'), c.topic),
       row(t('caption'), c.caption), row(t('script'), c.script), row(t('cta'), c.cta),
       row(t('hashtags'), (c.hashtags || []).join(' ')), row(t('notes'), c.notes)),
+    EDITABLE.includes(c.status) ? aiWriter(ctx, c, () => { close(); reload(); contentDetail(ctx, id, { campaigns, reload }); }) : null,
+    variantsPanel(c),
     data.allowed.length ? el('div', { class: 'mk-actions' },
       field(t('comment'), comment, { full: true }),
       data.allowed.includes('scheduled') ? field(t('when'), when) : null,

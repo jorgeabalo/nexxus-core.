@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 ROLES = ("owner", "manager")
 CONTENT_COLS = ("id,tenant_id,campaign_id,title,objective,topic,format,channels,language,caption,script,cta,hashtags,"
                 "planned_at,scheduled_at,notes,status,assigned_to,submitted_at,approved_by,approved_at,created_by,"
-                "updated_by,created_at,updated_at")
+                "updated_by,created_at,updated_at,platform_variants")
 CAMPAIGN_COLS = "id,tenant_id,name,objective,description,start_date,end_date,budget,status,created_at,updated_at"
 BRAND_FIELDS = ("business_name", "description", "target_audience", "tone", "languages", "priority_services", "cta",
                 "phone", "website", "color_primary", "color_accent", "color_secondary", "logo_url", "banned_topics",

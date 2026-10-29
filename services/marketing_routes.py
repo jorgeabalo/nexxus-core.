@@ -127,6 +127,11 @@ def build_router(get_db: Callable) -> APIRouter:
         key = request.headers.get("idempotency-key", "")                # obligatoria (doble clic, reintentos)
         return await call(lambda: svc().plan_content(bearer(request), tid(b), b, key))
 
+    @r.post(f"{P}/content/{{content_id}}/write")
+    async def write_copy(request: Request, content_id: str):
+        b = await body(request)
+        return await call(lambda: svc().write_copy(bearer(request), tid(b), content_id, b))
+
     @r.post(f"{P}/content/{{content_id}}/retry")
     async def retry_content(request: Request, content_id: str):
         b = await body(request)
