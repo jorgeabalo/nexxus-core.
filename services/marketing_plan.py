@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any, Dict
 
 from services.marketing import MarketingService
+from services import marketing_copywriter, marketing_text
 from services.marketing_autopilot import AutopilotService, channels_connected
 from services.marketing_content_plan import ContentPlanner, public_history, public_publication
 from services.member_portal import PortalError
@@ -14,6 +15,8 @@ from services import marketing_publication_plan as pp
 
 
 class MarketingPlanService(MarketingService):
+    text_client = None                      # cliente de Claude inyectable (tests); None = el real si hay clave
+
     def planner(self) -> ContentPlanner:
         from services.marketing_studio import StudioService
         raw = getattr(self.db, "_db", self.db)
@@ -45,6 +48,7 @@ class MarketingPlanService(MarketingService):
         out["results"] = {"state": "none" if channels_connected(self) else "not_connected"}
         out["upcoming"] = pl.present_rows(c, out["upcoming"])
         out["recommendations"] = recommendations(counts, out["publication_plan"], len(out["upcoming"]))
+        out["text_ai"] = self.text_client is not None or marketing_copywriter.enabled()
         return out
 
     # ---------- contenido con estados comerciales ----------
@@ -69,6 +73,15 @@ class MarketingPlanService(MarketingService):
         out = super().calendar(jwt, tenant_id, start, end)
         out["items"] = self.planner().present_rows(self.ctx(jwt, tenant_id), out["items"])
         return out
+
+    def write_copy(self, jwt: str, tenant_id: str, content_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
+        return marketing_text.write_copy(self, jwt, tenant_id, content_id, body)
+
+    def update_content(self, jwt: str, tenant_id: str, content_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
+        c = self.ctx(jwt, tenant_id)
+        before = self._content(c, content_id)
+        row = super().update_content(jwt, tenant_id, content_id, body)
+        return marketing_text.refresh_variants(self, c, before, body, row)
 
     def plan_content(self, jwt: str, tenant_id: str, body: Dict[str, Any], idempotency_key: Any = None) -> Dict[str, Any]:
         return self.planner().plan(jwt, tenant_id, body, idempotency_key)
