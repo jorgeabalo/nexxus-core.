@@ -39,7 +39,7 @@ CONTENT_COLS = ("id,tenant_id,campaign_id,title,objective,topic,format,channels,
 CAMPAIGN_COLS = "id,tenant_id,name,objective,description,start_date,end_date,budget,status,created_at,updated_at"
 BRAND_FIELDS = ("business_name", "description", "target_audience", "tone", "languages", "priority_services", "cta",
                 "phone", "website", "color_primary", "color_accent", "color_secondary", "logo_url", "banned_topics",
-                "compliance_notes", "ai_instructions")
+                "compliance_notes", "ai_instructions", "social_links")
 ACTIONS = {"review": "submit", "approved": "approve", "rejected": "reject", "draft": "reopen",
            "scheduled": "schedule", "archived": "archive"}
 
@@ -193,6 +193,7 @@ class MarketingService:
             "banned_topics": d.text_list(body.get("banned_topics"), None, "invalid_banned_topics", max_items=50),
             "compliance_notes": d.text(body.get("compliance_notes"), 2000, "invalid_compliance_notes"),
             "ai_instructions": d.text(body.get("ai_instructions"), 4000, "invalid_ai_instructions"),
+            "social_links": d.social_links(body.get("social_links")),
         }
         if v["phone"] and not re.fullmatch(r"[0-9+()\-. ]{7,25}", v["phone"]):
             raise PortalError("invalid_phone", 400)

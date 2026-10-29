@@ -28,6 +28,9 @@ function checks(options, selected, labelOf) {
 }
 export const channelLabel = (c) => ({ x: 'X', google_business: 'Google Business', tiktok: 'TikTok', linkedin: 'LinkedIn', youtube: 'YouTube' }[c]
   || c.charAt(0).toUpperCase() + c.slice(1));
+// Ejemplo de dirección de cada red (el backend comprueba que sea de ese dominio).
+const SOCIAL_EXAMPLE = { instagram: 'instagram.com', facebook: 'facebook.com', tiktok: 'tiktok.com/@', linkedin: 'linkedin.com/company',
+  x: 'x.com', youtube: 'youtube.com/@', google_business: 'g.page', threads: 'threads.net/@' };
 // Siempre el estado comercial (Borrador, Preparando, Listo para revisar, …), nunca el interno.
 export const statusBadge = (s) => { const v = shownStatus(s); return el('span', { class: `badge mk-s-${v}` }, t(`s_${v}`)); };
 const progressBar = (pct) => {
@@ -202,6 +205,8 @@ export function brandForm(root, ctx, data, isCurrent) {
     compliance_notes: textarea(p.compliance_notes, 2000),
     ai_instructions: textarea(p.ai_instructions, 4000, 4),
   };
+  const social = CHANNELS.map(c => ({ key: c, node: input({
+    maxlength: '300', type: 'url', placeholder: `https://${SOCIAL_EXAMPLE[c]}/…`, value: (p.social_links || {})[c] || '' }) }));
   const colors = brandSwatches(p).map(s => {
     const picker = el('input', { type: 'color', class: 'mk-color', value: s.value || '#FFFFFF' });
     const text = input({ maxlength: '7', placeholder: '#RRGGBB', value: s.value || '' });
@@ -225,6 +230,7 @@ export function brandForm(root, ctx, data, isCurrent) {
         compliance_notes: f.compliance_notes.value.trim() || null, ai_instructions: f.ai_instructions.value.trim() || null,
       };
       for (const c of colors) values[c.key] = c.text.value.trim() || null;
+      values.social_links = Object.fromEntries(social.map(s => [s.key, s.node.value.trim()]).filter(([, v]) => v));
       try {
         await api.marketing.saveBrand(ctx.tenantId, values);
         if (isCurrent()) { toast(t('saved')); hint.remove(); }
@@ -242,6 +248,8 @@ export function brandForm(root, ctx, data, isCurrent) {
       field(t('services'), f.priority_services, { hint: t('servicesHint') }),
       field(t('banned'), f.banned_topics, { hint: t('bannedHint') }),
       field(t('phone'), f.phone), field(t('website'), f.website),
+      el('div', { class: 'full' }, el('strong', {}, t('social')), el('p', { class: 'hint' }, t('socialHint'))),
+      ...social.map(s => field(channelLabel(s.key), s.node)),
       ...colors.map(c => field(`${t('colors')} · ${labels[c.key]}`, c.node)),
       field(t('logo'), f.logo_url, { hint: t('logoHint') }), logoPreview ? el('div', { class: 'field' }, logoPreview) : el('span'),
       field(t('compliance'), f.compliance_notes, { full: true }), field(t('aiNotes'), f.ai_instructions, { full: true }),
