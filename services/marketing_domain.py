@@ -143,7 +143,43 @@ def tenant_brand_defaults(tenant: Dict[str, Any]) -> Dict[str, Any]:
         "color_secondary": None,
         "logo_url": None,
         "banned_topics": [], "compliance_notes": None, "ai_instructions": None,
+        "social_links": {},
     }
+
+
+# Dominio propio de cada red (también sus subdominios: www., m., business.…).
+SOCIAL_HOSTS: Dict[str, tuple] = {
+    "instagram": ("instagram.com",), "facebook": ("facebook.com", "fb.com"), "tiktok": ("tiktok.com",),
+    "linkedin": ("linkedin.com",), "x": ("x.com", "twitter.com"), "youtube": ("youtube.com", "youtu.be"),
+    "google_business": ("google.com", "g.page", "goo.gl"), "threads": ("threads.net", "threads.com"),
+}
+
+
+def social_links(v: Any) -> Dict[str, str]:
+    """Direcciones públicas de los perfiles: {red: https://…}. Vacío = sin enlace.
+
+    Sin esquema se asume https://. Cada enlace debe ser del dominio de su red, así
+    no se cuela una web cualquiera (ni javascript:, ni //host) como "Instagram".
+    """
+    if v in (None, ""):
+        return {}
+    if not isinstance(v, dict):
+        raise DomainError("invalid_social_link", 400)
+    out: Dict[str, str] = {}
+    for ch, raw in v.items():
+        if ch not in CHANNELS:
+            raise DomainError("invalid_social_link", 400)
+        url = text(raw, 300, "invalid_social_link")
+        if not url:
+            continue
+        if not re.match(r"^https?://", url, re.I):
+            url = f"https://{url}"
+        m = WEBSITE.match(url)
+        host = re.match(r"^https?://([^/:?#]+)", url, re.I).group(1).lower() if m else ""
+        if not any(host == h or host.endswith(f".{h}") for h in SOCIAL_HOSTS[ch]):
+            raise DomainError("invalid_social_link", 400)
+        out[ch] = url
+    return out
 
 
 # --------------------------------------------------------------------- texto
