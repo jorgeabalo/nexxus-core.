@@ -587,9 +587,40 @@ if MEDIA_DIR.is_dir():
     app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
 
 
+# Webs propias de cada cliente (p. ej. Dr. Redden). Se sirven en /<ruta> y, cuando tengan dominio, también en
+# su raíz: SITE_DOMAINS="drredden.example=dr_redden,www.drredden.example=dr_redden". Son páginas estáticas
+# sin datos; el panel de cada una es el mismo /manager (?empresa=<slug> abre ese negocio).
+SITES_DIR = Path(__file__).parent / "sites"
+SITE_PATHS = {"drredden": "dr_redden"}
+if SITES_DIR.is_dir():
+    app.mount("/sites", StaticFiles(directory=SITES_DIR), name="sites")     # logos e imágenes de esas webs
+
+
+def _site_domains() -> dict:
+    out = {}
+    for pair in (os.getenv("SITE_DOMAINS") or "").split(","):
+        host, _, slug = pair.strip().partition("=")
+        if host and slug:
+            out[host.strip().lower()] = slug.strip()
+    return out
+
+
+def _site_page(slug: str):
+    page = SITES_DIR / slug / "index.html"
+    return FileResponse(page, media_type="text/html") if re.fullmatch(r"[a-z0-9_]+", slug) and page.is_file() else None
+
+
+@app.get("/drredden")
+@app.get("/drredden/")
+async def site_dr_redden():
+    return _site_page(SITE_PATHS["drredden"]) or JSONResponse({"error": "not_found"}, status_code=404)
+
+
 @app.get("/")
-async def root():
-    return FileResponse(Path(__file__).parent / "index.html", media_type="text/html")
+async def root(request: Request):
+    slug = _site_domains().get((request.url.hostname or "").lower())
+    page = _site_page(slug) if slug else None
+    return page or FileResponse(Path(__file__).parent / "index.html", media_type="text/html")
 
 _HTTPS_BASE = re.compile(r"https://[A-Za-z0-9.-]+(:\d+)?")
 
