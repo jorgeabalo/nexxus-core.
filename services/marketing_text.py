@@ -4,11 +4,12 @@ AITA Marketing — «Escribir con IA» sobre un contenido en borrador.
 Toma el contenido y el Brand Kit, llama al redactor (marketing_copywriter), guarda
 el texto y una versión por red (platform_variants) y deja el contenido como
 borrador para que una persona lo revise. Cada intento queda registrado (sin
-texto) en marketing_text_generations, que también sirve de límite diario.
+texto) en marketing_text_generations, que también sirve de límite diario: el cupo se
+reserva en la base (marketing_reserve_text_generation) antes de llamar a Claude y la
+fila se liquida después. Si no se puede reservar, no se llama a Claude.
 """
 import logging
 import os
-from datetime import timedelta
 from typing import Any, Dict, Optional
 
 from services import marketing_copywriter as cw
@@ -29,13 +30,27 @@ def daily_limit(env: Optional[Dict[str, str]] = None) -> int:
         return 30
 
 
-def _log(svc, c, content_id: str, status: str, model: str, usage: Optional[Dict[str, int]] = None) -> None:
+def _reserve(svc, c, content_id: str) -> int:
+    """Cuenta y reserva el cupo en una transacción, antes de gastar nada. Sin reserva no hay redacción."""
     try:
-        svc.db.insert("marketing_text_generations", {
-            "tenant_id": c.tenant_id, "content_id": content_id, "actor_id": c.user["id"], "model": model[:100],
-            "status": status, **(usage or {"input_tokens": 0, "output_tokens": 0})})
-    except Exception as e:                              # el registro nunca rompe la redacción
-        logger.error(f"MARKETING_TEXT_LOG {type(e).__name__}")
+        res = svc.db.rpc("marketing_reserve_text_generation", {
+            "p_tenant": c.tenant_id, "p_content": content_id, "p_actor": c.user["id"], "p_model": cw.model()[:100],
+            "p_limit": daily_limit()}) or {}
+    except Exception as e:
+        logger.error(f"MARKETING_TEXT_RESERVE {type(e).__name__}")
+        raise PortalError("text_ai_unavailable", 503)
+    if res.get("status") != "reserved":
+        raise PortalError("text_ai_daily_limit", 429)
+    return res["id"]
+
+
+def _settle(svc, c, rid: int, status: str, model: str, usage: Optional[Dict[str, int]] = None) -> None:
+    try:
+        svc.db.update("marketing_text_generations", {"id": f"eq.{rid}", "tenant_id": f"eq.{c.tenant_id}",
+                                                     "status": "eq.pending"},
+                      {"status": status, "model": model[:100], **(usage or {"input_tokens": 0, "output_tokens": 0})})
+    except Exception as e:                              # la reserva queda 'pending' y sigue contando: falla cerrado
+        logger.error(f"MARKETING_TEXT_SETTLE {type(e).__name__}")
 
 
 def _tags(raw) -> list:
@@ -63,24 +78,23 @@ def write_copy(svc, jwt: str, tenant_id: str, content_id: str, body: Dict[str, A
     client = getattr(svc, "text_client", None)
     if client is None and not cw.enabled():
         raise PortalError("text_ai_unavailable", 503)
-    since = (c.now - timedelta(days=1)).isoformat()
-    used = svc.db.select("marketing_text_generations", {
-        "tenant_id": f"eq.{c.tenant_id}", "created_at": f"gte.{since}", "select": "id", "limit": "1000"}) or []
-    if len(used) >= daily_limit():
-        raise PortalError("text_ai_daily_limit", 429)
     brand = svc.brand(jwt, tenant_id)["profile"]
+    rid = _reserve(svc, c, cur["id"])
     try:
         out = cw.write(cur, brand, request or "", client=client)
     except DomainError as e:
-        _log(svc, c, cur["id"], "rejected" if e.code == "ai_output_rejected" else "failed", cw.model())
+        _settle(svc, c, rid, "rejected" if e.code == "ai_output_rejected" else "failed", cw.model())
         raise PortalError(e.code, e.status)
+    except Exception:
+        _settle(svc, c, rid, "failed", cw.model())
+        raise
     values = {"caption": out["caption"] or None, "cta": out["cta"] or None, "hashtags": _tags(out["hashtags"])}
     if out["script"]:
         values["script"] = out["script"]
     values["platform_variants"] = platforms.variants({**cur, **values}, out["per_platform"])
     rows = svc.db.update("marketing_content", {"id": f"eq.{cur['id']}", "tenant_id": f"eq.{c.tenant_id}",
                                                "status": f"eq.{cur['status']}"}, {**values, "updated_by": c.user["id"]})
-    _log(svc, c, cur["id"], "succeeded", out["model"], out["usage"])
+    _settle(svc, c, rid, "succeeded", out["model"], out["usage"])
     if not rows:
         raise PortalError("conflict", 409)
     return {"content": svc.planner().present(c, rows[0]), "variants": values["platform_variants"]}

@@ -1,5 +1,7 @@
 """Escribir con IA (Claude) y versiones por plataforma. Sin red: el cliente de Claude es un doble."""
 import json
+import threading
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -32,9 +34,35 @@ class FakeClaude:
                                content=[SimpleNamespace(type="text", text=json.dumps(self.data))])
 
 
+class TextDB(FakeDB):
+    """FakeDB con marketing_reserve_text_generation: cuenta y reserva bajo un candado, como la función SQL
+    (que usa pg_advisory_xact_lock por tenant). La función real está en 20261101120000_marketing_text_quota.sql."""
+
+    def __init__(self):
+        super().__init__()
+        self._lock = threading.Lock()
+        self.rpc_fail = False
+
+    def rpc(self, fn, a, timeout=None):
+        assert fn == "marketing_reserve_text_generation"
+        if self.rpc_fail:
+            raise RuntimeError("PGRST connection refused")
+        with self._lock:
+            if not a["p_limit"] or a["p_limit"] <= 0:
+                return {"status": "rejected", "reason": "limit_text_ai"}
+            used = [r for r in self.tables.get("marketing_text_generations", []) if r["tenant_id"] == a["p_tenant"]]
+            if len(used) >= a["p_limit"]:
+                return {"status": "rejected", "reason": "limit_text_ai"}
+            row = self.insert("marketing_text_generations", {
+                "id": len(self.tables.get("marketing_text_generations", [])) + 1, "tenant_id": a["p_tenant"],
+                "content_id": a["p_content"], "actor_id": a["p_actor"], "model": a["p_model"], "status": "pending",
+                "input_tokens": 0, "output_tokens": 0})
+            return {"status": "reserved", "id": row["id"]}
+
+
 @pytest.fixture
 def db():
-    return FakeDB()
+    return TextDB()
 
 
 @pytest.fixture
@@ -133,6 +161,54 @@ def test_daily_limit(svc, monkeypatch):
     svc.write_copy(jwt(OWNER), T1, c["id"], {})
     svc.write_copy(jwt(OWNER), T1, c["id"], {})
     assert err(svc.write_copy, jwt(OWNER), T1, c["id"], {}) == ("text_ai_daily_limit", 429)
+
+
+def test_concurrent_requests_cannot_exceed_the_limit(svc, db, ai, monkeypatch):
+    """Antes se contaba, se llamaba a Claude y luego se registraba: dos peticiones a la vez pasaban las dos."""
+    monkeypatch.setenv("MARKETING_TEXT_DAILY_LIMIT", "1")
+    real = ai.create
+    ai.create = lambda **kw: (time.sleep(0.05), real(**kw))[1]       # la llamada tarda: la ventana de carrera se abre
+    c = draft(svc)
+    start, results = threading.Barrier(2), []
+
+    def go():
+        start.wait()
+        try:
+            svc.write_copy(jwt(OWNER), T1, c["id"], {})
+            results.append("ok")
+        except Exception as e:
+            results.append(getattr(e, "code", type(e).__name__))
+
+    threads = [threading.Thread(target=go) for _ in range(2)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert sorted(results) == ["ok", "text_ai_daily_limit"]
+    assert len(ai.calls) == 1                                          # Claude se llamó una sola vez
+    assert [r["status"] for r in db.tables["marketing_text_generations"]] == ["succeeded"]
+
+
+def test_no_reservation_no_claude(svc, db, ai):
+    db.rpc_fail = True
+    assert err(svc.write_copy, jwt(OWNER), T1, draft(svc)["id"], {}) == ("text_ai_unavailable", 503)
+    assert ai.calls == []
+
+
+def test_unsettled_reservation_keeps_counting(svc, db, monkeypatch):
+    monkeypatch.setenv("MARKETING_TEXT_DAILY_LIMIT", "1")
+    c = draft(svc)
+    real_update = db.update
+    db.update = lambda t, f, v: (_ for _ in ()).throw(RuntimeError("timeout")) if t == "marketing_text_generations" \
+        else real_update(t, f, v)
+    svc.write_copy(jwt(OWNER), T1, c["id"], {})                       # el texto se guarda aunque falle la liquidación
+    assert db.tables["marketing_text_generations"][0]["status"] == "pending"
+    assert err(svc.write_copy, jwt(OWNER), T1, c["id"], {}) == ("text_ai_daily_limit", 429)
+
+
+def test_unexpected_error_settles_as_failed(svc, db, ai):
+    ai.create = lambda **kw: (_ for _ in ()).throw(KeyError("raro"))
+    with pytest.raises(Exception):
+        svc.write_copy(jwt(OWNER), T1, draft(svc)["id"], {})
+    assert db.tables["marketing_text_generations"][0]["status"] == "failed"
 
 
 def test_manual_edit_rebuilds_versions(svc, db):
