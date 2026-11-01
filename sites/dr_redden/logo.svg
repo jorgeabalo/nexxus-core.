@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Dr. Redden">
+  <title>Dr. Redden</title>
+  <defs>
+    <linearGradient id="crown" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5a3519"/>
+      <stop offset=".35" stop-color="#9a6332"/>
+      <stop offset=".55" stop-color="#b57a42"/>
+      <stop offset="1" stop-color="#4a2b14"/>
+    </linearGradient>
+    <linearGradient id="brimTop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b07440"/>
+      <stop offset="1" stop-color="#6b4220"/>
+    </linearGradient>
+    <linearGradient id="brimUnder" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3c2210"/>
+      <stop offset="1" stop-color="#22130a"/>
+    </linearGradient>
+    <linearGradient id="band" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#1a1a1a"/>
+      <stop offset=".5" stop-color="#3a3a3a"/>
+      <stop offset="1" stop-color="#141414"/>
+    </linearGradient>
+    <linearGradient id="tube" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2b2f36"/>
+      <stop offset=".5" stop-color="#4a505a"/>
+      <stop offset="1" stop-color="#1c1f24"/>
+    </linearGradient>
+    <radialGradient id="chest" cx=".35" cy=".3" r=".75">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset=".35" stop-color="#cfd6de"/>
+      <stop offset=".75" stop-color="#7d8894"/>
+      <stop offset="1" stop-color="#4a535d"/>
+    </radialGradient>
+    <radialGradient id="diaphragm" cx=".4" cy=".35" r=".7">
+      <stop offset="0" stop-color="#5a6470"/>
+      <stop offset="1" stop-color="#1e2329"/>
+    </radialGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8e99a5"/>
+      <stop offset=".5" stop-color="#eef2f5"/>
+      <stop offset="1" stop-color="#7a8591"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity=".45"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#shadow)">
+    <!-- Ala, cara inferior (se ve detrás de la copa) -->
+    <path d="M10 60c6 9 26 16 54 16s48-7 54-16c-5 3-13 5-22 5.5-9 4.5-20 6.5-32 6.5s-23-2-32-6.5C23 65 15 63 10 60z" fill="url(#brimUnder)"/>
+    <!-- Copa con hendidura central -->
+    <path d="M38 58c-1-14 1-27 6-34 3-4 7-5 10-3 3 2 6 3 10 3s7-1 10-3c3-2 7-1 10 3 5 7 7 20 6 34-8 3-17 4-26 4s-18-1-26-4z" fill="url(#crown)"/>
+    <path d="M54 22c3 4 6 6 10 6s7-2 10-6" fill="none" stroke="#3a210e" stroke-width="1.6" stroke-linecap="round" opacity=".8"/>
+    <path d="M64 28v18" stroke="#3a210e" stroke-width="1.4" stroke-linecap="round" opacity=".5"/>
+    <path d="M47 28c-2 7-3 16-2 26" fill="none" stroke="#d29a5e" stroke-width="1.2" stroke-linecap="round" opacity=".45"/>
+    <!-- Cinta -->
+    <path d="M38.5 51c8 3 17 4 25.5 4s17.5-1 25.5-4l.4 6c-8 3-17 4.4-25.9 4.4S46 60 38.2 57z" fill="url(#band)"/>
+    <rect x="80" y="51.5" width="5" height="6.5" rx="1" fill="url(#metal)"/>
+    <!-- Ala, cara superior curvada -->
+    <path d="M10 60c8 4 18 6 28 6.5 8 4 17 5.5 26 5.5s18-1.5 26-5.5c10-.5 20-2.5 28-6.5-2 5-9 9-20 11.5-9 2-21 3.5-34 3.5s-25-1.5-34-3.5C19 69 12 65 10 60z" fill="url(#brimTop)"/>
+    <path d="M14 61.5c10 5 28 9.5 50 9.5s40-4.5 50-9.5" fill="none" stroke="#d9a46a" stroke-width=".9" stroke-dasharray="2 2" opacity=".55"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <!-- Olivas y tubos del estetoscopio -->
+    <circle cx="44" cy="76" r="3" fill="#20242a"/>
+    <circle cx="84" cy="76" r="3" fill="#20242a"/>
+    <path d="M44 77c-1 9 2 17 8 21" fill="none" stroke="url(#metal)" stroke-width="2.6" stroke-linecap="round"/>
+    <path d="M84 77c1 9-2 17-8 21" fill="none" stroke="url(#metal)" stroke-width="2.6" stroke-linecap="round"/>
+    <path d="M52 98c4 4 8 5 12 5s8-1 12-5" fill="none" stroke="url(#tube)" stroke-width="4.5" stroke-linecap="round"/>
+    <path d="M64 103c0 6 3 10 9 12 6 2 13 0 17-5" fill="none" stroke="url(#tube)" stroke-width="4.5" stroke-linecap="round"/>
+    <!-- Campana -->
+    <rect x="88.5" y="103" width="4" height="6" rx="1" fill="url(#metal)" transform="rotate(35 90.5 106)"/>
+    <circle cx="97" cy="100" r="10" fill="url(#chest)"/>
+    <circle cx="97" cy="100" r="6.8" fill="url(#diaphragm)"/>
+    <ellipse cx="94.5" cy="97" rx="2.6" ry="1.6" fill="#ffffff" opacity=".35"/>
+  </g>
+</svg>

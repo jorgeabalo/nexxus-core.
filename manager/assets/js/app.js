@@ -176,7 +176,11 @@ async function enter() {
 
   let saved = null;
   try { saved = localStorage.getItem('aita.tenant'); } catch (_) { /* sin storage */ }
-  const m = memberships.find(x => x.tenant.id === saved) || memberships[0];
+  // ?empresa=<slug> (enlace "Panel" de la web de cada cliente) abre ese negocio si la persona tiene acceso.
+  let wanted = null;
+  try { wanted = new URLSearchParams(location.search).get('empresa'); } catch (_) { /* sin URL */ }
+  const m = (wanted && memberships.find(x => x.tenant.slug === wanted))
+    || memberships.find(x => x.tenant.id === saved) || memberships[0];
   setTenant(m);
   renderShell();
   if (!state.routing) { window.addEventListener('hashchange', route); state.routing = true; }
