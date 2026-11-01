@@ -143,8 +143,24 @@ def tenant_brand_defaults(tenant: Dict[str, Any]) -> Dict[str, Any]:
         "color_secondary": None,
         "logo_url": None,
         "banned_topics": [], "compliance_notes": None, "ai_instructions": None,
-        "social_links": {},
+        "social_links": {}, "account_type": "local_business",
     }
+
+
+# Tipo de cuenta: cambia las reglas del redactor con IA (y, en la médica, la Biblioteca).
+#   local_business: negocio con clientes en su zona (Golden Age): reservar, llamar, hashtags locales.
+#   content_channel: canal educativo o de divulgación: seguir, guardar, compartir; hashtags del tema.
+#   medical_education: canal médico educativo (p. ej. Dr. Redden): lo anterior + nunca consejo médico personal
+#     y solo imágenes de pacientes anonimizadas.
+ACCOUNT_TYPES = ("local_business", "content_channel", "medical_education")
+
+
+def account_type(v: Any) -> str:
+    if v in (None, ""):
+        return "local_business"
+    if v not in ACCOUNT_TYPES:
+        raise DomainError("invalid_account_type", 400)
+    return v
 
 
 # Dominio propio de cada red (también sus subdominios: www., m., business.…).

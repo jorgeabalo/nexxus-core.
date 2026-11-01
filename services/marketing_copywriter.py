@@ -13,6 +13,7 @@ vídeos, y una versión adaptada a cada red elegida.
 """
 import json
 import os
+import re
 from typing import Any, Dict, List, Optional
 
 from services.marketing_domain import CHANNELS, DomainError
@@ -38,7 +39,7 @@ SCHEMA = {
     "additionalProperties": False,
 }
 
-SYSTEM = """Eres el redactor de marketing de un negocio local. Escribes publicaciones para redes sociales \
+SYSTEM = """Eres el redactor de marketing de una marca. Escribes publicaciones para redes sociales \
 que suenan humanas, claras y fieles a la marca.
 
 Reglas que nunca se rompen:
@@ -59,6 +60,38 @@ carrusel, el texto de cada diapositiva numerada. Para imagen o texto déjalo vac
 - per_platform: una versión para cada red pedida, respetando su límite de caracteres y su estilo \
 (X corto y directo; LinkedIn más profesional; Google Business informativo y sin hashtags; TikTok e Instagram \
 cercanos). Incluye la llamada a la acción en cada versión."""
+
+
+# Reglas añadidas según el tipo de cuenta del Brand Kit (marketing_domain.ACCOUNT_TYPES).
+CHANNEL_RULES = """
+
+Esta marca es un canal de contenido educativo, no un negocio local:
+- La llamada a la acción invita a seguir la cuenta, guardar, compartir o comentar; nunca a reservar, llamar ni \
+comprar, salvo que la marca lo pida.
+- Hashtags del tema de la publicación, no de una ciudad.
+- Prioriza que el contenido sea exacto y fácil de entender; cuando un dato no sea seguro, no lo afirmes."""
+
+MEDICAL_RULES = CHANNEL_RULES + """
+
+Además, es un canal médico de divulgación para un público general:
+- Es contenido educativo: nunca des consejo médico personal, ni diagnóstico, ni indiques a quien lee que tome, \
+cambie o deje un medicamento. Las dosis solo como dato de referencia general, nunca como recomendación.
+- Nada de curas milagrosas, garantías ni afirmaciones sin respaldo; usa datos establecidos.
+- En los casos clínicos y ecografías, nunca menciones nombre, fecha, lugar ni ningún dato que identifique al \
+paciente.
+- Cierra el caption con una nota breve del estilo "Contenido educativo; no sustituye la consulta médica." en el \
+idioma pedido."""
+
+# Frases que un canal médico nunca publica (además de FORBIDDEN_CLAIMS).
+MEDICAL_FORBIDDEN = re.compile(
+    r"(?i)(cura\s+(definitiva|milagrosa|garantizada)|miracle\s+cure|"
+    r"(deja|suspende|abandona)\s+(de\s+tomar\s+)?(tu|el|la|los|sus?)\s+(tratamiento|medicaci[oó]n|medicamentos?)|"
+    r"stop\s+taking\s+your\s+(medication|medicine)|sin\s+(necesidad\s+de\s+)?(ir\s+al\s+)?m[eé]dico)")
+
+
+def system(brand: Dict[str, Any]) -> str:
+    kind = brand.get("account_type")
+    return SYSTEM + (MEDICAL_RULES if kind == "medical_education" else CHANNEL_RULES if kind == "content_channel" else "")
 
 
 def enabled(env: Optional[Dict[str, str]] = None) -> bool:
@@ -96,7 +129,8 @@ def _check(texts: List[str], brand: Dict[str, Any]) -> None:
     banned = [b.lower() for b in brand.get("banned_topics") or [] if isinstance(b, str) and b.strip()]
     for t in texts:
         low = t.lower()
-        if FORBIDDEN_CLAIMS.search(t) or any(b in low for b in banned):
+        if FORBIDDEN_CLAIMS.search(t) or any(b in low for b in banned) or (
+                brand.get("account_type") == "medical_education" and MEDICAL_FORBIDDEN.search(t)):
             raise DomainError("ai_output_rejected", 422)
 
 
@@ -111,7 +145,7 @@ def write(content: Dict[str, Any], brand: Dict[str, Any], request: str = "", cli
     name = model(env)
     try:
         msg = client.messages.create(
-            model=name, max_tokens=8000, system=SYSTEM, output_config={
+            model=name, max_tokens=8000, system=system(brand), output_config={
                 "effort": "low", "format": {"type": "json_schema", "schema": SCHEMA}},
             messages=[{"role": "user", "content": prompt(content, brand, request)}])
     except DomainError:

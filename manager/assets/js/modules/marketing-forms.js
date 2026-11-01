@@ -30,6 +30,7 @@ function checks(options, selected, labelOf) {
 export const channelLabel = (c) => ({ x: 'X', google_business: 'Google Business', tiktok: 'TikTok', linkedin: 'LinkedIn', youtube: 'YouTube' }[c]
   || c.charAt(0).toUpperCase() + c.slice(1));
 // Ejemplo de dirección de cada red (el backend comprueba que sea de ese dominio).
+const ACCOUNT_TYPES = ['local_business', 'content_channel', 'medical_education'];
 const SOCIAL_EXAMPLE = { instagram: 'instagram.com', facebook: 'facebook.com', tiktok: 'tiktok.com/@', linkedin: 'linkedin.com/company',
   x: 'x.com', youtube: 'youtube.com/@', google_business: 'g.page', threads: 'threads.net/@' };
 // Siempre el estado comercial (Borrador, Preparando, Listo para revisar, …), nunca el interno.
@@ -207,6 +208,7 @@ export function brandForm(root, ctx, data, isCurrent) {
     banned_topics: textarea((p.banned_topics || []).join('\n'), 5000),
     compliance_notes: textarea(p.compliance_notes, 2000),
     ai_instructions: textarea(p.ai_instructions, 4000, 4),
+    account_type: select(ACCOUNT_TYPES.map(a => ({ value: a, label: t(`at_${a}`), selected: a === (p.account_type || 'local_business') }))),
   };
   const social = CHANNELS.map(c => ({ key: c, node: input({
     maxlength: '300', type: 'url', placeholder: `https://${SOCIAL_EXAMPLE[c]}/…`, value: (p.social_links || {})[c] || '' }) }));
@@ -231,6 +233,7 @@ export function brandForm(root, ctx, data, isCurrent) {
         cta: f.cta.value.trim() || null, phone: f.phone.value.trim() || null, website: f.website.value.trim() || null,
         logo_url: f.logo_url.value.trim() || null, banned_topics: lines(f.banned_topics.value),
         compliance_notes: f.compliance_notes.value.trim() || null, ai_instructions: f.ai_instructions.value.trim() || null,
+        account_type: f.account_type.value,
       };
       for (const c of colors) values[c.key] = c.text.value.trim() || null;
       values.social_links = Object.fromEntries(social.map(s => [s.key, s.node.value.trim()]).filter(([, v]) => v));
@@ -245,6 +248,7 @@ export function brandForm(root, ctx, data, isCurrent) {
   root.appendChild(el('section', { class: 'card' }, el('div', { class: 'card-body mk-brand' },
     el('p', { class: 'hint' }, t('brandIntro')), hint,
     el('form', { class: 'form-grid', onsubmit: (e) => e.preventDefault() },
+      field(t('accountType'), f.account_type, { full: true, hint: t('accountTypeHint') }),
       field(t('businessName'), f.business_name), field(t('tone'), f.tone),
       field(t('description'), f.description, { full: true }), field(t('audience'), f.target_audience, { full: true }),
       field(t('languages'), f.languages), field(t('cta'), f.cta),

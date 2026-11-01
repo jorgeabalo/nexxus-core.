@@ -105,7 +105,7 @@ class LibraryService(StudioBase):
                 "generation_enabled": jd.generation_enabled(st), "malware_scanner": self.scanner.name,
                 "retention": {"max_days": rt.plan_max(st), "choices": rt.allowed_choices(st),
                               "default_days": rt.default_days(st)},
-                "anonymization": "simulated"}
+                "anonymization": "simulated", "medical": self._medical(c)}
 
     def content(self, jwt: str, tenant_id: str, media_id: str, derivative_id: str = "",
                 range_header: Optional[str] = None, head: bool = False) -> Dict[str, Any]:
@@ -184,9 +184,18 @@ class LibraryService(StudioBase):
         self._writable(c)
         return self._classify(c, self._media(c, media_id), body)
 
+    def _medical(self, c) -> bool:
+        """Canal médico (Brand Kit): sus archivos solo se usan tras confirmar que no identifican al paciente."""
+        rows = self.db.select("marketing_brand_profiles", {"tenant_id": f"eq.{c.tenant_id}", "select": "account_type",
+                                                           "limit": "1"}) or []
+        return bool(rows) and rows[0].get("account_type") == "medical_education"
+
     def _classify(self, c, m: Dict[str, Any], body: Dict[str, Any]) -> Dict[str, Any]:
         if m["processing_status"] in ("archived", "rejected") or m.get("retention_status") in rt.PURGE_STATES:
             raise PortalError("not_editable", 409)
+        deidentified = body.get("deidentified") is True
+        if str(body.get("people_policy") or "exclude") != "exclude" and self._medical(c) and not deidentified:
+            raise PortalError("deidentification_required", 400)       # nombre, fecha, número… del paciente
         tri = lambda v: v if v in (True, False) else None   # noqa: E731
         out = pv.classify(tri(body.get("contains_people")), str(body.get("people_policy") or "exclude"),
                           str(body.get("consent_status") or "unknown"), tri(body.get("contains_minors")))
@@ -194,6 +203,8 @@ class LibraryService(StudioBase):
         note = str(body.get("consent_note") or "")[:300]
         if note:
             meta["consent_note"] = note
+        if "deidentified" in body:
+            meta["deidentified"] = deidentified
         values = {k: out[k] for k in ("contains_people", "contains_minors", "people_policy", "consent_status")}
         values["metadata"] = meta
         if out["consent_status"] != m.get("consent_status"):
