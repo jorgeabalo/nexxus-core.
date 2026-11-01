@@ -88,7 +88,7 @@ footer a { color: var(--muted); }
     background: linear-gradient(180deg, rgba(11, 22, 34, .15) 0%, rgba(11, 22, 34, .5) 55%, var(--ink) 100%),
       url('/sites/dr_redden/houston-night.jpg') 70% 55% / cover no-repeat; }
   .follow .box { padding: 28px; }
-  .bar .panel-link { display: none; }
+  .brand { font-size: 18px; }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .btn { transition: none; } }
 </style>
@@ -99,7 +99,7 @@ footer a { color: var(--muted); }
     <a class="brand" href="#top"><img src="/sites/dr_redden/avatar.jpg" alt="" width="40" height="40">Dr. Redden</a>
     <nav>
       <button class="lang" type="button" id="lang" aria-label="Cambiar idioma / Change language">EN</button>
-      <a class="btn btn-ghost btn-sm panel-link" href="/manager?empresa=dr_redden" data-i18n="panel">Panel</a>
+      <a class="btn btn-ghost btn-sm panel-link" href="/manager?empresa=dr_redden" data-i18n="panel">Manager</a>
     </nav>
   </div>
 </header>
@@ -191,14 +191,14 @@ footer a { color: var(--muted); }
 <footer>
   <div class="wrap row">
     <p class="note" data-i18n="note">Contenido educativo. No sustituye la consulta médica ni constituye diagnóstico o tratamiento. Las imágenes clínicas se publican anonimizadas.</p>
-    <p>© <span id="year">2026</span> Dr. Redden · <a href="/manager?empresa=dr_redden" data-i18n="panel">Panel</a></p>
+    <p>© <span id="year">2026</span> Dr. Redden · <a href="/manager?empresa=dr_redden" data-i18n="panel">Manager</a></p>
   </div>
 </footer>
 
 <script>
 (function () {
   var EN = {
-    panel: 'Panel', eyebrow: 'Medical education channel',
+    panel: 'Manager', eyebrow: 'Medical education channel',
     title: 'Rare medical cases, <em>explained</em> through imaging.',
     lead: 'Rare cases, diagnostic imaging and ultrasound, the history of medicine and the myths that keep going around. Short, rigorous content for everyone.',
     follow: 'Follow on Instagram', topicsLink: 'See the topics', topicsTitle: 'What we cover',

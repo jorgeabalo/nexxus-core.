@@ -11,7 +11,7 @@ def client():
 def test_dr_redden_page_by_path():
     r = client().get("/drredden")
     assert r.status_code == 200 and "Dr. Redden" in r.text and "instagram.com/drredden" in r.text
-    assert "/manager?empresa=dr_redden" in r.text
+    assert "/manager?empresa=dr_redden" in r.text and "panel-link" in r.text
     assert "No sustituye la consulta médica" in r.text
 
 
