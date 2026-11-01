@@ -61,7 +61,7 @@ async function showPreview(ctx, m) {
   return close;
 }
 
-function classifyModal(ctx, m, reload) {
+function classifyModal(ctx, m, reload, medical) {
   const people = select([{ value: '', label: s('unknown') }, { value: 'yes', label: s('yes') }, { value: 'no', label: s('no') }]
     .map(o => ({ ...o, selected: o.value === (m.contains_people === true ? 'yes' : m.contains_people === false ? 'no' : '') })));
   const triVal = (v) => (v === true ? 'yes' : v === false ? 'no' : '');
@@ -71,19 +71,23 @@ function classifyModal(ctx, m, reload) {
   const consent = select(['unknown', 'not_required', 'pending', 'granted', 'revoked']
     .map(c => ({ value: c, label: s(`cs_${c}`), selected: c === m.consent_status })));
   const note = el('textarea', { class: 'input', maxlength: '300', rows: '2' }, (m.metadata || {}).consent_note || '');
+  const deid = el('input', { type: 'checkbox' });
+  deid.checked = (m.metadata || {}).deidentified === true;
+  const deidRow = medical ? el('label', { class: 'full mk-check' }, deid, ' ', s('deidentified')) : el('span');
   const err = el('p', { class: 'form-error full', role: 'alert' });
   openModal({
     title: s('classify'), closeLabel: s('close'),
     body: el('form', { class: 'form-grid', onsubmit: (e) => e.preventDefault() },
       field(s('containsPeople'), people), field(s('containsMinors'), minors, { hint: s('minorsHint') }),
       field(s('policy'), policy), field(s('consent'), consent),
-      field(s('consentNote'), note, { full: true }), el('div', { class: 'full' }, warnings()), err),
+      field(s('consentNote'), note, { full: true }), deidRow, el('div', { class: 'full' }, warnings()), err),
     actions: [(close) => el('button', { class: 'btn btn-primary', type: 'button', onclick: async (e) => {
       e.target.disabled = true;
       try {
         const tri = (v) => (v === 'yes' ? true : v === 'no' ? false : null);
         await M.classify(ctx.tenantId, m.id, { contains_people: tri(people.value), contains_minors: tri(minors.value),
-          people_policy: policy.value, consent_status: consent.value, consent_note: note.value });
+          people_policy: policy.value, consent_status: consent.value, consent_note: note.value,
+          ...(medical ? { deidentified: deid.checked } : {}) });
         close(); toast(s('classify')); reload();
       } catch (x) { err.textContent = sErr(x); } finally { e.target.disabled = false; }
     } }, s('classify'))],
@@ -215,7 +219,7 @@ export async function libraryView(ctx, reload) {
     { label: s('actions'), render: m => el('div', { class: 'btn-row mk-lib-actions' },
       el('button', { class: 'btn btn-sm', type: 'button', onclick: () => showPreview(ctx, m) }, s('preview')),
       m.processing_status === 'archived' ? null
-        : el('button', { class: 'btn btn-sm', type: 'button', onclick: () => classifyModal(ctx, m, reload) }, s('classify')),
+        : el('button', { class: 'btn btn-sm', type: 'button', onclick: () => classifyModal(ctx, m, reload, data.medical) }, s('classify')),
       m.people_policy === 'anonymize' && m.processing_status === 'ready'
         ? el('button', { class: 'btn btn-sm', type: 'button', onclick: () => anonymizeModal(ctx, m, reload) }, s('anonymize')) : null,
       m.consent_status === 'granted' ? el('button', { class: 'btn btn-sm', type: 'button', onclick: async () => {
