@@ -393,6 +393,10 @@ app.include_router(_marketing_router(lambda: member_portal.db if member_portal e
 from services.marketing_studio_routes import build_router as _marketing_studio_router
 app.include_router(_marketing_studio_router(lambda: member_portal.db if member_portal else None))
 
+# Matriz AITA: adaptadores de consulta sobre los servicios actuales, por tenant.
+from services.aita_routes import build_router as _aita_router
+app.include_router(_aita_router(lambda: member_portal.db if member_portal else None))
+
 
 @app.get("/api/manager/sms-diagnostics")
 async def manager_sms_diagnostics(request: Request):
