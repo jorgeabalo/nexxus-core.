@@ -48,6 +48,12 @@
      "supports_image_input": false, "supports_video_input": false, "supports_reference_image": false,
      "supports_commercial_use": true, "data_retention_policy": "unknown", "real_people_allowed": false,
      "external": true, "price_verified": false, "enabled": false,
-     "notes": "Contrato pendiente: no se ha confirmado qué proyecto OmniRoute se usará."}
+     "notes": "Contrato pendiente: no se ha confirmado qué proyecto OmniRoute se usará."},
+    {"provider": "wan2gp", "model_id": "wan2gp:t2v_1.3B", "supported_tasks": ["text_to_video"],
+     "quality_score": 60, "estimated_cost": null, "billing_unit": "second", "latency_class": "slow", "reliability_score": 0.8,
+     "supports_image_input": false, "supports_video_input": false, "supports_reference_image": false,
+     "supports_commercial_use": true, "data_retention_policy": "none", "real_people_allowed": false,
+     "external": true, "price_verified": false, "enabled": false,
+     "notes": "Opcional. Wan2GP (Wan 2.1 1.3B, Apache 2.0) en un servidor GPU propio vía scripts/wan2gp_bridge.py. Sin precio: se calcula ~0,01 $ por segundo (GPU a ~0,6 $/h), sin medir. Activar solo tras medirlo, poniendo estimated_cost, price_verified y enabled, y WAN2GP_ENABLED=true."}
   ]
 }

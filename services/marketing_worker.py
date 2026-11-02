@@ -30,6 +30,7 @@ from services import marketing_retention as rt
 from services.marketing_lease import LeaseKeeper, validate as validate_lease
 from services.marketing_studio_base import BUCKET
 from services.marketing_ai_router import RouteRequest
+from services.marketing_reel_plan import video_prompt
 
 JOB_COLS = ("id,tenant_id,content_id,status,quality_tier,maximum_cost,estimated_cost,reserved_cost,currency,approved_at,approved_by,"
             "request_metadata,result_metadata,real_media_percent,ai_media_percent")
@@ -217,6 +218,7 @@ class JobRunner:
         why = recheck_inputs(self.db, tenant_id, j["id"], c.now)
         if why:
             return self._fail(c, j, why)
+        brief = (j["request_metadata"] or {}).get("brief") or {}
         usage: List[Dict[str, Any]] = []                        # costos de ESTE intento (aún sin publicar)
         total, n, first = 0.0, 0, None
         for st in est.get("subtasks") or []:
@@ -229,7 +231,11 @@ class JobRunner:
             req = RouteRequest(tenant_id=tenant_id, task_type=st["task_type"], quality_tier=j["quality_tier"],
                                maximum_cost=float(j["maximum_cost"]), privacy_class=st["privacy_class"],
                                idempotency_key=st["idempotency_key"], units=float(st["units"]),
-                               output_requirements={"temp_prefix": self.temp_prefix})
+                               aspect_ratio=brief.get("aspect_ratio") or "9:16", language=brief.get("language") or "es",
+                               duration=int(st["units"]) if st["task_type"] == "text_to_video" else None,
+                               prompt=video_prompt(brief) if st["task_type"] == "text_to_video" else "",
+                               output_requirements={"temp_prefix": self.temp_prefix,
+                                                    "temp_dir": f"{tenant_id}/derivatives/{j['id']}/{self.temp_prefix}"})
             self._check(keeper)
             self._heartbeat(j)                                    # sigue siendo nuestro antes de cada envío
             done = self.db.select("marketing_model_usage", {"tenant_id": f"eq.{tenant_id}",
