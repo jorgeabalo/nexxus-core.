@@ -14,6 +14,8 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 from services.marketing_domain import DomainError
+from services import object_store
+from services.marketing_large_upload import PART_BYTES, LargeUploadService
 from services.marketing_library import LibraryService
 from services.marketing_media_stream import COOKIE, MediaStreamService, check_cookie_config, cookie_secure, stream_path
 from services.member_portal import PortalError
@@ -30,13 +32,16 @@ def build_router(get_db: Callable) -> APIRouter:
         db = get_db()
         if db is None:
             raise PortalError("portal_not_configured", 503)
-        return db
+        return object_store.marketing_db(db)            # Biblioteca en el bucket S3 si está configurado
 
     def lib() -> LibraryService:
         return LibraryService(_db())
 
     def streamer() -> MediaStreamService:
         return MediaStreamService(_db())
+
+    def big() -> LargeUploadService:
+        return LargeUploadService(_db())
 
     def media_response(res, extra=None):
         headers = {**res["headers"], "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
@@ -106,6 +111,38 @@ def build_router(get_db: Callable) -> APIRouter:
         name = unquote(request.headers.get("x-file-name", ""))[:300]
         mime = (request.headers.get("content-type") or "").split(";")[0].strip()
         return await call(lambda: lib().upload(jw, tenant_id, name, mime, bytes(buf)))
+
+    # ---------- vídeos grandes: subida por partes (solo con el bucket S3) ----------
+    @r.post(f"{P}/library/uploads")
+    async def large_start(request: Request):
+        b = await body(request)
+        return await call(lambda: big().start(bearer(request), tid(b), b))
+
+    @r.put(f"{P}/library/uploads/{{upload_id}}/parts/{{number}}")
+    async def large_part(request: Request, upload_id: str, number: int, tenant_id: str = ""):
+        """Cuerpo = bytes de UNA parte. Nunca se lee más de una parte: se corta antes de cargarla."""
+        declared = request.headers.get("content-length")
+        if declared is not None and (not declared.isdigit() or int(declared) > PART_BYTES):
+            return JSONResponse({"error": "invalid_part_size"}, status_code=413)
+        buf = bytearray()
+        try:
+            async for chunk in request.stream():
+                if len(buf) + len(chunk) > PART_BYTES:
+                    return JSONResponse({"error": "invalid_part_size"}, status_code=413)
+                buf.extend(chunk)
+        except Exception:
+            return JSONResponse({"error": "invalid_upload"}, status_code=400)
+        return await call(lambda: big().put_part(bearer(request), tenant_id, upload_id, number, bytes(buf)))
+
+    @r.post(f"{P}/library/uploads/{{upload_id}}/complete")
+    async def large_complete(request: Request, upload_id: str):
+        b = await body(request)
+        return await call(lambda: big().complete(bearer(request), tid(b), upload_id))
+
+    @r.post(f"{P}/library/uploads/{{upload_id}}/abort")
+    async def large_abort(request: Request, upload_id: str):
+        b = await body(request)
+        return await call(lambda: big().abort(bearer(request), tid(b), upload_id))
 
     @r.api_route(f"{P}/library/{{media_id}}/content", methods=["GET", "HEAD"])
     async def content(request: Request, media_id: str, tenant_id: str = "", derivative_id: str = ""):

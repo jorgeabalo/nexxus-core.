@@ -34,3 +34,7 @@ pillow-heif==1.8.0
 
 # AITA Domus: signature verification for Alexa HTTPS requests.
 ask-sdk-webservice-support==1.3.3
+
+# AITA Marketing: Biblioteca en un bucket S3 (Railway Buckets). 1.35.x: sin las cabeceras de checksum
+# por defecto de 1.36+, que algunos almacenamientos compatibles con S3 rechazan.
+boto3==1.35.99

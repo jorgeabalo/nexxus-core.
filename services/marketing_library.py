@@ -105,7 +105,15 @@ class LibraryService(StudioBase):
                 "generation_enabled": jd.generation_enabled(st), "malware_scanner": self.scanner.name,
                 "retention": {"max_days": rt.plan_max(st), "choices": rt.allowed_choices(st),
                               "default_days": rt.default_days(st)},
-                "anonymization": "simulated", "medical": self._medical(c)}
+                "anonymization": "simulated", "medical": self._medical(c),
+                "large_upload": self._large_upload_info(st)}
+
+    def _large_upload_info(self, st) -> Optional[Dict[str, Any]]:
+        """Subida por partes de vídeos grandes: solo con el bucket S3 (Supabase gratis corta en 50 MB)."""
+        from services import marketing_large_upload as lu, object_store
+        if not object_store.large_uploads_available(self.db):
+            return None
+        return {"max_bytes": min(int(st["max_upload_bytes"] or 0), lu.LARGE_MAX_BYTES), "part_bytes": lu.PART_BYTES}
 
     def content(self, jwt: str, tenant_id: str, media_id: str, derivative_id: str = "",
                 range_header: Optional[str] = None, head: bool = False) -> Dict[str, Any]:

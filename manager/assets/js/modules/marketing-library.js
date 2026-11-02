@@ -168,8 +168,15 @@ export async function libraryView(ctx, reload) {
     const f = fileInput.files[0];
     if (!f) return;
     status.textContent = s('uploading');
+    const big = data.large_upload;
+    // Vídeos de más de 20 MB por partes (si el bucket lo permite): la subida normal los carga enteros en memoria.
+    const chunked = big && f.type.startsWith('video/') && f.size > 20 * 1024 * 1024;
     try {
-      const r = await M.upload(ctx.tenantId, f);
+      const r = chunked
+        ? await M.uploadLarge(ctx.tenantId, f, big.part_bytes, (n, total) => {
+          status.textContent = n < total ? s('uploadingPct', Math.round(n * 100 / total)) : s('finishing');
+        })
+        : await M.upload(ctx.tenantId, f);
       toast(r.duplicate ? s('duplicate') : s('uploaded'));
       reload();
     } catch (e) { status.textContent = sErr(e); } finally { fileInput.value = ''; }
@@ -197,6 +204,8 @@ export async function libraryView(ctx, reload) {
     quota, parts, expiredHint,
     el('p', { class: 'hint', dataset: { storage: 'temporary' } }, s('libTemporary', data.retention?.default_days || 30)),
     st.state === 'disabled' ? null : el('p', { class: 'hint' }, `${s('formats')} ${fmtBytes(st.max_upload_bytes)}.`),
+    st.state === 'disabled' || !data.large_upload ? null
+      : el('p', { class: 'hint', dataset: { upload: 'large' } }, s('videosUpTo', fmtBytes(data.large_upload.max_bytes))),
     data.generation_enabled ? null : el('p', { class: 'hint', dataset: { state: 'generation-off' } }, `${s('genNotEnabled')}. ${s('libWorksAnyway')}`),
     el('p', { class: 'mk-note' }, s('scanNote')),
     el('div', { class: 'btn-row' },
