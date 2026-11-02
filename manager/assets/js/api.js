@@ -301,6 +301,35 @@ export const api = {
       if (!res.ok) { const e = new Error(data.error || `HTTP ${res.status}`); e.code = data.error; throw e; }
       return data;
     },
+    // Vídeos grandes: se envían en partes (en orden) al backend, que las pasa al bucket privado.
+    // Cada parte se reintenta hasta 3 veces; si algo falla del todo, la subida se cancela en el servidor.
+    async uploadLarge(tenantId, file, partBytes, onProgress) {
+      const start = await backend('POST', '/api/manager/marketing/library/uploads', {
+        tenant_id: tenantId, filename: file.name || '', mime_type: file.type || '', byte_size: file.size });
+      const id = encodeURIComponent(start.upload_id);
+      const size = start.part_bytes || partBytes;
+      try {
+        for (let n = 1; n <= start.parts; n++) {
+          const blob = file.slice((n - 1) * size, Math.min(n * size, file.size));
+          for (let attempt = 1; ; attempt++) {
+            const token = (await sb.auth.getSession()).data.session?.access_token;
+            const res = await fetch(`/api/manager/marketing/library/uploads/${id}/parts/${n}?${qs({ tenant_id: tenantId })}`, {
+              method: 'PUT', body: blob,
+              headers: { Authorization: `Bearer ${token || ''}`, 'Content-Type': 'application/octet-stream' } });
+            if (res.ok) break;
+            const data = await res.json().catch(() => ({}));
+            if (attempt >= 3 || (res.status >= 400 && res.status < 500)) {
+              const e = new Error(data.error || `HTTP ${res.status}`); e.code = data.error; throw e;
+            }
+          }
+          if (onProgress) onProgress(n, start.parts);
+        }
+        return await backend('POST', `/api/manager/marketing/library/uploads/${id}/complete`, { tenant_id: tenantId });
+      } catch (e) {
+        await backend('POST', `/api/manager/marketing/library/uploads/${id}/abort`, { tenant_id: tenantId }).catch(() => {});
+        throw e;
+      }
+    },
     // Sesión de reproducción: el servidor la guarda en una cookie HttpOnly (Path = el archivo, 10 min).
     // El <video> usa la URL limpia que devuelve y el navegador envía la cookie en HEAD y en cada Range.
     streamSession(tenantId, id) {

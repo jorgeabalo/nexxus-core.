@@ -75,8 +75,9 @@ class DryRunDB:
 
 def _db():
     from services.supabase_admin import SupabaseAdmin
+    from services.object_store import marketing_db
     db = SupabaseAdmin()
-    return db if getattr(db, "enabled", False) else None
+    return marketing_db(db) if getattr(db, "enabled", False) else None   # Biblioteca en el bucket S3 si existe
 
 
 def run_retention(db, apply: bool, batch_size: int, max_batches: int, now: Optional[datetime] = None) -> List[Dict]:
@@ -89,6 +90,9 @@ def run_retention(db, apply: bool, batch_size: int, max_batches: int, now: Optio
         res = {"batch": i + 1, "mode": "apply" if apply else "dry_run", **res}
         if not apply:
             res["would_write"] = len(target.writes)
+        if apply and i == 0:
+            from services.marketing_large_upload import expire_stale
+            res["uploads_expired"] = expire_stale(db, now or datetime.now(timezone.utc))
         out.append(res)
         busy = sum(int(res.get(k) or 0) for k in ("warned", "purged", "failed", "protected", "derivatives", "outputs"))
         if res.get("locked") or busy == 0 or not apply:       # bloqueado, nada más que hacer, o dry-run (un lote)
