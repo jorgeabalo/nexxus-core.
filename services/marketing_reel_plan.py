@@ -65,6 +65,23 @@ def validate_brief(b: Dict[str, Any]) -> Dict[str, Any]:
             "cover_scene": int(b.get("cover_scene") or 0), "language": "en" if b.get("language") == "en" else "es"}
 
 
+STYLE_WORDS = {"energetic": "energetic, dynamic camera movement", "calm": "calm, soft natural light",
+               "professional": "clean, professional, well lit", "cinematic": "cinematic, shallow depth of field",
+               "educational": "clear, simple, explanatory"}
+AUDIENCE_WORDS = {"general": "adults", "seniors_60_plus": "active older adults", "beginners": "beginners",
+                  "athletes": "athletes", "parents": "parents", "custom": "adults"}
+
+
+def video_prompt(brief: Dict[str, Any]) -> str:
+    """Descripción para generar las escenas IA a partir del guion ya validado (sin afirmaciones prohibidas).
+    No incluye nombres de archivos ni datos de personas: es texto que escribió el propio negocio."""
+    sc = brief.get("script") or {}
+    idea = ". ".join(v.strip().rstrip(".") for v in (sc.get("hook"), sc.get("body")) if v and v.strip())
+    return (f"Vertical short social media video, {STYLE_WORDS.get(brief.get('style'), 'professional')} style, "
+            f"for {AUDIENCE_WORDS.get(brief.get('audience'), 'adults')}. "
+            f"Scene: {idea or 'a welcoming, modern place'}. No text or logos on screen.")[:1500]
+
+
 def subtasks(plan: Dict[str, Any], input_class: str, people_policy: str, real_kinds: List[str],
              subtitles: bool) -> List[Dict[str, Any]]:
     """Lista de subtareas con su clase de privacidad y unidades. Las herramientas locales cubren

@@ -101,6 +101,8 @@ def run_retention(db, apply: bool, batch_size: int, max_batches: int, now: Optio
 
 
 def providers_disabled(env: Optional[Dict[str, str]] = None) -> bool:
+    """Proveedores que aún son solo contrato (sin transporte real). Wan2GP no cuenta: tiene implementación
+    y su propio doble cierre (catálogo + WAN2GP_ENABLED)."""
     from services.marketing_ai_router import provider_enabled
     env = os.environ if env is None else env
     return not provider_enabled("omniroute", env) and not provider_enabled("local_ffmpeg", env)
@@ -115,7 +117,7 @@ def run_worker(db, max_jobs: int, lease_seconds: int, env: Optional[Dict[str, st
         return {"status": "disabled", "reason": "MARKETING_WORKER_ENABLED"}
     if not providers_disabled(env):
         return {"status": "disabled", "reason": "real_providers_not_allowed"}
-    runner = JobRunner(db, MarketingAIRouter(env=dict(env)), default_adapters(), lease_seconds=int(lease_seconds),
+    runner = JobRunner(db, MarketingAIRouter(env=dict(env)), default_adapters(db), lease_seconds=int(lease_seconds),
                        heartbeat_seconds=heartbeat_seconds)
     if stop_event is not None:
         runner.stop_event = stop_event                      # SIGTERM: el trabajo en curso se detiene sin escribir
