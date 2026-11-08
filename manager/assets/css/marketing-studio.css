@@ -88,3 +88,32 @@
 .mk-variant-text { white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; border-radius: var(--radius-sm);
   background: var(--muted-bg); max-height: 320px; overflow-y: auto; }
 @media (max-width: 560px) { .mk-guide-steps li { grid-template-columns: 32px 1fr; } .mk-guide-steps li > :last-child { grid-column: 2; justify-self: start; } }
+
+/* ---------- Carrusel: editor de láminas ---------- */
+.modal.modal-carousel { max-width: 1180px; }
+.mk-cs-layout { display: grid; grid-template-columns: minmax(0, 440px) minmax(0, 1fr); gap: 24px; align-items: start; margin-top: 8px; }
+.mk-cs-view { position: sticky; top: 0; display: grid; gap: 12px; }
+.mk-cs-canvas { width: 100%; height: auto; aspect-ratio: 4 / 5; border-radius: 12px; border: 1px solid var(--border); background: #fff; }
+.mk-cs-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.mk-cs-thumb { position: relative; flex: 0 0 auto; width: 64px; padding: 0; border: 2px solid transparent; border-radius: 8px; background: none; cursor: pointer; }
+.mk-cs-thumb canvas { display: block; width: 100%; height: auto; border-radius: 6px; }
+.mk-cs-thumb span { position: absolute; left: 4px; bottom: 4px; font-size: 11px; font-weight: 700; background: rgba(11,31,58,.75); color: #fff; border-radius: 4px; padding: 0 4px; }
+.mk-cs-thumb.sel { border-color: var(--accent, #0E6E7A); }
+.mk-cs-thumb:focus-visible { outline: 2px solid var(--accent, #0E6E7A); outline-offset: 2px; }
+.mk-cs-edit { display: grid; gap: 12px; min-width: 0; }
+.mk-cs-edit h3 { font-size: 16px; margin-top: 8px; }
+.mk-cs-slide { border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: grid; gap: 10px; }
+.mk-cs-refs { display: grid; gap: 8px; }
+.mk-cs-ref { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.mk-cs-checks { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; font-size: 13px; }
+.mk-cs-checks li { padding: 6px 10px; border-radius: 8px; }
+.mk-cs-checks li.warn { background: #FFF4E5; color: #7A4B00; }
+.mk-cs-checks li.ok { background: #E8F6EE; color: #1F6B3A; }
+.mk-cs-actions { margin-top: 12px; }
+@media (max-width: 900px) {
+  .mk-cs-layout { grid-template-columns: minmax(0, 1fr); }
+  .mk-cs-view { position: static; }
+  .mk-cs-ref { grid-template-columns: auto minmax(0, 1fr); }
+  .mk-cs-ref > :nth-child(3) { grid-column: 2; }
+  .mk-cs-ref > :nth-child(4) { grid-column: 2; justify-self: start; }
+}

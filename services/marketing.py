@@ -24,6 +24,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, Optional
 from zoneinfo import ZoneInfo
 
+from services import marketing_carousel as mc
 from services import marketing_domain as d
 from services.marketing_domain import DomainError
 from services.marketing_gate import MarketingTablesGuard, marketing_module_enabled
@@ -323,6 +324,8 @@ class MarketingService:
              "hashtags": d.hashtags(get("hashtags")),
              "notes": d.text(get("notes"), 2000, "invalid_notes"),
              "planned_at": self._when(c, body["planned_at"]) if "planned_at" in body else cur.get("planned_at")}
+        if body.get("carousel") is not None:
+            v["script"] = mc.script_for(self.db, c.tenant_id, fmt, body["carousel"], v.get("caption"))
         camp = get("campaign_id")
         v["campaign_id"] = self._campaign(c, camp, "invalid_campaign", 400)["id"] if camp else None
         who = get("assigned_to")
