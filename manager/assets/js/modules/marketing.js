@@ -15,6 +15,8 @@ import { plannerModal } from './marketing-planner.js';
 import { controlCard } from './marketing-autopilot.js';
 import { planCard, addonSection, flowCard, resultsCard } from './marketing-addons.js';
 import { guideCard } from './marketing-onboarding.js';
+import { carouselEditor } from './marketing-carousel.js';
+import { k } from './marketing-carousel-i18n.js';
 
 const M = api.marketing;
 const scope = createScope();
@@ -47,7 +49,7 @@ export async function render(root, ctx) {
   const drawTabs = () => clear(tabHolder).appendChild(tabs(TABS.map(v => ({ value: v, label: t(`tab_${v}`) })), st.brand ? null : st.tab,
     (v) => { st.tab = v; st.brand = false; history.replaceState(null, '', `#/marketing/${v}`); drawTabs(); draw(); }));
   drawTabs();
-  const open = (id) => contentDetail(ctx, id, { campaigns, reload });
+  const open = (id) => contentDetail(ctx, id, { campaigns, reload, openCarousel: (c) => carouselEditor(ctx, { existing: c, reload }) });
 
   async function reload() {
     if (!ctx.isCurrent()) return;
@@ -131,6 +133,7 @@ export async function render(root, ctx) {
       el('div', { class: 'card-head' }, el('h2', {}, t('tab_content')),
         el('div', { class: 'btn-row' }, filter,
           el('button', { class: 'btn btn-sm', type: 'button', disabled: !enabled, onclick: () => contentModal(ctx, { campaigns }, reload) }, t('newBlank')),
+          el('button', { class: 'btn btn-sm btn-primary', type: 'button', disabled: !enabled, onclick: () => carouselEditor(ctx, { reload }) }, k('new')),
           el('button', { class: 'btn btn-sm btn-accent', type: 'button', disabled: !enabled, onclick: plan }, t('create')))),
       table([
         { label: t('titleF'), key: 'title' },

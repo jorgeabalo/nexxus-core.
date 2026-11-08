@@ -8,6 +8,8 @@ import { tr } from '../i18n.js';
 import { t, errText } from './marketing-i18n.js';
 import { FORMATS, CHANNELS, LANGUAGES, EDITABLE, brandSwatches, localInput, shownStatus } from './marketing-state.js';
 import { variantsPanel, aiWriter } from './marketing-platforms.js';
+import { parseCarousel } from './marketing-carousel.js';
+import { k } from './marketing-carousel-i18n.js';
 
 const M = api.marketing;
 
@@ -92,16 +94,17 @@ export function contentModal(ctx, { existing = null, campaigns = [], defaults = 
 }
 
 // ---------- detalle: estado, aprobación, historial y cola ----------
-export async function contentDetail(ctx, id, { campaigns = [], reload }) {
+export async function contentDetail(ctx, id, { campaigns = [], reload, openCarousel = null }) {
   const body = el('div', { class: 'mk-detail' }, loading());
   const close = openModal({ closeLabel: t('close'), title: t('content'), body });
   let data;
   try { data = await M.content(ctx.tenantId, id); } catch (e) { clear(body).appendChild(errorNotice(errText(e))); return; }
   const c = data.content;
+  const deck = parseCarousel(c);
   const camp = campaigns.find(x => x.id === c.campaign_id);
   const row = (label, value) => value ? el('div', { class: 'mk-row' }, el('span', { class: 'mk-k' }, label), el('span', {}, value)) : null;
   const comment = textarea('', 2000, 2);
-  const when = input({ type: 'datetime-local', value: localInput(c.planned_at, tz()) });
+  const whenAt = input({ type: 'datetime-local', value: localInput(c.planned_at, tz()) });
   const err = el('p', { class: 'form-error', role: 'alert' });
 
   // Desde «Listo para revisar», volver a borrador es «Solicitar cambios»: igual que rechazar, exige comentario.
@@ -110,7 +113,7 @@ export async function contentDetail(ctx, id, { campaigns = [], reload }) {
     err.textContent = '';
     if ((to === 'rejected' || asksChanges(to)) && !comment.value.trim()) { err.textContent = t('commentReq'); return; }
     try {
-      await M.transition(ctx.tenantId, c.id, to, { comment: comment.value.trim(), scheduledAt: to === 'scheduled' ? when.value : null });
+      await M.transition(ctx.tenantId, c.id, to, { comment: comment.value.trim(), scheduledAt: to === 'scheduled' ? whenAt.value : null });
     } catch (ex) { err.textContent = errText(ex); return; }
     toast(t('saved')); close(); reload();
   };
@@ -128,7 +131,10 @@ export async function contentDetail(ctx, id, { campaigns = [], reload }) {
 
   clear(body).appendChild(el('div', { class: 'mk-detail' },
     el('div', { class: 'mk-detail-head' }, el('h3', {}, c.title), statusBadge(c.display_status || c.status),
-      EDITABLE.includes(c.status)
+      c.format === 'carousel' && openCarousel
+        ? el('button', { class: 'btn btn-sm btn-primary', type: 'button', onclick: () => { close(); openCarousel(c); } }, k('open'))
+        : null,
+      EDITABLE.includes(c.status) && !deck
         ? el('button', { class: 'btn btn-sm', type: 'button', onclick: () => { close(); contentModal(ctx, { existing: c, campaigns }, reload); } }, t('edit'))
         : null),
     c.display_status === 'preparing' ? el('div', { class: 'mk-usage' }, el('p', { class: 'hint' }, t('preparingNote')), progressBar(c.progress)) : null,
@@ -140,13 +146,14 @@ export async function contentDetail(ctx, id, { campaigns = [], reload }) {
       row(t('planned'), c.planned_at ? when(c.planned_at) : null),
       row(t('k_scheduled'), c.scheduled_at ? when(c.scheduled_at) : null),
       row(t('objective'), c.objective), row(t('topic'), c.topic),
-      row(t('caption'), c.caption), row(t('script'), c.script), row(t('cta'), c.cta),
+      row(t('caption'), c.caption), deck ? row(t('f_carousel'), k('slides_n', deck.slides.length)) : row(t('script'), c.script),
+      row(t('cta'), c.cta),
       row(t('hashtags'), (c.hashtags || []).join(' ')), row(t('notes'), c.notes)),
-    EDITABLE.includes(c.status) ? aiWriter(ctx, c, () => { close(); reload(); contentDetail(ctx, id, { campaigns, reload }); }) : null,
+    EDITABLE.includes(c.status) && !deck ? aiWriter(ctx, c, () => { close(); reload(); contentDetail(ctx, id, { campaigns, reload }); }) : null,
     variantsPanel(c),
     data.allowed.length ? el('div', { class: 'mk-actions' },
       field(t('comment'), comment, { full: true }),
-      data.allowed.includes('scheduled') ? field(t('when'), when) : null,
+      data.allowed.includes('scheduled') ? field(t('when'), whenAt) : null,
       el('div', { class: 'btn-row' }, buttons), err) : null,
     el('h4', {}, t('history')),
     el('ol', { class: 'mk-history' }, data.history.map(h => el('li', {},

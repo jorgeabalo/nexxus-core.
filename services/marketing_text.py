@@ -12,6 +12,7 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
+from services import marketing_carousel as mc
 from services import marketing_copywriter as cw
 from services import marketing_domain as d
 from services import marketing_platforms as platforms
@@ -89,7 +90,13 @@ def write_copy(svc, jwt: str, tenant_id: str, content_id: str, body: Dict[str, A
         _settle(svc, c, rid, "failed", cw.model())
         raise
     values = {"caption": out["caption"] or None, "cta": out["cta"] or None, "hashtags": _tags(out["hashtags"])}
-    if out["script"]:
+    if out["script"] and cur.get("format") == "carousel":
+        # «1. Título | texto» por línea → láminas editables (todas marcadas para revisar). Si la IA no devolvió
+        # láminas reconocibles, el carrusel que ya hay se queda como está.
+        doc = mc.from_text(out["script"], mc.parse(cur.get("script")))
+        if doc:
+            values["script"] = mc.dump(doc)
+    elif out["script"]:
         values["script"] = out["script"]
     values["platform_variants"] = platforms.variants({**cur, **values}, out["per_platform"])
     rows = svc.db.update("marketing_content", {"id": f"eq.{cur['id']}", "tenant_id": f"eq.{c.tenant_id}",

@@ -56,7 +56,9 @@ la marca si existen.
 - hashtags: entre 3 y 8, relevantes y locales si hay ciudad, sin repetir.
 - script: para reel, vídeo o historia. Escenas numeradas, cada una con: duración en segundos, qué se ve \
 (plano sugerido), texto en pantalla y voz o subtítulo. Empieza con un gancho de 2–3 segundos. Para \
-carrusel, el texto de cada diapositiva numerada. Para imagen o texto déjalo vacío.
+carrusel, una lámina por línea con el formato «N. Título | texto» (título de 3–8 palabras, texto de 1–3 frases \
+cortas; la 1 es la portada y la última el cierre; entre 8 y 10 láminas salvo que se pida otra cantidad). Para \
+imagen o texto déjalo vacío.
 - per_platform: una versión para cada red pedida, respetando su límite de caracteres y su estilo \
 (X corto y directo; LinkedIn más profesional; Google Business informativo y sin hashtags; TikTok e Instagram \
 cercanos). Incluye la llamada a la acción en cada versión."""
@@ -110,6 +112,18 @@ def _brand_text(brand: Dict[str, Any]) -> Dict[str, Any]:
     return {k: brand.get(k) for k in keys if brand.get(k)}
 
 
+def _carousel(content: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """El carrusel guardado en script (ver marketing_carousel.parse; aquí sin importarlo para evitar un ciclo)."""
+    raw = content.get("script")
+    if content.get("format") != "carousel" or not isinstance(raw, str) or not raw.lstrip().startswith("{"):
+        return None
+    try:
+        doc = json.loads(raw)
+    except ValueError:
+        return None
+    return doc if isinstance(doc, dict) and doc.get("kind") == "carousel" else None
+
+
 def prompt(content: Dict[str, Any], brand: Dict[str, Any], request: str = "") -> str:
     channels = [c for c in content.get("channels") or [] if c in RULES]
     ask = {
@@ -120,6 +134,12 @@ def prompt(content: Dict[str, Any], brand: Dict[str, Any], request: str = "") ->
         "redes": {c: {"limite_caracteres": RULES[c]["text_max"], "hashtags_max": RULES[c]["hashtags"]} for c in channels},
         "cambios_pedidos": request or None,
     }
+    deck = _carousel(content)
+    if deck:
+        ask.update({"laminas": len(deck.get("slides") or []) or None, "audiencia": deck.get("audience"),
+                    "tono": deck.get("tone"),
+                    "laminas_actuales": [" | ".join(x for x in (s.get("title"), s.get("body")) if x)
+                                         for s in deck.get("slides") or [] if s.get("title") or s.get("body")] or None})
     return ("Información de la marca:\n" + json.dumps(_brand_text(brand), ensure_ascii=False, indent=1)
             + "\n\nPublicación que hay que escribir:\n"
             + json.dumps({k: v for k, v in ask.items() if v}, ensure_ascii=False, indent=1))
