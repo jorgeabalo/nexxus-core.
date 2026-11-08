@@ -1,0 +1,148 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "aita carro",
+      "intents": [
+        {
+          "name": "VehicleQueryIntent",
+          "slots": [
+            {
+              "name": "question",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "consulta {question}",
+            "pregunta {question}"
+          ]
+        },
+        {
+          "name": "RecordExpenseIntent",
+          "slots": [
+            {
+              "name": "amount",
+              "type": "AMAZON.NUMBER"
+            },
+            {
+              "name": "category",
+              "type": "ExpenseCategory"
+            }
+          ],
+          "samples": [
+            "registra {category} por {amount} dólares",
+            "gasté {amount} dólares en {category}",
+            "registra un gasto",
+            "registrar un gasto",
+            "gastos",
+            "registra {category}",
+            "registra {amount} dólares",
+            "{category} por {amount} dólares"
+          ]
+        },
+        {
+          "name": "AMAZON.YesIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.NoIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": [
+            "sal de allí",
+            "sal de ahí",
+            "salir",
+            "cierra la conversación",
+            "no quiero registrar nada",
+            "cancela el gasto"
+          ]
+        }
+      ],
+      "types": [
+        {
+          "name": "ExpenseCategory",
+          "values": [
+            {
+              "name": {
+                "value": "gasolina"
+              }
+            },
+            {
+              "name": {
+                "value": "aceite"
+              }
+            },
+            {
+              "name": {
+                "value": "mantenimiento"
+              }
+            },
+            {
+              "name": {
+                "value": "peajes"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "dialog": {
+      "delegationStrategy": "SKILL_RESPONSE",
+      "intents": [
+        {
+          "name": "RecordExpenseIntent",
+          "confirmationRequired": false,
+          "slots": [
+            {
+              "name": "category",
+              "type": "ExpenseCategory",
+              "elicitationRequired": true,
+              "confirmationRequired": false,
+              "prompts": {
+                "elicitation": "Expense.category"
+              }
+            },
+            {
+              "name": "amount",
+              "type": "AMAZON.NUMBER",
+              "elicitationRequired": true,
+              "confirmationRequired": false,
+              "prompts": {
+                "elicitation": "Expense.amount"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "prompts": [
+      {
+        "id": "Expense.category",
+        "variations": [
+          {
+            "type": "PlainText",
+            "value": "¿Qué tipo de gasto fue: gasolina, aceite, mantenimiento o peajes?"
+          }
+        ]
+      },
+      {
+        "id": "Expense.amount",
+        "variations": [
+          {
+            "type": "PlainText",
+            "value": "¿Cuántos dólares gastaste?"
+          }
+        ]
+      }
+    ]
+  }
+}
